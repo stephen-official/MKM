@@ -1,0 +1,34 @@
+* { box-sizing: border-box; font-family: Arial, sans-serif; }
+body { margin: 0; background: #f4f7fb; }
+.layout { display: flex; min-height: 100vh; }
+.sidebar { width: 260px; padding: 16px; background: #0f172a; color: #fff; display: flex; flex-direction: column; gap: 8px; }
+.nav-item { color: #cbd5e1; text-decoration: none; padding: 10px; border-radius: 8px; }
+.nav-item.active, .nav-item:hover { background: #1e293b; color: #fff; }
+.main { flex: 1; padding: 20px; }
+.toolbar, .tab-row, .form-grid, .row-line { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+input, select, button { padding: 8px; border-radius: 8px; border: 1px solid #d4d4d8; }
+button { cursor: pointer; background: #0f172a; color: #fff; }
+.table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #fff; }
+.table th, .table td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; vertical-align: top; }
+.tab-active { background: #1d4ed8; color: #fff; }
+.json-preview { max-height: 420px; overflow: auto; background: #0b1020; color: #dbeafe; padding: 12px; border-radius: 8px; }
+.auth-wrap { max-width: 420px; margin: 60px auto; padding: 20px; background: #fff; border-radius: 12px; display: flex; flex-direction: column; gap: 8px; }
+.auth-tabs { display: flex; gap: 8px; }
+.panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; margin-top: 10px; }
+pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.alert { background: #e0f2fe; color: #0c4a6e; border: 1px solid #7dd3fc; padding: 8px 10px; border-radius: 8px; margin: 8px 0; }
+.toast-wrap { position: fixed; top: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
+.toast { min-width: 240px; max-width: 360px; padding: 10px 12px; border-radius: 8px; color: #fff; box-shadow: 0 8px 20px rgba(0,0,0,0.18); }
+.toast-info { background: #334155; }
+.toast-success { background: #166534; }
+.toast-error { background: #b91c1c; }
+@media (max-width: 768px) {
+  .layout { flex-direction: column; }
+  .sidebar { width: 100%; }
+}
+.sidebar-logo {
+  width: 100px;      /* Adjust the width as needed */
+  height: auto;       /* Maintains the aspect ratio */
+  display: block;     /* Ensures it sits on its own line */
+  margin: 0 auto 0; /* Centers it and adds space below */
+}
