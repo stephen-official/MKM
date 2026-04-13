@@ -44,8 +44,9 @@ export const env = {
   
   // Integrated Email Configuration
   // Matches the lowercase keys in your .env file
-  emailUser: process.env.emailUser,
-  emailPass: process.env.emailPass,
+// Fix: Check for both Uppercase and Lowercase to be safe
+  emailUser: process.env.EMAILUSER || process.env.emailUser,
+  emailPass: process.env.EMAILPASS || process.env.emailPass,
   
   // Recommended: Add a frontend URL variable for the reset link
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173"
