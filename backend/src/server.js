@@ -262,7 +262,7 @@ import { env } from "./config/env.js";
 // This ensures that both Express and Socket.io allow the same frontend URLs
 const allowedOrigins = process.env.CORS_ORIGIN 
     ? process.env.CORS_ORIGIN.split(",") 
-    : ["http://localhost:5173", "https://mkm-self.vercel.app"];
+    : ["https://mkm-user.vercel.app", "https://mkm-self.vercel.app"];
 
 // --- 2. INTEGRATION: SERVER & SOCKET CONFIG ---
 
