@@ -40,8 +40,9 @@ export const env = {
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
   adminRegistrationLimit: toNumber(process.env.ADMIN_REGISTRATION_LIMIT, 5),
   userRegistrationLimit: toNumber(process.env.USER_REGISTRATION_LIMIT, 100),
-  corsOrigins: (process.env.CORS_ORIGIN || "").split(",").filter(Boolean),
-  
+  corsOrigins: process.env.CORS_ORIGIN 
+  ? process.env.CORS_ORIGIN.split(",") 
+  : ["http://localhost:5173", "https://mkm-self.vercel.app"],
   // Integrated Email Configuration
   // Matches the lowercase keys in your .env file
 // Fix: Check for both Uppercase and Lowercase to be safe
