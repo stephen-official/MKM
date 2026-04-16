@@ -379,7 +379,7 @@ import { inventoryRoutes } from "./routes/inventoryRoutes.js";
 import { operationsRoutes } from "./routes/operationsRoutes.js";
 import { procurementRoutes } from "./routes/procurementRoutes.js";
 import { reportRoutes } from "./routes/reportRoutes.js";
-
+import { indentRequestRoutes } from "./routes/indentRequestRoutes.js";
 const app = express();
 
 // --- 0. PROXY CONFIGURATION ---
