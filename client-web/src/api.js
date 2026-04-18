@@ -1,19 +1,44 @@
-// // // // // import axios from "axios";
+// // // // // // import axios from "axios";
 
-// // // // // export const api = axios.create({
-// // // // //   // Make sure this matches your Backend URL
-// // // // //   baseURL: "http://localhost:5000/api", 
+// // // // // // export const api = axios.create({
+// // // // // //   // Make sure this matches your Backend URL
+// // // // // //   baseURL: "http://localhost:5000/api", 
+// // // // // // });
+
+
+
+// // // // // import axios from 'axios';
+
+// // // // // export const api = axios.create({ 
+// // // // //   baseURL: 'http://localhost:5000/api' 
 // // // // // });
 
+// // // // // // Add an interceptor here later if you need to send JWT Tokens!
 
 
-// // // // import axios from 'axios';
 
-// // // // export const api = axios.create({ 
-// // // //   baseURL: 'http://localhost:5000/api' 
+
+// // // // import axios from "axios";
+
+// // // // export const api = axios.create({
+// // // //   baseURL: "http://localhost:5000/api",
 // // // // });
 
-// // // // // Add an interceptor here later if you need to send JWT Tokens!
+// // // // // Add a request interceptor to include the token
+// // // // api.interceptors.request.use(
+// // // //   (config) => {
+// // // //     const token = localStorage.getItem("token"); // Ensure your Login.jsx saves it here
+// // // //     if (token) {
+// // // //       config.headers.Authorization = `Bearer ${token}`;
+// // // //     }
+// // // //     return config;
+// // // //   },
+// // // //   (error) => {
+// // // //     return Promise.reject(error);
+// // // //   }
+// // // // );
+
+
 
 
 
@@ -24,21 +49,17 @@
 // // //   baseURL: "http://localhost:5000/api",
 // // // });
 
-// // // // Add a request interceptor to include the token
+// // // // Interceptor to attach the token to every outgoing request
 // // // api.interceptors.request.use(
 // // //   (config) => {
-// // //     const token = localStorage.getItem("token"); // Ensure your Login.jsx saves it here
+// // //     const token = localStorage.getItem("token"); 
 // // //     if (token) {
 // // //       config.headers.Authorization = `Bearer ${token}`;
 // // //     }
 // // //     return config;
 // // //   },
-// // //   (error) => {
-// // //     return Promise.reject(error);
-// // //   }
+// // //   (error) => Promise.reject(error)
 // // // );
-
-
 
 
 
@@ -47,9 +68,9 @@
 
 // // export const api = axios.create({
 // //   baseURL: "http://localhost:5000/api",
+// //   withCredentials: true, // MANDATORY for Socket.io and Auth sync
 // // });
 
-// // // Interceptor to attach the token to every outgoing request
 // // api.interceptors.request.use(
 // //   (config) => {
 // //     const token = localStorage.getItem("token"); 
@@ -64,11 +85,15 @@
 
 
 
+
+
+
 // import axios from "axios";
 
 // export const api = axios.create({
-//   baseURL: "http://localhost:5000/api",
-//   withCredentials: true, // MANDATORY for Socket.io and Auth sync
+//   // Use the environment variable, fallback to localhost for development
+//   baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
+//   withCredentials: true, 
 // });
 
 // api.interceptors.request.use(
@@ -90,15 +115,23 @@
 
 import axios from "axios";
 
+// Detect environment
+const isProd = import.meta.env.PROD;
+
+// Use correct base URL
+const BASE_URL = isProd
+  ? "https://your-backend.onrender.com/api"   // 👈 CHANGE THIS
+  : "http://localhost:5000/api";
+
 export const api = axios.create({
-  // Use the environment variable, fallback to localhost for development
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
-  withCredentials: true, 
+  baseURL: import.meta.env.VITE_API_URL || BASE_URL,
+  withCredentials: true,
 });
 
+// Attach token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("token"); 
+    const token = localStorage.getItem("token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
