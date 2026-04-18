@@ -85,7 +85,7 @@ inventoryRoutes.get("/:type/export/excel", adminOnly, async (req, res) => {
 // --- Generic CRUD Operations ---
 
 // GET List
-inventoryRoutes.get("/:type", adminOnly, async (req, res) => {
+inventoryRoutes.get("/:type", authorize(["admin", "user"]), async (req, res) => {
   try {
     const Model = modelMap[req.params.type];
     if (!Model) return res.status(404).json({ message: "Invalid type" });

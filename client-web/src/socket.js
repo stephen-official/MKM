@@ -48,13 +48,13 @@ import { io } from "socket.io-client";
 // Use ENV (same as axios)
 const BASE_URL = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace("/api", "")
-  : "http://localhost:5000";
+  : "https://mkm-backend-xr78.onrender.com";
 
 // Create socket
 export const socket = io(BASE_URL, {
   transports: ["websocket"], // 🔥 important for Render
   withCredentials: true,
-  autoConnect: false,
+  autoConnect: true,
 });
 
 // Connect manually
