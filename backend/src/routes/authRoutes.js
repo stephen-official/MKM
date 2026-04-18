@@ -578,7 +578,33 @@ authRoutes.post("/reset-password", async (req, res) => {
 });
 
 // --- Profile ---
+// authRoutes.get("/me", authenticate, async (req, res) => {
+//   const user = await User.findById(req.user.sub).select("-passwordHash -refreshToken -resetToken");
+//   return res.json(user);
+// });
+
+
+
+
+
+
+
+
 authRoutes.get("/me", authenticate, async (req, res) => {
-  const user = await User.findById(req.user.sub).select("-passwordHash -refreshToken -resetToken");
-  return res.json(user);
+  try {
+    const user = await User.findById(req.user.sub)
+      .select("-passwordHash -refreshToken -resetToken")
+      .populate("godownId", "name"); // ✅ IMPORTANT
+
+    return res.json({
+      _id: user._id,
+      name: user.name,
+      role: user.role,
+      godown: user.godownId   // ✅ clean structure for frontend
+    });
+
+  } catch (err) {
+    console.error("❌ /me error:", err);
+    res.status(500).json({ message: "Failed to fetch user" });
+  }
 });
