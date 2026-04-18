@@ -259,12 +259,24 @@ import { connectDB } from "./config/db.js";
 import { env } from "./config/env.js";
 
 // --- 1. DEFINE YOUR ORIGINS (Matches your Render Environment) ---
-// This ensures that both Express and Socket.io allow the same frontend URLs
-const allowedOrigins = process.env.CORS_ORIGIN 
-    ? process.env.CORS_ORIGIN.split(",") 
-    : ["https://mkm-user.vercel.app", "https://mkm-self.vercel.app"];
+// // This ensures that both Express and Socket.io allow the same frontend URLs
+// const allowedOrigins = process.env.CORS_ORIGIN 
+//     ? process.env.CORS_ORIGIN.split(",") 
+//     : ["https://mkm-user.vercel.app", "https://mkm-self.vercel.app"];
 
-// --- 2. INTEGRATION: SERVER & SOCKET CONFIG ---
+// // --- 2. INTEGRATION: SERVER & SOCKET CONFIG ---
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://mkm-user.vercel.app",
+  "https://mkm-self.vercel.app"
+];
+
+
+
+
+
+
 
 // Create HTTP Server using the Express app
 const server = http.createServer(app);

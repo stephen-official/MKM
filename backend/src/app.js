@@ -450,9 +450,9 @@ app.use("/api", authenticate, procurementRoutes);
 app.use("/api", authenticate, operationsRoutes);
 app.use("/api/reports", authenticate, reportRoutes);
 app.use("/api/indent-requests", indentRequestRoutes);
-app.use("/api/inventory", inventoryRoutes);
-app.use("/api/procurement", procurementRoutes);
-app.use("/api/indent-requests", indentRequestRoutes); // ✅ ADD THIS
+// app.use("/api/inventory", inventoryRoutes);
+// app.use("/api/procurement", procurementRoutes);
+// app.use("/api/indent-requests", indentRequestRoutes); // ✅ ADD THIS
 
 // --- 6. ERROR HANDLING ---
 app.use((err, req, res, next) => {
