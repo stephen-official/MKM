@@ -432,6 +432,37 @@ const notificationSchema = new mongoose.Schema(
 
 
 
+// const indentRequestSchema = new mongoose.Schema({
+//   godownId: { type: mongoose.Schema.Types.ObjectId, ref: "Godown", required: true },
+//   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+
+//   items: [
+//     {
+//       stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: "StockItem" },
+//       qtyBaseUnit: Number
+//     }
+//   ],
+
+//   note: { type: String, default: "" },
+
+//   status: {
+//     type: String,
+//     enum: ["pending", "converted", "rejected"],
+//     default: "pending"
+//   }
+// }, { timestamps: true });
+
+// export const IndentRequest = mongoose.model("IndentRequest", indentRequestSchema);
+// --- EXPORTS ---
+
+
+// 20
+
+
+
+
+
+
 const indentRequestSchema = new mongoose.Schema({
   godownId: { type: mongoose.Schema.Types.ObjectId, ref: "Godown", required: true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -439,21 +470,49 @@ const indentRequestSchema = new mongoose.Schema({
   items: [
     {
       stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: "StockItem" },
-      qtyBaseUnit: Number
+      qtyBaseUnit: Number,
+      receivedQty: { type: Number, default: 0 } // future use
     }
   ],
 
-  note: { type: String, default: "" },
+  note: String,
+  targetDate: String,
 
   status: {
     type: String,
-    enum: ["pending", "converted", "rejected"],
+    enum: ["pending", "confirmed", "rejected"],
     default: "pending"
-  }
+  },
+
+  confirmedAt: Date,
+  confirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+
 }, { timestamps: true });
 
 export const IndentRequest = mongoose.model("IndentRequest", indentRequestSchema);
-// --- EXPORTS ---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 export const Indent = mongoose.model("Indent", indentSchema);
 export const PurchaseOrder = mongoose.model("PurchaseOrder", purchaseOrderSchema);

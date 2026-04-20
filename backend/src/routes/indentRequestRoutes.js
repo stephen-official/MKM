@@ -294,9 +294,10 @@ router.get("/me", authorize(["user"]), async (req, res) => {
 // ===============================
 router.get("/", authorize(["admin"]), async (req, res) => {
   try {
-    const data = await IndentRequest.find({
-      status: { $ne: "converted" }
-    })
+    // const data = await IndentRequest.find({
+    //   status: { $ne: "converted" }
+    // })
+    const data = await IndentRequest.find()
       .populate("userId", "name")
       .populate("godownId", "name")
       .populate({
@@ -318,46 +319,46 @@ router.get("/", authorize(["admin"]), async (req, res) => {
 });
 
 
-// ===============================
-// ADMIN → CONVERT REQUEST → INDENT
-// ===============================
-router.post("/:id/convert", authorize(["admin"]), async (req, res) => {
-  try {
-    const { items } = req.body;
+// // ===============================
+// // ADMIN → CONVERT REQUEST → INDENT
+// // ===============================
+// router.post("/:id/convert", authorize(["admin"]), async (req, res) => {
+//   try {
+//     const { items } = req.body;
 
-    const reqData = await IndentRequest.findById(req.params.id);
+//     const reqData = await IndentRequest.findById(req.params.id);
 
-    if (!reqData) {
-      return res.status(404).json({ message: "Request not found" });
-    }
+//     if (!reqData) {
+//       return res.status(404).json({ message: "Request not found" });
+//     }
 
-    const indentItems = items.map(it => ({
-      stockItemId: it.stockItemId,
-      orderedQty: Number(it.qty),
-      unitPrice: Number(it.price || 0),
-      amount: Number(it.qty) * Number(it.price || 0)
-    }));
+//     const indentItems = items.map(it => ({
+//       stockItemId: it.stockItemId,
+//       orderedQty: Number(it.qty),
+//       unitPrice: Number(it.price || 0),
+//       amount: Number(it.qty) * Number(it.price || 0)
+//     }));
 
-    const totalAmount = indentItems.reduce((sum, i) => sum + i.amount, 0);
+//     const totalAmount = indentItems.reduce((sum, i) => sum + i.amount, 0);
 
-    const indent = await Indent.create({
-      indentNo: "IND-" + Date.now(),
-      createdBy: reqData.userId,
-      items: indentItems,
-      totalAmount,
-      status: "pending"
-    });
+//     const indent = await Indent.create({
+//       indentNo: "IND-" + Date.now(),
+//       createdBy: reqData.userId,
+//       items: indentItems,
+//       totalAmount,
+//       status: "pending"
+//     });
 
-    reqData.status = "converted";
-    await reqData.save();
+//     reqData.status = "converted";
+//     await reqData.save();
 
-    res.json(indent);
+//     res.json(indent);
 
-  } catch (err) {
-    console.error("❌ Convert Indent Error:", err);
-    res.status(500).json({ message: "Conversion failed" });
-  }
-});
+//   } catch (err) {
+//     console.error("❌ Convert Indent Error:", err);
+//     res.status(500).json({ message: "Conversion failed" });
+//   }
+// });
 
 
 // 20
@@ -396,7 +397,24 @@ router.patch("/:id", authorize(["user"]), async (req, res) => {
 
 
 
+router.patch("/:id/confirm", authorize(["admin"]), async (req, res) => {
+  try {
+    const request = await IndentRequest.findById(req.params.id);
 
+    if (!request) {
+      return res.status(404).json({ message: "Request not found" });
+    }
+
+    request.status = "confirmed";
+    await request.save();
+
+    res.json({ message: "Request confirmed", data: request });
+
+  } catch (err) {
+    console.error("❌ Confirm Error:", err);
+    res.status(500).json({ message: "Confirmation failed" });
+  }
+});
 
 
 
