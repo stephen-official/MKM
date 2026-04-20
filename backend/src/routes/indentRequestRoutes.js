@@ -360,6 +360,47 @@ router.post("/:id/convert", authorize(["admin"]), async (req, res) => {
 });
 
 
+// 20
+
+
+
+// ===============================
+// USER → UPDATE INDENT REQUEST
+// ===============================
+router.patch("/:id", authorize(["user"]), async (req, res) => {
+  try {
+    const { items, note, targetDate } = req.body;
+
+    const request = await IndentRequest.findById(req.params.id);
+
+    if (!request) {
+      return res.status(404).json({ message: "Request not found" });
+    }
+
+    if (request.status === "converted") {
+      return res.status(400).json({ message: "Cannot edit converted request" });
+    }
+
+    request.items = items;
+    request.note = note;
+    request.targetDate = targetDate;
+
+    await request.save();
+
+    res.json(request);
+  } catch (err) {
+    res.status(500).json({ message: "Update failed" });
+  }
+});
+
+
+
+
+
+
+
+
+
 // ===============================
 // EXPORT ROUTER
 // ===============================
