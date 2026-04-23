@@ -495,6 +495,9 @@ import { reportRoutes } from "./routes/reportRoutes.js";
 import { indentRequestRoutes } from "./routes/indentRequestRoutes.js";
 const app = express();
 
+
+
+app.set("trust proxy", 1);
 // --- 1. SETUP DIRECTORIES ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -503,15 +506,55 @@ if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+
+
+
+
+const hardcodedOrigins = [
+  "http://localhost:5173", 
+  "http://localhost:5174", 
+  "http://localhost:19006",
+  "https://mkm-user.vercel.app",
+  "https://mkm-self.vercel.app"
+];
+
+
+
+const envOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(",") : [];
+const allowedOrigins = [...new Set([...hardcodedOrigins, ...envOrigins])];
+
+
+
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            console.error(`CORS blocked for origin: ${origin}`);
+            callback(new Error("Not allowed by CORS"));
+        }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+}));
+
+
+
+
+
 // --- 2. SECURITY & CORS (MUST BE FIRST) ---
 // This ensures every request gets the 'Access-Control-Allow-Origin' header immediately.
 // credentials: true is required for Socket.io and Auth cookies.
-app.use(cors({
-  // Must match your Vite ports exactly
-  origin: ["http://localhost:5173", "http://localhost:5174"], 
-  credentials: true, // Required to match the frontend 'withCredentials: true'
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
-}));
+// app.use(cors({
+//   // Must match your Vite ports exactly
+//   origin: ["http://localhost:5173", "http://localhost:5174"], 
+//   credentials: true, // Required to match the frontend 'withCredentials: true'
+//   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+// }));
 
 // --- 3. STANDARD MIDDLEWARE ---
 app.use(express.json());
@@ -525,8 +568,15 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 // Rate limiting for auth routes to prevent brute force
 const authLimiter = rateLimit({ 
     windowMs: 10 * 60 * 1000, 
-    limit: 100 
+    limit: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    // Correctly identifies the user's IP behind the Render proxy
+    keyGenerator: (req) => req.headers['x-forwarded-for'] || req.ip 
 });
+
+
+
 app.use("/api/auth", authLimiter, authRoutes);
 
 // --- 5. PROTECTED ROUTES ---
