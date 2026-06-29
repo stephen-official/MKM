@@ -493,6 +493,7 @@ import { procurementRoutes } from "./routes/procurementRoutes.js";
 import { reportRoutes } from "./routes/reportRoutes.js";
 // import indentRequestRoutes from "./routes/indentRequestRoutes.js";
 import { indentRequestRoutes } from "./routes/indentRequestRoutes.js";
+import { dailyUsageRoutes } from "./routes/dailyUsageRoutes.js";
 const app = express();
 
 
@@ -589,6 +590,11 @@ app.use("/api/reports", authenticate, reportRoutes);
 
 
 app.use("/api/indent-requests", authenticate, indentRequestRoutes);
+app.use(
+  "/api/daily-usage",
+  authenticate,
+  dailyUsageRoutes
+);
 
 
 
