@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { socket } from '../services/socket';
+import { socket } from "../socket";
+// import { socket } from '../services/socket';
 import { toast } from 'react-hot-toast'; // Or your preferred notification library
 
 export const useNotifications = () => {

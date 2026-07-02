@@ -1,32 +1,67 @@
-// // import { io } from 'socket.io-client';
+// // // import { io } from 'socket.io-client';
 
-// // // Use your backend URL. 
-// // // "autoConnect: false" allows us to manually connect in App.jsx only after login.
-// // const URL = "http://localhost:5000"; 
+// // // // Use your backend URL. 
+// // // // "autoConnect: false" allows us to manually connect in App.jsx only after login.
+// // // const URL = "http://localhost:5000"; 
 
-// // export const socket = io(URL, {
+// // // export const socket = io(URL, {
+// // //   autoConnect: false,
+// // //   withCredentials: true
+// // // });
+
+
+
+
+// // import { io } from "socket.io-client";
+
+// // const BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000/api")
+// //   .replace("/api", "");
+
+// // export const socket = io(BASE_URL, {
+// //   transports: ["websocket"],
+// //   withCredentials: true,
 // //   autoConnect: false,
-// //   withCredentials: true
 // // });
+
+// // export const connectSocket = () => {
+// //   if (!socket.connected) {
+// //     socket.connect();
+// //     console.log("🔌 Connected:", BASE_URL);
+// //   }
+// // };
+
+// // export const disconnectSocket = () => {
+// //   if (socket.connected) {
+// //     socket.disconnect();
+// //     console.log("❌ Disconnected");
+// //   }
+// // };
+
+
+
 
 
 
 
 // import { io } from "socket.io-client";
 
-// const BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000/api")
-//   .replace("/api", "");
+// // Use ENV (same as axios)
+// const BASE_URL = import.meta.env.VITE_API_URL
+//   ? import.meta.env.VITE_API_URL.replace("/api", "")
+//   : "https://mkm-backend-xr78.onrender.com";
 
+// // Create socket
 // export const socket = io(BASE_URL, {
-//   transports: ["websocket"],
+//   transports: ["websocket"], // 🔥 important for Render
 //   withCredentials: true,
-//   autoConnect: false,
+//   autoConnect: true,
 // });
 
+// // Connect manually
 // export const connectSocket = () => {
 //   if (!socket.connected) {
 //     socket.connect();
-//     console.log("🔌 Connected:", BASE_URL);
+//     console.log("🔌 Connecting to:", BASE_URL);
 //   }
 // };
 
@@ -39,35 +74,38 @@
 
 
 
+// 01-07-2026
 
 
 
 
 import { io } from "socket.io-client";
 
-// Use ENV (same as axios)
-const BASE_URL = import.meta.env.VITE_API_URL
-  ? import.meta.env.VITE_API_URL.replace("/api", "")
-  : "https://mkm-backend-xr78.onrender.com";
+const SOCKET_URL = (
+  import.meta.env.VITE_API_URL ||
+  "https://mkm-backend-xr78.onrender.com/api"
+).replace("/api", "");
 
-// Create socket
-export const socket = io(BASE_URL, {
-  transports: ["websocket"], // 🔥 important for Render
+export const socket = io(SOCKET_URL, {
+  autoConnect: false,
   withCredentials: true,
-  autoConnect: true,
+  transports: ["websocket", "polling"],
 });
 
-// Connect manually
-export const connectSocket = () => {
+export const connectSocket = (user) => {
   if (!socket.connected) {
     socket.connect();
-    console.log("🔌 Connecting to:", BASE_URL);
   }
+
+  socket.once("connect", () => {
+    if (user.role === "admin") {
+      socket.emit("join-admin");
+    } else {
+      socket.emit("join-godown", user.godownId);
+    }
+  });
 };
 
 export const disconnectSocket = () => {
-  if (socket.connected) {
-    socket.disconnect();
-    console.log("❌ Disconnected");
-  }
+  socket.disconnect();
 };
