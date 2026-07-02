@@ -704,11 +704,27 @@ import { ClientStore } from './components/ClientStore';
 import Login from './pages/Login'; 
 
 // Socket configuration
-export const socket = io("http://localhost:5000", {
-  withCredentials: true, 
+// export const socket = io("http://localhost:5000", {
+//   withCredentials: true, 
+//   autoConnect: false,
+//   transports: ['polling', 'websocket']
+// });
+
+
+const SOCKET_URL = (
+  import.meta.env.VITE_API_URL ||
+  "https://mkm-backend-xr78.onrender.com/api"
+).replace("/api", "");
+
+export const socket = io(SOCKET_URL, {
+  withCredentials: true,
   autoConnect: false,
-  transports: ['polling', 'websocket']
+  transports: ["websocket", "polling"],
 });
+
+console.log("Socket URL:", SOCKET_URL);
+
+
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem('token');
