@@ -654,13 +654,30 @@ if (!fs.existsSync(uploadsDir)) {
 
 
 
+// const hardcodedOrigins = [
+//   "http://localhost:5173", 
+//   "http://localhost:5174", 
+//   "http://localhost:19006",
+//   "https://mkm-user.vercel.app",
+//   "https://mkm-self.vercel.app"
+// ];
+
+
 const hardcodedOrigins = [
-  "http://localhost:5173", 
-  "http://localhost:5174", 
+  "http://localhost:5173",
+  "http://localhost:5174",
   "http://localhost:19006",
+
+  // Capacitor Android
+  "https://localhost",
+
+  // Vercel
   "https://mkm-user.vercel.app",
   "https://mkm-self.vercel.app"
 ];
+
+
+
 
 
 
@@ -687,7 +704,18 @@ app.use(cors({
 }));
 
 
+app.options("*", cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
 
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true
+}));
 
 
 // --- 2. SECURITY & CORS (MUST BE FIRST) ---
