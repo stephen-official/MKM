@@ -282,6 +282,23 @@ export const getProductLedger = async (req, res) => {
         .lean();
 
 
+        // ========================================================
+// 🔴 LIVE DEBUG - TEMPORARY
+// ========================================================
+
+console.log("========== PRODUCT LEDGER DEBUG ==========");
+console.log("productId:", productId);
+console.log("godownId:", godownId);
+console.log("startDate:", startDate);
+console.log("endDate:", endDate);
+
+console.log(
+  "distributionDocs:",
+  JSON.stringify(distributionDocs, null, 2)
+);
+
+console.log("==========================================");
+
     // ========================================================
     // GET ACCEPTED TRANSFERS
     // ========================================================
