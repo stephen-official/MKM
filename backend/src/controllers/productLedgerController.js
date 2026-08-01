@@ -298,7 +298,16 @@ console.log(
 );
 
 console.log("==========================================");
+const allDistributions = await Distribution.find({})
+  .sort({ createdAt: -1 })
+  .limit(10)
+  .lean();
 
+console.log("========== ALL LIVE DISTRIBUTIONS ==========");
+console.log(
+  JSON.stringify(allDistributions, null, 2)
+);
+console.log("============================================");
     // ========================================================
     // GET ACCEPTED TRANSFERS
     // ========================================================
