@@ -6057,6 +6057,696 @@
 
 
 
+// import { useEffect, useState, useMemo } from "react";
+// import { api } from "../api.js";
+// import DatePicker from "react-datepicker";
+// import "react-datepicker/dist/react-datepicker.css";
+// import XLSX from "xlsx-js-style";
+// // import * as XLSX from "xlsx";
+// import { Calendar, Search, FileSpreadsheet } from "lucide-react";
+
+// export const ConsumptionPage = () => {
+//   const [rows, setRows] = useState([]);
+//   const [selectedId, setSelectedId] = useState(null);
+// const [fromDate, setFromDate] = useState("");
+// const [toDate, setToDate] = useState("");
+//   // const [filterDate, setFilterDate] = useState(new Date());
+//   const [searchQuery, setSearchQuery] = useState("");
+//   const [loading, setLoading] = useState(true);
+
+//   useEffect(() => {
+//     fetchConsumptions();
+//   }, []);
+
+//   const fetchConsumptions = async () => {
+//     try {
+//       const res = await api.get("/consumptions");
+//       setRows(res.data);
+//       if (res.data.length > 0) setSelectedId(res.data[0]._id);
+//     } catch (err) {
+//       console.error("Failed to fetch consumption history");
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   /**
+//    * UPDATED HELPER: Robust Stock Group Resolution
+//    * Checks for deep population first, then falls back to ID or 'General'
+//    */
+//   const getGroupName = (item) => {
+//     // 1. Standard path after deep population: item -> stockItemId -> stockGroupId -> name
+//     if (item.stockItemId?.stockGroupId?.name) {
+//       return item.stockItemId.stockGroupId.name;
+//     }
+
+//     // 2. Fallback if stockGroupId was only an ID (population failed)
+//     if (item.stockItemId?.stockGroupId && typeof item.stockItemId.stockGroupId === 'string') {
+//       return "ID: " + item.stockItemId.stockGroupId.slice(-4);
+//     }
+
+//     // 3. Last resort
+//     return "General";
+//   };
+
+//   const processedRows = useMemo(() => {
+//     let data = [...rows];
+//     data = data.filter(r => {
+//       const rowDate = r.date
+//   ? String(r.date).split("T")[0]
+//   : new Date(r.createdAt)
+//       .toISOString()
+//       .split("T")[0];
+//       // const rowDate = new Date(r.createdAt)
+//   //   .toISOString()
+//   //   .split("T")[0];
+
+//   if (fromDate && rowDate < fromDate) return false;
+//   if (toDate && rowDate > toDate) return false;
+
+//   return true;
+// });
+//     if (searchQuery.trim()) {
+//       const query = searchQuery.toLowerCase();
+//       data = data.filter(r => 
+//         r.userId?.name?.toLowerCase().includes(query) || 
+//         r.godownId?.name?.toLowerCase().includes(query)
+//       );
+//     }
+//     return data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+// }, [rows, fromDate, toDate, searchQuery]);
+
+//   const activeRecord = useMemo(() => 
+//     processedRows.find(r => r._id === selectedId) || processedRows[0], 
+//   [selectedId, processedRows]);
+
+//   const handleDownloadExcel = () => {
+//     if (!activeRecord) return;
+//     const excelData = activeRecord.items.map((item) => ({
+//       "Stock Item": item.stockItemId?.name || "N/A",
+//       "Stock Group": getGroupName(item), // Using the updated helper here
+//       "Item ID": item.stockItemId?._id?.toUpperCase(),
+//       "Quantity": item.qtyBaseUnit,
+//       "Unit": item.stockItemId?.unitId?.symbol || "",
+//       // "Date": new Date(activeRecord.createdAt).toLocaleDateString(),
+// "Date": activeRecord.date || activeRecord.createdAt.split("T")[0],
+//       "Authorised By": activeRecord.userId?.name,
+//       "Godown": activeRecord.godownId?.name
+//     }));
+
+//     const worksheet = XLSX.utils.json_to_sheet(excelData);
+//     const workbook = XLSX.utils.book_new();
+//     XLSX.utils.book_append_sheet(workbook, worksheet, "Consumption Report");
+//     XLSX.writeFile(workbook, `Consumption_${activeRecord.userId?.name || 'Report'}_${Date.now()}.xlsx`);
+//   };
+//   const handleDownloadAllConsumptionsExcel = () => {
+//   if (!processedRows.length) return;
+
+//   const groupedByDate = {};
+//   const consolidatedMap = {};
+
+//   console.log("processedRows");
+// processedRows.forEach(r => {
+//   console.log({
+//     date: r.date,
+//     createdAt: r.createdAt,
+//     type: r.recordType,
+//     id: r._id
+//   });
+// });
+
+//   processedRows.forEach(cons => {
+//     const date = cons.date
+//   ? String(cons.date).split("T")[0]
+//   : new Date(cons.createdAt)
+//       .toISOString()
+//       .split("T")[0];
+//     // const date = new Date(cons.createdAt)
+//     //   .toISOString()
+//     //   .split("T")[0];
+
+//     if (!groupedByDate[date]) {
+//       groupedByDate[date] = [];
+//     }
+
+//     groupedByDate[date].push(cons);
+//   });
+
+//   const aoa = [];
+//   const allGodowns = [
+//   ...new Set(
+//     processedRows.map(r => r.godownId?.name || "General")
+//   )
+// ];
+// const dateRows = [];
+// const headerRows = [];
+// aoa.push(["MONTESSORI DAILY CONSUMPTION REPORT"]);
+// aoa.push([]);
+//   Object.keys(groupedByDate)
+//     .sort((a, b) => new Date(b) - new Date(a))
+//     .forEach(date => {
+
+//       const consumptions = groupedByDate[date];
+
+//       const godowns = [
+//         ...new Set(
+//           consumptions.map(
+//             c => c.godownId?.name || "General"
+//           )
+//         )
+//       ];
+
+//       const itemMap = {};
+
+//       consumptions.forEach(cons => {
+
+//         const godown =
+//           cons.godownId?.name || "General";
+
+//         cons.items.forEach(item => {
+
+//           const id =
+//             item.stockItemId?._id ||
+//             item.stockItemId;
+
+//           if (!itemMap[id]) {
+//             itemMap[id] = {
+//               name:
+//                 item.stockItemId?.name || "",
+//               group:
+//                 getGroupName(item),
+//               unit:
+//                 item.stockItemId?.unitId?.symbol || "",
+//               total: 0,
+//               godowns: {}
+//             };
+//           }
+
+//           const qty =
+//             Number(item.qtyBaseUnit || 0);
+//             if (!consolidatedMap[id]) {
+//   consolidatedMap[id] = {
+//     name: item.stockItemId?.name || "",
+//     group: getGroupName(item),
+//     unit: item.stockItemId?.unitId?.symbol || "",
+//     total: 0,
+//     godowns: {}
+//   };
+// }
+
+// consolidatedMap[id].total += qty;
+
+// if (!consolidatedMap[id].godowns[godown]) {
+//   consolidatedMap[id].godowns[godown] = 0;
+// }
+
+// consolidatedMap[id].godowns[godown] += qty;
+
+//           itemMap[id].total += qty;
+
+//           if (!itemMap[id].godowns[godown]) {
+//             itemMap[id].godowns[godown] = 0;
+//           }
+
+//           itemMap[id].godowns[godown] += qty;
+//         });
+//       });
+
+//       dateRows.push(aoa.length + 1);
+// aoa.push([`DATE: ${date}`]);
+//       aoa.push([]);
+
+//       const header = [
+//         "S.No",
+//         "Stock Item",
+//         "Group",
+//         "Unit",
+//         ...godowns,
+//         "TOTAL"
+//       ];
+
+//       headerRows.push(aoa.length + 1);
+// aoa.push(header);
+
+//       Object.values(itemMap).forEach(
+//         (item, index) => {
+
+//           const row = [
+//             index + 1,
+//             item.name,
+//             item.group,
+//             item.unit
+//           ];
+
+//           godowns.forEach(g => {
+//             row.push(item.godowns[g] || 0);
+//           });
+
+//           row.push(item.total);
+
+//           aoa.push(row);
+//         }
+//       );
+
+//       aoa.push([]);
+//       aoa.push([]);
+//     });
+
+//     const consolidatedSection = [];
+
+// let consolidatedTitle = "CONSOLIDATED";
+
+// if (fromDate || toDate) {
+//   consolidatedTitle += ` (${fromDate || ""} to ${toDate || ""})`;
+// }
+
+// consolidatedSection.push([consolidatedTitle]);
+// consolidatedSection.push([]);
+
+// const consolidatedHeader = [
+//   "S.No",
+//   "Stock Item",
+//   "Group",
+//   "Unit",
+//   ...allGodowns,
+//   "TOTAL"
+// ];
+
+// consolidatedSection.push(consolidatedHeader);
+
+// Object.values(consolidatedMap).forEach((item, index) => {
+
+//   const row = [
+//     index + 1,
+//     item.name,
+//     item.group,
+//     item.unit
+//   ];
+
+//   allGodowns.forEach(g => {
+//     row.push(item.godowns[g] || 0);
+//   });
+
+//   row.push(item.total);
+
+//   consolidatedSection.push(row);
+
+// });
+
+// consolidatedSection.push([]);
+// consolidatedSection.push([]);
+
+// // Insert consolidated section after report title
+// aoa.splice(2, 0, ...consolidatedSection);
+//   const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+// const maxCols = Math.max(...aoa.map(r => r.length));
+
+// ws["!merges"] = [
+//   {
+//     s: { r: 0, c: 0 },
+//     e: { r: 0, c: maxCols - 1 }
+//   }
+// ];
+
+// // TITLE STYLE (same as Indent)
+// if (ws["A1"]) {
+//   ws["A1"].s = {
+//     font: {
+//       bold: true,
+//       sz: 16,
+//       color: { rgb: "FFFFFF" }
+//     },
+//     alignment: {
+//       horizontal: "center"
+//     },
+//     fill: {
+//       patternType: "solid",
+//       fgColor: { rgb: "1E3A8A" }
+//     }
+//   };
+// }
+
+// // DATE ROW + HEADER ROW STYLING
+// Object.keys(ws).forEach(cell => {
+
+//   // DATE ROWS
+//   if (
+//     ws[cell]?.v &&
+//     String(ws[cell].v).startsWith("DATE:")
+//   ) {
+//     const rowNo = cell.match(/\d+/)[0];
+
+// // DATE CELL ONLY
+// if (
+//   ws[cell]?.v &&
+//   String(ws[cell].v).startsWith("DATE:")
+// ) {
+//   ws[cell].s = {
+//     font: {
+//       bold: true,
+//       color: { rgb: "FFFFFF" }
+//     },
+//     alignment: {
+//       horizontal: "left"
+//     },
+//     fill: {
+//       patternType: "solid",
+//       fgColor: { rgb: "16A34A" }
+//     }
+//   };
+// }  }
+
+//   // HEADER ROWS
+//   if (ws[cell]?.v === "S.No") {
+
+//     const rowNo = cell.match(/\d+/)[0];
+
+//     for (let i = 0; i < maxCols; i++) {
+
+//       const col = XLSX.utils.encode_col(i);
+//       const ref = `${col}${rowNo}`;
+
+//       if (ws[ref]) {
+//         ws[ref].s = {
+//           font: {
+//             bold: true,
+//             color: { rgb: "FFFFFF" }
+//           },
+//           alignment: {
+//             horizontal: "center"
+//           },
+//           fill: {
+//             patternType: "solid",
+//             fgColor: { rgb: "2563EB" }
+//           }
+//         };
+//       }
+//     }
+//   }
+// });
+//   ws["!cols"] = [
+//     { wch: 8 },
+//     { wch: 25 },
+//     { wch: 20 },
+//     { wch: 10 },
+//     { wch: 15 },
+//     { wch: 15 },
+//     { wch: 15 },
+//     { wch: 15 },
+//     { wch: 15 }
+//   ];
+
+//   const wb = XLSX.utils.book_new();
+
+//   XLSX.utils.book_append_sheet(
+//     wb,
+//     ws,
+//     "Consumptions"
+//   );
+
+//   XLSX.writeFile(
+//     wb,
+//     fromDate || toDate
+//       ? `Consumption_Report_${fromDate || "start"}_to_${toDate || "end"}.xlsx`
+//       : "All_Consumption_Report.xlsx"
+//   );
+// };
+//   return (
+//     <div style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif" }}>
+//       {/* Header */}
+//       <div style={{ padding: '20px 32px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+//         <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>
+//           <span style={{ color: '#6366f1', fontWeight: '500' }}>Daily Consumptions</span>
+//         </h1>
+//         <div style={{ display: 'flex', gap: '12px' }}>
+//           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+//             <Search size={16} style={{ position: 'absolute', left: '12px', color: '#94a3b8' }} />
+//             <input 
+//               type="text" placeholder="Search..." value={searchQuery}
+//               onChange={(e) => setSearchQuery(e.target.value)}
+//               style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px 10px 36px', fontSize: '13px', fontWeight: '600', width: '200px', outline: 'none' }}
+//             />
+//           </div>
+//           <div
+//   style={{
+//     display: "flex",
+//     gap: "10px",
+//     alignItems: "center"
+//   }}
+// >
+//   <input
+//     type="date"
+//     value={fromDate}
+//     onChange={(e) => setFromDate(e.target.value)}
+//     style={{
+//       padding: "10px 12px",
+//       borderRadius: "10px",
+//       border: "1px solid #e2e8f0",
+//       fontSize: "13px"
+//     }}
+//   />
+
+//   <span
+//     style={{
+//       fontSize: "12px",
+//       color: "#64748b"
+//     }}
+//   >
+//     to
+//   </span>
+
+//   <input
+//     type="date"
+//     value={toDate}
+//     onChange={(e) => setToDate(e.target.value)}
+//     style={{
+//       padding: "10px 12px",
+//       borderRadius: "10px",
+//       border: "1px solid #e2e8f0",
+//       fontSize: "13px"
+//     }}
+//   />
+
+//   {(fromDate || toDate) && (
+//     <button
+//       onClick={() => {
+//         setFromDate("");
+//         setToDate("");
+//       }}
+//       style={{
+//         padding: "10px 12px",
+//         border: "1px solid #e2e8f0",
+//         borderRadius: "8px",
+//         background: "#fff",
+//         cursor: "pointer"
+//       }}
+//     >
+//       Clear
+//     </button>
+//   )}
+// </div><button
+//   onClick={handleDownloadAllConsumptionsExcel}
+//   style={{
+//     background: "#10b981",
+//     border: "none",
+//     color: "#fff",
+//     padding: "10px 20px",
+//     borderRadius: "10px",
+//     fontWeight: "700",
+//     cursor: "pointer",
+//     display: "flex",
+//     alignItems: "center",
+//     gap: "8px",
+//     fontSize: "13px"
+//   }}
+// >
+//   <FileSpreadsheet size={16} />
+//   Export All Consumptions
+// </button>
+//         </div>
+//       </div>
+
+//       {/* Main Content Area */}
+//       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '24px', gap: '24px' }}>
+        
+//         {/* Sidebar: List of Records */}
+//         <div style={{ width: '380px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+//           <div style={{ fontSize: '11px', fontWeight: '900', color: '#64748b', paddingLeft: '8px', letterSpacing: '0.5px' }}>
+//             {searchQuery ? 'SEARCH RESULTS' : 'RECENT RECORDS'} ({processedRows.length})
+//           </div>
+//           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+//             {processedRows.map(r => (
+//               <div 
+//                 key={r._id} onClick={() => setSelectedId(r._id)}
+//                 style={{ 
+//                   padding: '16px', 
+//                   borderRadius: '16px', 
+//                   cursor: 'pointer', 
+//                   background: selectedId === r._id ? '#fff' : 'transparent', 
+//                   border: selectedId === r._id ? '1px solid #6366f1' : '1px solid transparent', 
+//                   transition: 'all 0.2s',
+//                   boxShadow: selectedId === r._id ? '0 4px 12px rgba(99, 102, 241, 0.08)' : 'none'
+//                 }}
+//               >
+//                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+//                   <div style={{ fontWeight: '700', color: selectedId === r._id ? '#6366f1' : '#1e293b', fontSize: '14px' }}>{r.userId?.name}</div>
+//                   <div style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8' }}>{new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+//                 </div>
+//                 <div
+//   style={{
+//     display: "flex",
+//     justifyContent: "space-between",
+//     alignItems: "center",
+//     marginTop: "6px"
+//   }}
+// >
+//   <span
+//     style={{
+//       padding: "4px 10px",
+//       borderRadius: "999px",
+//       fontSize: "10px",
+//       fontWeight: "700",
+//       background:
+//         r.recordType === "dailyUsage"
+//           ? "#DCFCE7"
+//           : "#DBEAFE",
+//       color:
+//         r.recordType === "dailyUsage"
+//           ? "#166534"
+//           : "#1D4ED8",
+//       border:
+//         r.recordType === "dailyUsage"
+//           ? "1px solid #86EFAC"
+//           : "1px solid #93C5FD"
+//     }}
+//   >
+//     {r.recordType === "dailyUsage"
+//       ? "DAILY USAGE"
+//       : "CONSUMPTION"}
+//   </span>
+
+//   <span
+//     style={{
+//       fontSize: "11px",
+//       color: "#94a3b8",
+//       fontWeight: "600"
+//     }}
+//   >
+//     {r.date
+//   ? new Date(r.date).toLocaleDateString()
+//   : new Date(r.createdAt).toLocaleDateString()}
+//     {/* {new Date(r.createdAt).toLocaleDateString()} */}
+//   </span>
+// </div>
+
+// <div
+//   style={{
+//     fontSize: "12px",
+//     color: "#64748b",
+//     marginTop: "8px"
+//   }}
+// >
+//   {r.items?.length} items • {r.godownId?.name}
+// </div>
+//                 {/* <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{r.items?.length} items • {r.godownId?.name}</div> */}
+//               </div>
+//             ))}
+//           </div>
+//         </div>
+
+//         {/* Detailed View */}
+//         <div style={{ flex: 1, background: '#fff', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+//           {activeRecord ? (
+//             <>
+//               {/* Detail Header */}
+//               <div style={{ padding: '40px', borderBottom: '1px solid #f1f5f9' }}>
+//                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
+//                   <div>
+//                     <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>DATE</div>
+//                     <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>{activeRecord.date
+//   ? new Date(activeRecord.date).toLocaleDateString()
+//   : new Date(activeRecord.createdAt).toLocaleDateString()}</div>
+//                   </div>
+//                   <div>
+//                     <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>TIME</div>
+//                     <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>{new Date(activeRecord.createdAt).toLocaleTimeString()}</div>
+//                   </div>
+//                   <div style={{ textAlign: 'right' }}>
+//                     <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>AUTHORISED BY</div>
+//                     <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>{activeRecord.userId?.name}</div>
+//                     <div style={{ fontSize: '12px', color: '#64748b' }}>{activeRecord.godownId?.name}</div>
+//                   </div>
+//                 </div>
+//               </div>
+
+//               {/* Items Table */}
+//               <div style={{ flex: 1, padding: '0 40px', overflowY: 'auto' }}>
+//                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+//                   <thead>
+//                     <tr style={{ textAlign: 'left' }}>
+//                       <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#0f172a', borderBottom: '1px solid #e2e8f0' }}>STOCK ITEM</th>
+//                       <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#0f172a', borderBottom: '1px solid #e2e8f0' }}>STOCK GROUP</th>
+//                       <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#0f172a', borderBottom: '1px solid #e2e8f0', textAlign: 'right' }}>QUANTITY</th>
+//                     </tr>
+//                   </thead>
+//                   <tbody>
+//                     {activeRecord.items.map((item, idx) => (
+//                       <tr key={idx}>
+//                         <td style={{ padding: '20px 0', borderBottom: '1px solid #f8fafc' }}>
+//                           <div style={{ fontWeight: '700', color: '#1e293b' }}>{item.stockItemId?.name}</div>
+//                           <div style={{ fontSize: '11px', color: '#94a3b8' }}>ID: {item.stockItemId?._id?.slice(-6).toUpperCase()}</div>
+//                         </td>
+//                         <td style={{ padding: '20px 0', borderBottom: '1px solid #f8fafc' }}>
+//                           <span style={{ fontSize: '10px', color: '#6366f1', background: '#eef2ff', padding: '4px 10px', borderRadius: '100px', fontWeight: '700', border: '1px solid #e0e7ff' }}>
+//                             {getGroupName(item)} {/* Using the updated helper here */}
+//                           </span>
+//                         </td>
+//                         <td style={{ padding: '20px 0', textAlign: 'right', borderBottom: '1px solid #f8fafc' }}>
+//                           <span style={{ fontWeight: '800', color: '#0f172a' }}>{item.qtyBaseUnit}</span>
+//                           <span style={{ marginLeft: '4px', fontSize: '12px', color: '#64748b' }}>{item.stockItemId?.unitId?.symbol}</span>
+//                         </td>
+//                       </tr>
+//                     ))}
+//                   </tbody>
+//                 </table>
+//               </div>
+
+//               {/* Export Button */}
+//               <div style={{ padding: '32px 40px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end' }}>
+//                 <button 
+//                   onClick={handleDownloadExcel} 
+//                   style={{ background: '#10b981', border: 'none', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'transform 0.1s' }}
+//                   onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.98)'}
+//                   onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+//                 >
+//                   <FileSpreadsheet size={16} /> Export to Excel (.xlsx)
+//                 </button>
+//               </div>
+//             </>
+//           ) : (
+//             <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+//               <div style={{ textAlign: 'center' }}>
+//                 <Search size={40} style={{ marginBottom: '16px', opacity: 0.5 }} />
+//                 <div style={{ fontWeight: '600' }}>No matching records found</div>
+//               </div>
+//             </div>
+//           )}
+//         </div>
+//       </div>
+//     </div>
+//   );
+// };
+
+
+
+
+// 01-08-2026
+
+
+
+
+
 import { useEffect, useState, useMemo } from "react";
 import { api } from "../api.js";
 import DatePicker from "react-datepicker";
