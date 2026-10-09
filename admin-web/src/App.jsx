@@ -1,3 +1,18 @@
+import { useMemo, useState } from "react";
+import { NavLink, Route, Routes, Navigate } from "react-router-dom";
+import { setAuthToken } from "./api.js";
+import { AuthPage } from "./pages/AuthPage.jsx";
+import { ConsumptionPage } from "./pages/ConsumptionPage.jsx";
+import { GodownsPage } from "./pages/GodownsPage.jsx";
+import { IndentPage } from "./pages/IndentPage.jsx";
+import { InventoryPage } from "./pages/InventoryPage.jsx";
+import { ModulePage } from "./pages/ModulePage.jsx";
+import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage.jsx";
+import { ReportsPage } from "./pages/ReportsPage.jsx";
+import { RequestsPage } from "./pages/RequestsPage.jsx";
+import { StockDistributionPage } from "./pages/StockDistributionPage.jsx";
+import { TransferStockPage } from "./pages/TransferStockPage.jsx";
+import ProductLedger from "./pages/ProductLedger.jsx";
 import logo from "./mkmLogo.png";
 
 const modules = [
