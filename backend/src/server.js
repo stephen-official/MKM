@@ -1,30 +1,21 @@
-import 'dotenv/config'; 
-
-// 2. Import dependencies
+import "dotenv/config";
 import http from "http";
 import { Server } from "socket.io";
 import { app } from "./app.js"; 
 import { connectDB } from "./config/db.js";
 import { env } from "./config/env.js";
-import { productLedgerRoutes } from "./routes/productLedgerRoutes.js";
+import { User } from "./models/User.js";
+import { verifyAccessToken } from "./utils/tokens.js";
 
-const allowedOrigins = [
+const defaultOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
+  "https://localhost",
   "https://mkm-user.vercel.app",
   "https://mkm-self.vercel.app"
 ];
-
-
-
-
-
-
-
-// Create HTTP Server using the Express app
+const allowedOrigins = [...new Set([...defaultOrigins, ...env.corsOrigins])];
 const server = http.createServer(app);
-
-// Initialize Socket.io with dynamic CORS origins
 const io = new Server(server, { 
   cors: { 
     origin: allowedOrigins, 
@@ -33,36 +24,41 @@ const io = new Server(server, {
   } 
 });
 
-// --- 3. SOCKET EVENT LOGIC ---
+io.use(async (socket, next) => {
+  try {
+    const header = socket.handshake.headers.authorization || "";
+    const token = socket.handshake.auth?.token || (header.startsWith("Bearer ") ? header.slice(7) : null);
+    if (!token) return next(new Error("Authentication required"));
 
-io.on("connection", (socket) => {
-  // Users join a room specific to their godown for targeted inventory alerts
-  socket.on("join-godown", (godownId) => {
-    if (godownId) {
-      socket.join(godownId);
-      console.log(`📡 User joined Godown Room: ${godownId}`);
-    }
-  });
+    const claims = verifyAccessToken(token);
+    const user = await User.findById(claims.sub).select("role godownId active");
+    if (!user?.active) return next(new Error("Account is inactive"));
 
-  // Admins join a global admin room for system-wide notifications
-  socket.on("join-admin", () => {
-    socket.join("admins");
-    console.log("🛡️ Admin joined Admins Room");
-  });
-
-  socket.on("disconnect", () => {
-    console.log("🔌 User disconnected from socket");
-  });
+    socket.data.user = {
+      id: String(user._id),
+      role: user.role,
+      godownId: user.godownId ? String(user.godownId) : null,
+    };
+    return next();
+  } catch {
+    return next(new Error("Invalid or expired token"));
+  }
 });
 
-// --- 4. DATABASE & SERVER START ---
+io.on("connection", (socket) => {
+  const user = socket.data.user;
+  if (user.role === "admin") {
+    socket.join("admins");
+  } else if (user.godownId) {
+    socket.join(user.godownId);
+  }
+});
 
 connectDB()
   .then(() => {
     const PORT = env.port || 5000;
     server.listen(PORT, () => {
-      console.log(`✅ DREAM Backend running on port ${PORT}`);
-      console.log(`🚀 Socket.io active & CORS allowed for: ${allowedOrigins.join(", ")}`);
+      console.log(`Backend running with authenticated realtime updates on port ${PORT}`);
     });
   })
   .catch((error) => {

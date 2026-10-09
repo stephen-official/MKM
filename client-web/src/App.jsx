@@ -21,10 +21,10 @@ function App() {
     if (!token) return;
 
     try {
-      const user = jwtDecode(token);
+      jwtDecode(token);
 
       // Connect socket
-      connectSocket(user);
+      connectSocket();
 
       socket.on("connect", () => {
         console.log("✅ Socket Connected:", socket.id);

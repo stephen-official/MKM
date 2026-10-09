@@ -11,18 +11,14 @@ export const socket = io(SOCKET_URL, {
   transports: ["websocket", "polling"],
 });
 
-export const connectSocket = (user) => {
+export const connectSocket = () => {
+  const token = localStorage.getItem("token");
+  if (!token) return;
+
+  socket.auth = { token };
   if (!socket.connected) {
     socket.connect();
   }
-
-  socket.once("connect", () => {
-    if (user.role === "admin") {
-      socket.emit("join-admin");
-    } else {
-      socket.emit("join-godown", user.godownId);
-    }
-  });
 };
 
 export const disconnectSocket = () => {
