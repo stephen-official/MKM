@@ -7,6 +7,23 @@ const toNumber = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+export const assertProductionSecrets = ({ nodeEnv, jwtSecret, jwtRefreshSecret }) => {
+  if (nodeEnv !== "production") return;
+
+  const missing = [];
+  if (!jwtSecret) missing.push("JWT_SECRET");
+  if (!jwtRefreshSecret) missing.push("JWT_REFRESH_SECRET");
+  if (missing.length) {
+    throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
+  }
+};
+
+assertProductionSecrets({
+  nodeEnv: process.env.NODE_ENV,
+  jwtSecret: process.env.JWT_SECRET,
+  jwtRefreshSecret: process.env.JWT_REFRESH_SECRET
+});
+
 export const env = {
   port: toNumber(process.env.PORT, 5000),
   mongoUri: process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/inventory_db",

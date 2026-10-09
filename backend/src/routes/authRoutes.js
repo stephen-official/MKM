@@ -3,39 +3,43 @@ import bcrypt from "bcryptjs";
 import { User } from "../models/User.js";
 import { Godown } from "../models/InventoryModels.js";
 import { env } from "../config/env.js";
-import { createResetToken, signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/tokens.js";
+import { createResetToken, hashResetToken, signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/tokens.js";
 import { authenticate } from "../middleware/auth.js";
 import { sendResetEmail } from "../utils/mailer.js";
 
 export const authRoutes = express.Router();
+const MIN_PASSWORD_LENGTH = 8;
+
+export const isValidPassword = (password) =>
+  typeof password === "string" && password.length >= MIN_PASSWORD_LENGTH;
 
 // --- Registration ---
 authRoutes.post("/register", async (req, res) => {
-  const { name, email, password, role, godownId } = req.body;
+  const { name, email, password, role = "user", godownId } = req.body;
   if (!name || !email || !password) return res.status(400).json({ message: "name, email and password are required" });
-  if (!["admin", "user"].includes(role)) return res.status(400).json({ message: "Invalid role" });
-  if (role === "user" && !godownId) return res.status(400).json({ message: "godownId is required for user" });
+  if (role === "admin") return res.status(403).json({ message: "Admin accounts cannot be created through public registration" });
+  if (role !== "user") return res.status(400).json({ message: "Invalid role" });
+  if (!isValidPassword(password)) return res.status(400).json({ message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+  if (!godownId) return res.status(400).json({ message: "godownId is required for user" });
   
   const emailNormalized = email.toLowerCase().trim();
   const existing = await User.findOne({ email: emailNormalized });
   if (existing) return res.status(409).json({ message: "Email already exists" });
   
-  const roleCount = await User.countDocuments({ role });
-  const limit = role === "admin" ? env.adminRegistrationLimit : env.userRegistrationLimit;
+  const roleCount = await User.countDocuments({ role: "user" });
+  const limit = env.userRegistrationLimit;
   if (roleCount >= limit) return res.status(403).json({ message: `${role} registration limit reached` });
   
-  if (role === "user") {
-    const godown = await Godown.findById(godownId);
-    if (!godown) return res.status(400).json({ message: "Invalid godownId" });
-  }
+  const godown = await Godown.findById(godownId);
+  if (!godown) return res.status(400).json({ message: "Invalid godownId" });
   
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await User.create({ 
     name, 
     email: emailNormalized, 
     passwordHash, 
-    role, 
-    godownId: role === "user" ? godownId : null 
+    role: "user",
+    godownId
   });
   return res.status(201).json({ id: user._id, role: user.role });
 });
@@ -48,6 +52,7 @@ authRoutes.post("/login", async (req, res) => {
   if (!user) return res.status(401).json({ message: "Invalid credentials" });
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+  if (!user.active) return res.status(401).json({ message: "Account is inactive" });
   
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user);
@@ -69,7 +74,7 @@ authRoutes.post("/refresh", async (req, res) => {
   try {
     const decoded = verifyRefreshToken(refreshToken);
     const user = await User.findById(decoded.sub);
-    if (!user || user.refreshToken !== refreshToken) return res.status(401).json({ message: "Invalid refresh token" });
+    if (!user || !user.active || user.refreshToken !== refreshToken) return res.status(401).json({ message: "Invalid refresh token" });
     return res.json({ accessToken: signAccessToken(user) });
   } catch (error) {
     return res.status(401).json({ message: "Invalid refresh token" });
@@ -84,12 +89,13 @@ authRoutes.post("/forgot-password", async (req, res) => {
   const user = await User.findOne({ email: emailNormalized });
   
   if (user) {
-    user.resetToken = createResetToken();
+    const resetToken = createResetToken();
+    user.resetToken = hashResetToken(resetToken);
     user.resetTokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 Minute expiry
     await user.save();
     
     try {
-      await sendResetEmail(user.email, user.resetToken);
+      await sendResetEmail(user.email, resetToken);
     } catch (error) {
       // LOG IT: This prints to your terminal so you can fix SMTP issues
       console.error("CRITICAL: Email failed to send to", user.email, "Error:", error.message);
@@ -105,8 +111,11 @@ authRoutes.post("/forgot-password", async (req, res) => {
 
 authRoutes.post("/reset-password", async (req, res) => {
   const { token, newPassword } = req.body;
+  if (!token || !isValidPassword(newPassword)) {
+    return res.status(400).json({ message: `A valid token and password of at least ${MIN_PASSWORD_LENGTH} characters are required` });
+  }
   const user = await User.findOne({ 
-    resetToken: token, 
+    resetToken: hashResetToken(token),
     resetTokenExpiry: { $gt: new Date() } 
   });
 
@@ -115,6 +124,7 @@ authRoutes.post("/reset-password", async (req, res) => {
   user.passwordHash = await bcrypt.hash(newPassword, 10);
   user.resetToken = null;
   user.resetTokenExpiry = null;
+  user.refreshToken = null;
   await user.save();
   return res.json({ message: "Password reset successful" });
 });
@@ -131,6 +141,8 @@ authRoutes.get("/me", authenticate, async (req, res) => {
     const user = await User.findById(req.user.sub)
       .select("-passwordHash -refreshToken -resetToken")
       .populate("godownId", "name"); // ✅ IMPORTANT
+
+    if (!user || !user.active) return res.status(401).json({ message: "Account is inactive" });
 
     return res.json({
       _id: user._id,
