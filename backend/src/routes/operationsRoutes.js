@@ -4979,6 +4979,7 @@ select: "name stockGroupId unitId imageUrl itemType"
   groupName: s.stockItemId?.stockGroupId?.name || "General",
   name: s.stockItemId?.name || "Unknown Item",
   currentQty: s.qtyBaseUnit || 0,
+  thresholdBaseUnit: s.thresholdBaseUnit || 0,
   unit: s.stockItemId?.unitId?.symbol || s.stockItemId?.unitId?.name || "Units",
   image: s.stockItemId?.imageUrl || "",
 

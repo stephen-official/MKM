@@ -15327,6 +15327,9 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import DailyUsageCard from "./DailyUsageCard";
 import { UserTransferPage } from "./UserTransferPage";
+import KitchenHome from "./kitchen/KitchenHome";
+import KitchenHeader from "./kitchen/KitchenHeader";
+import KitchenBottomNav from "./kitchen/KitchenBottomNav";
 // import { IncomingTransfers } from "./IncomingTransfers";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
@@ -15350,6 +15353,7 @@ const limitTo3Decimals = (value) => {
   return Number(num.toFixed(3));
 };
 const ClientStore = () => {
+  const [activeTab, setActiveTab] = useState("home");
   const [userInfo, setUserInfo] = useState(null);
   const [items, setItems] = useState([]);
   const [cart, setCart] = useState([]);
@@ -15365,10 +15369,6 @@ const [editIndentId, setEditIndentId] = useState(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
   const [logTab, setLogTab] = useState("usage"); 
-  const [showTransferHistory, setShowTransferHistory] = useState(false);
-const [transferTab, setTransferTab] = useState("to");
-const [showTransfer, setShowTransfer] = useState(false);
-
 const [activeTransactionType, setActiveTransactionType] = useState("usage"); // usage | request | indent | transfer
 
 const [requestType, setRequestType] = useState("stock_request");
@@ -15376,7 +15376,6 @@ const [requestType, setRequestType] = useState("stock_request");
 const [mode, setMode] = useState("stock");
 
 const [transferDestination, setTransferDestination] = useState("");
-const [transferDate, setTransferDate] = useState(new Date());
 const [godowns, setGodowns] = useState([]);
 const [dailyItems, setDailyItems] = useState([]);
   const [requestReason, setRequestReason] = useState(""); 
@@ -15397,15 +15396,15 @@ const fetchGodowns = async () => {
   try {
     const res = await api.get("/inventory/godowns");
     setGodowns(res.data || []);
-  } catch (err) {
-    console.log(err);
+  } catch (error) {
+    console.error("Failed to fetch kitchens", error);
   }
 };
   const fetchUserInfo = async () => {
     try {
       const res = await api.get("/auth/me");
       setUserInfo(res.data);
-    } catch (err) { console.error("Failed to fetch user info"); }
+    } catch { console.error("Failed to fetch user info"); }
   };
 
   const handleLogout = () => {
@@ -15419,7 +15418,7 @@ const fetchGodowns = async () => {
     try {
       const res = await api.get("/indent-requests/me");
       setIndents(res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    } catch (err) { setIndents([]); }
+    } catch { setIndents([]); }
   };
 
   const fetchItems = async (isForIndent = false) => {
@@ -15465,12 +15464,13 @@ setItems(formatted);
           _id: item.stockItemId?._id || item.stockItemId,
           name: item.name || item.stockItemId?.name || "Unknown Item",
           currentQty: Number(item.currentQty) || 0, 
+          thresholdBaseUnit: Number(item.thresholdBaseUnit) || 0,
           unit: item.stockItemId?.unitId?.symbol || item.unit || "Units", 
           image: item.image || item.stockItemId?.imageUrl || ""
         })).sort((a, b) => a.name.localeCompare(b.name));
         setItems(formattedItems);
       }
-    } catch (err) { toast.error("Failed to sync inventory"); }
+    } catch { toast.error("Failed to sync inventory"); }
   };
 
 
@@ -15480,7 +15480,7 @@ setItems(formatted);
     try {
       const res = await api.get('/consumptions/me');
       setOrders(res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    } catch (err) { console.error("Failed to fetch orders"); }
+    } catch { console.error("Failed to fetch orders"); }
   };
   const fetchDailyUsage = async () => {
   try {
@@ -15493,8 +15493,8 @@ setItems(formatted);
           new Date(a.createdAt)
       )
     );
-  } catch (err) {
-    console.log(err);
+  } catch (error) {
+    console.error("Failed to fetch daily usage", error);
   }
 };
 
@@ -15502,11 +15502,10 @@ setItems(formatted);
     try {
       const res = await api.get('/requests');
       setRequests(res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    } catch (err) { setRequests([]); }
+    } catch { setRequests([]); }
   };
 
   useEffect(() => {
-    console.log("editIndentId changed =>", editIndentId);
     const init = async () => {
       setLoading(true);
  await Promise.all([
@@ -15871,8 +15870,6 @@ setEditIndentId(indent._id);
     setIsActivityLogOpen(false);
     await fetchItems(true); 
     setItems(prevItems => {
-  const cartIds = mappedCart.map(i => i.stockRecordId);
-
   // Add missing items from inventory
   const merged = prevItems.map(item => {
     const inCart = mappedCart.find(c => c.stockRecordId === item.stockRecordId);
@@ -15884,33 +15881,85 @@ setEditIndentId(indent._id);
     setIsCartOpen(true);
   };
 
+  const openStock = () => {
+    setActiveTab("stock");
+    setActiveTransactionType("usage");
+    setMode("stock");
+    setCart([]);
+    fetchItems(false);
+  };
+
+  const openUsage = () => {
+    setActiveTab("usage");
+    setActiveTransactionType("usage");
+    setMode("stock");
+    setCart([]);
+    fetchItems(false);
+  };
+
+  const openSupplyRequest = () => {
+    setActiveTab("requests");
+    setActiveTransactionType("indent");
+    setMode("stock");
+    setCart([]);
+    setRequestReason("");
+    setEditIndentId(null);
+    fetchItems(true);
+  };
+
+  const openDeliveries = () => {
+    setActiveTab("requests");
+    setLogTab("indents");
+    setIsReceiveView(false);
+    setIsActivityLogOpen(true);
+  };
+
+  const openActivity = (tab = "usage") => {
+    setLogTab(tab);
+    setIsReceiveView(false);
+    setIsActivityLogOpen(true);
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    if (tab === "home") return;
+    if (tab === "stock") return openStock();
+    if (tab === "usage") return openUsage();
+    if (tab === "requests") return openActivity("indents");
+    if (tab === "more") return openActivity("usage");
+  };
+
+  const attentionCount =
+    requests.filter((request) => request.status === "pending").length +
+    indents.filter((indent) =>
+      ["confirmed", "partially_received"].includes(indent.status)
+    ).length;
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] pb-24 font-sans text-slate-900">
-      <header className="bg-white sticky top-0 z-40 shadow-sm border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex justify-between items-center mb-3">
-            <div className="flex flex-col">
-              <h1 className="text-xl font-black italic uppercase leading-none">
-                <span className="text-green-600">{userInfo?.godown?.name || "Inventory"}</span> Store
-              </h1>
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
-                {activeTransactionType === 'indent' ? 'Warehouse Mode' : activeTransactionType === 'request' ? 'Request Mode' : 'Kitchen Mode'}
-              </span>
-            </div>
-            <button onClick={handleLogout} className="px-3 py-1.5 bg-red-50 text-red-600 rounded-full text-[10px] font-black uppercase">Logout</button>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => { setIsActivityLogOpen(true); setIsReceiveView(false); }} className="flex-1 bg-gray-100 text-gray-800 py-2.5 rounded-xl font-black text-[10px] uppercase flex items-center justify-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              History {indents.some(i => i.status === 'confirmed') && <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />}
-            </button>
-            <button onClick={() => setIsCartOpen(true)} className={`flex-1 ${activeTransactionType === 'indent' ? 'bg-orange-600' : (activeTransactionType === 'request' ? 'bg-blue-600' : 'bg-black')} text-white py-2.5 rounded-xl font-black text-[10px] flex items-center justify-center gap-2 shadow-lg uppercase transition-all`}>
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
-              Cart <span className="bg-white/20 px-2 py-0.5 rounded text-[9px]">{cart.length}</span>
-            </button>
-          </div>
-        </div>
-      </header>
+      <KitchenHeader
+        kitchenName={userInfo?.godown?.name || "Kitchen"}
+        attentionCount={attentionCount}
+        onNotificationsClick={() => openActivity("indents")}
+        onLogout={handleLogout}
+      />
+
+      {activeTab === "home" ? (
+        <KitchenHome
+          userInfo={userInfo}
+          items={items}
+          requests={requests}
+          indents={indents}
+          dailyUsageHistory={dailyUsageHistory}
+          orders={orders}
+          onRecordUsage={openUsage}
+          onViewStock={openStock}
+          onRequestSupplies={openSupplyRequest}
+          onReceiveDelivery={openDeliveries}
+          onOpenActivity={() => openActivity("usage")}
+        />
+      ) : (
+      <>
 
       <div className="bg-white border-b border-gray-100 p-3 sticky top-[125px] z-30 shadow-sm">
         <div className="max-w-7xl mx-auto">
@@ -16043,6 +16092,8 @@ activeTransactionType === "indent"
           <div className="py-20 text-center text-gray-400 font-black uppercase text-xs">No items found</div>
         )}
       </main>
+      </>
+      )}
 
       {isActivityLogOpen && (
         <div className="fixed inset-0 z-[110] flex justify-end">
@@ -16090,12 +16141,9 @@ activeTransactionType === "indent"
       setMode("stock");
       setCart([]);
       setTransferDestination("");
-      setTransferDate(new Date());
-
       fetchItems(false);
 
       setIsActivityLogOpen(false);
-      setShowTransfer(true);
     }}
     className="w-full bg-blue-600 text-white py-3 rounded-xl font-black text-[11px] uppercase"
   >
@@ -16679,6 +16727,11 @@ activeTransactionType === "request"
           </div>
         </div>
       )}
+      <KitchenBottomNav
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        requestCount={attentionCount}
+      />
     </div>
   );
 };
