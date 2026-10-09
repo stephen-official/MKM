@@ -1,6 +1,36 @@
-node_modules
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Local configuration and secrets (retain documented examples)
 .env
-.expo
-dist
-build
-coverage
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Generated output
+dist/
+**/dist/
+build/
+**/build/
+coverage/
+**/coverage/
+.expo/
+**/.expo/
+
+# Runtime output
+uploads/
+**/uploads/
+logs/
+**/logs/
+*.log
+
+# OS and editor files
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+*.swp
+*~

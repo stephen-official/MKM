@@ -1,4 +1,19 @@
 {
+  "name": "montessori-kitchen-management",
+  "private": true,
+  "scripts": {
+    "setup": "npm --prefix backend ci && npm --prefix admin-web ci && npm --prefix client-web ci",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:admin": "npm --prefix admin-web run dev -- --port 5173",
+    "dev:client": "npm --prefix client-web run dev -- --port 5174",
+    "test": "npm --prefix backend test",
+    "lint": "npm --prefix client-web run lint",
+    "build:admin": "npm --prefix admin-web run build",
+    "build:client": "npm --prefix client-web run build",
+    "build": "npm run build:admin && npm run build:client",
+    "check": "npm test && npm run lint && npm run build",
+    "seed": "npm --prefix backend run seed"
+  },
   "dependencies": {
     "xlsx-js-style": "^1.2.0"
   }
