@@ -15330,6 +15330,9 @@ import { UserTransferPage } from "./UserTransferPage";
 import KitchenHome from "./kitchen/KitchenHome";
 import KitchenHeader from "./kitchen/KitchenHeader";
 import KitchenBottomNav from "./kitchen/KitchenBottomNav";
+import KitchenStock from "./kitchen/KitchenStock";
+import KitchenUsageScreen from "./kitchen/KitchenUsageScreen";
+import SupplyRequestsDeliveries from "./kitchen/SupplyRequestsDeliveries";
 // import { IncomingTransfers } from "./IncomingTransfers";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
@@ -15354,6 +15357,8 @@ const limitTo3Decimals = (value) => {
 };
 const ClientStore = () => {
   const [activeTab, setActiveTab] = useState("home");
+  const [stockFilter, setStockFilter] = useState("all");
+  const [supplyInitialTab, setSupplyInitialTab] = useState("requests");
   const [userInfo, setUserInfo] = useState(null);
   const [items, setItems] = useState([]);
   const [cart, setCart] = useState([]);
@@ -15867,6 +15872,7 @@ if (editIndentId !== null && editIndentId !== undefined) {
     setRequestDate(new Date(indent.targetDate || indent.createdAt));
     // setEditIndent(indent);
 setEditIndentId(indent._id);
+    setActiveTab("request-builder");
     setIsActivityLogOpen(false);
     await fetchItems(true); 
     setItems(prevItems => {
@@ -15898,7 +15904,7 @@ setEditIndentId(indent._id);
   };
 
   const openSupplyRequest = () => {
-    setActiveTab("requests");
+    setActiveTab("request-builder");
     setActiveTransactionType("indent");
     setMode("stock");
     setCart([]);
@@ -15908,10 +15914,8 @@ setEditIndentId(indent._id);
   };
 
   const openDeliveries = () => {
+    setSupplyInitialTab("deliveries");
     setActiveTab("requests");
-    setLogTab("indents");
-    setIsReceiveView(false);
-    setIsActivityLogOpen(true);
   };
 
   const openActivity = (tab = "usage") => {
@@ -15925,9 +15929,38 @@ setEditIndentId(indent._id);
     if (tab === "home") return;
     if (tab === "stock") return openStock();
     if (tab === "usage") return openUsage();
-    if (tab === "requests") return openActivity("indents");
+    if (tab === "requests") {
+      setSupplyInitialTab("requests");
+      return;
+    }
     if (tab === "more") return openActivity("usage");
   };
+
+  const deleteSupplyRequest = async (indent) => {
+    if (!indent?._id || !window.confirm("Delete this supply request?")) return;
+    try {
+      await api.delete(`/indent-requests/${indent._id}`);
+      toast.success("Supply request deleted");
+      await fetchIndents();
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Could not delete request");
+    }
+  };
+
+  const receiveDelivery = (indent) => {
+    setActiveReceiveIndent(indent);
+    setReceiveItems({});
+    setIsReceiveView(true);
+    setIsActivityLogOpen(true);
+  };
+
+  const usageItems = items.map((item) => {
+    const selected = cart.find((entry) => entry.stockRecordId === item.stockRecordId);
+    return {
+      ...item,
+      currentQty: Number(item.currentQty || 0) + Number(selected?.requestedQty || 0),
+    };
+  });
 
   const attentionCount =
     requests.filter((request) => request.status === "pending").length +
@@ -15958,6 +15991,50 @@ setEditIndentId(indent._id);
           onReceiveDelivery={openDeliveries}
           onOpenActivity={() => openActivity("usage")}
         />
+      ) : activeTab === "stock" ? (
+        <KitchenStock
+          items={items}
+          loading={loading}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          filter={stockFilter}
+          onFilterChange={setStockFilter}
+          onRefresh={() => fetchItems(false)}
+          onRecordUsage={(item) => {
+            openUsage();
+            addToCart(item, 1);
+          }}
+        />
+      ) : activeTab === "usage" ? (
+        <KitchenUsageScreen
+          items={usageItems}
+          loading={loading}
+          selectedDate={selectedDate}
+          onDateChange={setSelectedDate}
+          cart={cart}
+          onQuantityChange={addToCart}
+          onReview={() => setIsCartOpen(true)}
+        />
+      ) : activeTab === "requests" ? (
+        <SupplyRequestsDeliveries
+          key={supplyInitialTab}
+          indents={indents}
+          loading={loading}
+          initialTab={supplyInitialTab}
+          onCreateRequest={openSupplyRequest}
+          onEditRequest={handleEditIndent}
+          onDeleteRequest={deleteSupplyRequest}
+          onReceiveDelivery={receiveDelivery}
+          refresh={fetchIndents}
+        />
+      ) : activeTab === "more" ? (
+        <main className="max-w-2xl mx-auto p-4 space-y-3">
+          <h1 className="text-2xl font-bold">More</h1>
+          <p className="text-sm text-gray-500">Activity, transfers and account actions.</p>
+          <button type="button" onClick={() => openActivity("usage")} className="w-full text-left bg-white border rounded-2xl p-4 font-bold">Activity history</button>
+          <button type="button" onClick={() => openActivity("transfer")} className="w-full text-left bg-white border rounded-2xl p-4 font-bold">Kitchen transfers</button>
+          <button type="button" onClick={handleLogout} className="w-full text-left bg-red-50 text-red-700 border border-red-100 rounded-2xl p-4 font-bold">Log out</button>
+        </main>
       ) : (
       <>
 
@@ -16728,7 +16805,7 @@ activeTransactionType === "request"
         </div>
       )}
       <KitchenBottomNav
-        activeTab={activeTab}
+        activeTab={activeTab === "request-builder" ? "requests" : activeTab}
         onTabChange={handleTabChange}
         requestCount={attentionCount}
       />
