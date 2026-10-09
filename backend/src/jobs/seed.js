@@ -5,7 +5,6 @@ import { User } from "../models/User.js";
 
 const run = async () => {
   await connectDB();
-  // const g = await Godown.findOneAndUpdate({ name: "Main Godown" }, { name: "Main Godown" }, { upsert: true, new: true });
   // Change this line in your run.js file
 const g = await Godown.findOneAndUpdate(
   { name: "Main Godown" }, 

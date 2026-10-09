@@ -1,9 +1,3 @@
-// 28-06-2026
-
-
-
-
-
 import express from "express";
 import { DailyUsage } from "../models/DailyUsageModel.js";
 import { authorize } from "../middleware/auth.js";
@@ -61,7 +55,6 @@ const row = await DailyUsage.create({
   godownId: req.user.godownId,
   userId: req.user.sub,
  date: req.body.date,
-  //   date: new Date().toISOString().split("T")[0],
   items: req.body.items
 });  
      

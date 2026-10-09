@@ -1,7 +1,3 @@
-// 28-06-2026
-
-
-
 import mongoose from "mongoose";
 
 const dailyUsageSchema = new mongoose.Schema(
