@@ -1,4 +1,3 @@
-// 01-07-2026
 
 
 
@@ -16,7 +15,6 @@ import { toast } from "react-hot-toast";
 import { IncomingTransfers } from "./IncomingTransfers";
 
 export const UserTransferPage = ({ onClose }) => {
-//   const [transferTab, setTransferTab] = useState("to"); // "to" (Outbound) or "from" (Inbound)
   const [godowns, setGodowns] = useState([]);
   const [stockGroups, setStockGroups] = useState([]);
   const [stockItems, setStockItems] = useState([]);
@@ -24,19 +22,6 @@ export const UserTransferPage = ({ onClose }) => {
   const [selectedTransfer, setSelectedTransfer] = useState(null);
   const [itemSearch, setItemSearch] = useState("");
   const [showItemDropdown, setShowItemDropdown] = useState(false);
-//   const fetchTransfers = useCallback(async () => {
-//   try {
-//     const res = await api.get("/user-transfers/history");
-
-//     const sorted = (res.data || []).sort(
-//       (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-//     );
-
-//     setTransfers(sorted);
-//   } catch (err) {
-//     toast.error("Failed to load transfers");
-//   }
-// }, []);
 const fetchTransfers = useCallback(async () => {
   try {
     const [historyRes, incomingRes] = await Promise.all([
@@ -212,24 +197,8 @@ await fetchTransfers();
   };
 
   const isQtyInvalid = Number(form.qtyBaseUnit) > (currentSelectedItem?.qtyBaseUnit || 0);
-// const sortedTransfers = useMemo(() => {
-//   return [...transfers].sort(
-//     (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
-//   );
-// }, [transfers]);
   return (
   <div className="flex flex-col h-full bg-gray-50/50 p-2 space-y-3">
-
-    {/* BUTTON (ONLY ONE) */}
-    {/* <button
-      onClick={() => {
-        // open your transfer create modal or logic
-        toast("Open transfer form here");
-      }}
-      className="w-full bg-blue-600 text-white py-3 rounded-xl font-black text-[11px] uppercase"
-    >
-      + Transfer Stock
-    </button> */}
 
     {/* LIST */}
     <div className="flex-1 overflow-y-auto space-y-3">

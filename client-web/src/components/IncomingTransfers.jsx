@@ -1,4 +1,3 @@
-// 01-07-2026
 
 
 
@@ -21,9 +20,6 @@ export const IncomingTransfers = () => {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState("");
 
-  // ===========================
-  // Load Incoming Transfers
-  // ===========================
   const loadTransfers = async () => {
     try {
       setLoading(true);
@@ -42,9 +38,6 @@ export const IncomingTransfers = () => {
     loadTransfers();
   }, []);
 
-  // ===========================
-  // Accept Transfer
-  // ===========================
   const acceptTransfer = async (id) => {
     try {
       setProcessingId(id);
@@ -61,9 +54,6 @@ export const IncomingTransfers = () => {
     }
   };
 
-  // ===========================
-  // Reject Transfer
-  // ===========================
   const rejectTransfer = async (id) => {
     try {
       setProcessingId(id);
@@ -80,9 +70,6 @@ export const IncomingTransfers = () => {
     }
   };
 
-  // ===========================
-  // Styles
-  // ===========================
 
   const styles = {
     page: {
@@ -215,9 +202,6 @@ export const IncomingTransfers = () => {
     },
   };
 
-  // ===========================
-  // UI
-  // ===========================
 
   return (
     <div style={styles.page}>

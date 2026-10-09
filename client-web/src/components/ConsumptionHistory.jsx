@@ -6,7 +6,6 @@ const ConsumptionHistory = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 1. Fetch the user's previous consumptions
   useEffect(() => {
     const fetchMyLogs = async () => {
       try {
@@ -21,17 +20,14 @@ const ConsumptionHistory = () => {
     fetchMyLogs();
   }, []);
 
-  // 2. The Logic House: handleEditPrevious
   const handleEditPrevious = async (pastConsumption) => {
     const consumptionDate = new Date(pastConsumption.date).toDateString();
     const today = new Date().toDateString();
 
     if (consumptionDate === today) {
-      // Logic for same-day edits (Direct)
       console.log("Opening direct edit modal for today's item...");
-      // openEditModal(pastConsumption); 
+      // TODO: Open a same-day correction form when the API supports it.
     } else {
-      // Logic for past-day edits (Admin Request)
       const reason = prompt("Please enter a reason for this edit request:");
       if (!reason) return;
 
