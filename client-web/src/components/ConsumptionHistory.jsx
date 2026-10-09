@@ -11,7 +11,7 @@ const ConsumptionHistory = () => {
       try {
         const res = await axios.get('/api/consumptions/me');
         setLogs(res.data);
-      } catch (err) {
+      } catch {
         toast.error("Failed to load history");
       } finally {
         setLoading(false);
@@ -40,7 +40,7 @@ const ConsumptionHistory = () => {
       try {
         await axios.post('/api/requests', requestPayload);
         toast.success("Request sent to Admin for approval.");
-      } catch (err) {
+      } catch {
         toast.error("Failed to send request.");
       }
     }

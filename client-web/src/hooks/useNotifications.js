@@ -11,7 +11,7 @@ export const useNotifications = () => {
       });
     });
 
-    socket.on("new_request", (data) => {
+    socket.on("new_request", () => {
       toast.success("📩 New Consumption Request received!", {
         icon: '📝',
       });

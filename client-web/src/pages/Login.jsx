@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { api } from '../api'; 
 import { toast } from 'react-hot-toast';
 
@@ -10,7 +9,6 @@ const AuthPage = () => {
     name: "", email: "", password: "", role: "user", godownId: "" 
   });
   const [resetData, setResetData] = useState({ email: "", token: "", newPassword: "" });
-  const navigate = useNavigate();
 
   // Fetch godowns only when switching to register mode
   useEffect(() => {

@@ -27,7 +27,7 @@ export const IncomingTransfers = () => {
       const { data } = await api.get("/user-transfers/incoming");
 
       setTransfers(data || []);
-    } catch (err) {
+    } catch {
       toast.error("Failed to load transfers");
     } finally {
       setLoading(false);

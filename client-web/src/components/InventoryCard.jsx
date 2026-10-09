@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { toast } from 'react-hot-toast';
 
 const InventoryCard = ({
@@ -12,24 +12,18 @@ const InventoryCard = ({
   const PRECISION = 3;
   const STEP = 0.001;
 
-const [orderQty, setOrderQty] = useState("");
+  const normalizedCartQty = cartQty > 0 ? parseFloat(cartQty) : "";
+  const [orderQty, setOrderQty] = useState(normalizedCartQty);
+  const [previousCartQty, setPreviousCartQty] = useState(cartQty);
   const stockAvailable = Number(item.currentQty) || 0; 
   const displayUnit = item.unit || "Units";
   const imgUrl = item.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(item.name || 'Item')}&background=f8f9fa&color=2563eb&bold=true`;
 
-useEffect(() => {
-  if (cartQty > 0) {
-    setOrderQty(parseFloat(cartQty));
-  } else {
-    setOrderQty("");
+  // Keep local input in sync when the parent clears or replaces the cart.
+  if (cartQty !== previousCartQty) {
+    setPreviousCartQty(cartQty);
+    setOrderQty(normalizedCartQty);
   }
-}, [cartQty]);
-
-  // Helper to round strictly to 3 decimal places
-  const roundToPrecision = (val) => {
-    const factor = Math.pow(10, PRECISION);
-    return Math.round(val * factor) / factor;
-  };
 
   const handleInputChange = (e) => {
   const value = e.target.value;

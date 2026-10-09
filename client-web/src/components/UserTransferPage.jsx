@@ -7,21 +7,12 @@
 
 
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api } from "../api.js";
-import { X, Calendar, Plus, FileSpreadsheet } from "lucide-react";
-import * as XLSX from "xlsx";
 import { toast } from "react-hot-toast";
-import { IncomingTransfers } from "./IncomingTransfers";
 
-export const UserTransferPage = ({ onClose }) => {
-  const [godowns, setGodowns] = useState([]);
-  const [stockGroups, setStockGroups] = useState([]);
-  const [stockItems, setStockItems] = useState([]);
+export const UserTransferPage = () => {
   const [transfers, setTransfers] = useState([]);
-  const [selectedTransfer, setSelectedTransfer] = useState(null);
-  const [itemSearch, setItemSearch] = useState("");
-  const [showItemDropdown, setShowItemDropdown] = useState(false);
 const fetchTransfers = useCallback(async () => {
   try {
     const [historyRes, incomingRes] = await Promise.all([
@@ -55,148 +46,14 @@ incomingMarked.forEach((t) => {
     );
 
     setTransfers(merged);
-  } catch (err) {
+  } catch {
     toast.error("Failed to load transfers");
   }
 }, []);
 
-  const [form, setForm] = useState({
-    toGodownId: "",
-    stockGroupId: "",
-    stockItemId: "",
-    qtyBaseUnit: "",
-    note: "",
-  });
-
-  const loadInitialData = useCallback(async () => {
-  try {
-    const [gRes, tRes, grpRes] = await Promise.all([
-      api.get("/inventory/godowns"),
-      api.get("/user-transfers/history"),
-      api.get("/inventory/stock-groups"),
-    ]);
-
-    setGodowns(gRes.data || []);
-    setStockGroups(grpRes.data || []);
-
-   if ((tRes.data || []).length > 0) {
-  setSelectedTransfer(tRes.data[0]);
-}
-  } catch (error) {
-    console.log(error);
-    console.log(error.response);
-
-    toast.error(error.response?.data?.error || error.message);
-  }
-}, []);
-
-
-const loadGodownStock = useCallback(async () => {
-  try {
-    const res = await api.get("/procurement/my-stock");
-    setStockItems(res.data || []);
-  } catch (error) {
-    console.log(error);
-    console.log(error.response);
-
-    toast.error(error.response?.data?.error || error.message);
-  }
-}, []);
-
-
-
   useEffect(() => {
-  loadInitialData();
-  loadGodownStock();
-  fetchTransfers();   // ✅ ADD THIS
-}, [loadInitialData, loadGodownStock, fetchTransfers]);
-
-  const currentSelectedItem = useMemo(() => {
-    return stockItems.find(
-      (item) => (item.stockItemId?._id || item.stockItemId) === form.stockItemId
-    );
-  }, [stockItems, form.stockItemId]);
-
-  const filteredItems = useMemo(() => {
-    return stockItems.filter((item) => {
-      const matchesSearch = (item.stockItemId?.name || "")
-        .toLowerCase()
-        .includes(itemSearch.toLowerCase());
-      const matchesGroup = form.stockGroupId
-        ? (item.stockItemId?.stockGroupId?._id || item.stockItemId?.stockGroupId) ===
-          form.stockGroupId
-        : true;
-      return matchesSearch && matchesGroup;
-    });
-  }, [stockItems, itemSearch, form.stockGroupId]);
-
-  const handleTransfer = async () => {
-    const qty = Number(form.qtyBaseUnit);
-    if (!form.toGodownId || !form.stockItemId || !form.qtyBaseUnit) {
-      toast.error("Please fill all fields");
-      return;
-    }
-
-    const available = currentSelectedItem?.qtyBaseUnit || 0;
-    if (qty <= 0) {
-      toast.error("Quantity must be greater than 0");
-      return;
-    }
-    if (qty > available) {
-      toast.error(`Insufficient Stock! Available: ${available}`);
-      return;
-    }
-
-    try {
-      await api.post("/user-transfers", {
-        toGodownId: form.toGodownId,
-        note: form.note,
-        items: [
-          {
-            stockItemId: form.stockItemId,
-            qtyBaseUnit: qty,
-          },
-        ],
-      });
-
-      toast.success("Transfer Request Sent");
-      setForm({
-        toGodownId: "",
-        stockGroupId: "",
-        stockItemId: "",
-        qtyBaseUnit: "",
-        note: "",
-      });
-      setItemSearch("");
-      await loadInitialData();
-await loadGodownStock();
-await fetchTransfers();
-    } catch (error) {
-      toast.error(error.response?.data?.error || "Transfer failed");
-    }
-  };
-
-  const downloadExcel = () => {
-    if (!selectedTransfer) return;
-    const data = selectedTransfer.items.map((item) => ({
-      "Transfer ID": `TRN-${selectedTransfer._id.slice(-6).toUpperCase()}`,
-      Date: new Date(selectedTransfer.createdAt).toLocaleString(),
-      Source: selectedTransfer.fromGodownId?.name || "N/A",
-      Destination: selectedTransfer.toGodownId?.name || "N/A",
-      Item: item.stockItemId?.name || "N/A",
-      Group: item.stockItemId?.stockGroupId?.name || "General",
-      Quantity: item.qtyBaseUnit,
-      Unit: item.stockItemId?.unitId?.symbol || "units",
-    }));
-
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "TransferDetails");
-    XLSX.writeFile(workbook, `Transfer_${selectedTransfer._id.slice(-6)}.xlsx`);
-    toast.success("Excel Downloaded");
-  };
-
-  const isQtyInvalid = Number(form.qtyBaseUnit) > (currentSelectedItem?.qtyBaseUnit || 0);
+    void Promise.resolve().then(fetchTransfers);
+  }, [fetchTransfers]);
   return (
   <div className="flex flex-col h-full bg-gray-50/50 p-2 space-y-3">
 
@@ -273,7 +130,6 @@ await fetchTransfers();
           toast.success("Transfer Accepted");
 
           fetchTransfers();
-          loadGodownStock();
         } catch (err) {
           toast.error(err.response?.data?.error || "Accept failed");
         }
