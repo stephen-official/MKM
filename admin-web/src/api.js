@@ -27,6 +27,17 @@ export const clearSession = () => {
   Object.values(KEYS).forEach((key) => localStorage.removeItem(key));
 };
 
+/** Revokes the refresh token server-side when possible, then forgets the session locally. */
+export const logout = async () => {
+  try {
+    if (localStorage.getItem(KEYS.access)) await api.post("/auth/logout");
+  } catch {
+    // Best effort: an expired or offline session is still cleared locally.
+  } finally {
+    clearSession();
+  }
+};
+
 // Kept for callers that only set or clear the access token.
 export const setAuthToken = (token) => (token ? setSession({ accessToken: token }) : clearSession());
 

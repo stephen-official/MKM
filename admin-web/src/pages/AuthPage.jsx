@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import logo from "../mkmLogo.png";
 import { api, setSession } from "../api.js";
+import { isAdminRole } from "../roles.js";
 import { Banner, Button, Tabs } from "../components/ui/index.jsx";
 import { useToast } from "../useToast.js";
 
@@ -50,7 +51,7 @@ export const AuthPage = ({ onLogin, initialMode = "login", notice }) => {
     run(async () => {
       const { data } = await api.post("/auth/login", { email: email.trim(), password });
       // A kitchen account is valid, just not for this console: never keep its token.
-      if (data.role !== "admin") {
+      if (!isAdminRole(data.role)) {
         setStatus({ variant: "alert", text: "This console is for administrators. Kitchen accounts sign in on the kitchen app." });
         return;
       }

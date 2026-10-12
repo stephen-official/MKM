@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Route, Routes, Navigate } from "react-router-dom";
-import { clearSession, SESSION_EXPIRED_EVENT } from "./api.js";
+import { logout, SESSION_EXPIRED_EVENT } from "./api.js";
+import { isAdminRole } from "./roles.js";
 import { AuthPage } from "./pages/AuthPage.jsx";
 import { ConsumptionPage } from "./pages/ConsumptionPage.jsx";
 import { GodownsPage } from "./pages/GodownsPage.jsx";
@@ -57,8 +58,8 @@ export const App = () => {
     setSession({ loggedIn: true, role });
   };
 
-  const handleLogout = () => {
-    clearSession();
+  const handleLogout = async () => {
+    await logout();
     setExpired(false);
     setSession({ loggedIn: false, role: null });
   };
@@ -79,10 +80,10 @@ export const App = () => {
         element={
           !session.loggedIn ? (
             <AuthPage onLogin={handleLogin} notice={expired ? "Your session has expired. Please sign in again." : undefined} />
-          ) : session.role !== "admin" ? (
+          ) : !isAdminRole(session.role) ? (
             <div className="access-restricted">
               <h1>Access restricted</h1>
-              <p>This web app is for admin role only. Please login with an admin account.</p>
+              <p>This web app is for administrators only. Please sign in with an admin account.</p>
               <Button onClick={handleLogout}>Back to sign in</Button>
             </div>
           ) : (
