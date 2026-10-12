@@ -110,29 +110,25 @@ const authLimiter = rateLimit({
 
 
 
-app.use("/api/auth", authLimiter, authRoutes);
+export const PUBLIC_MOUNTS = [["/api/auth", authRoutes]];
 
 // --- 5. PROTECTED ROUTES ---
 // The 'authenticate' middleware ensures only logged-in users can access these modules.
-app.use("/api/inventory", authenticate, inventoryRoutes);
-app.use("/api/procurement", authenticate, procurementRoutes);
-app.use("/api", authenticate, operationsRoutes);
-app.use("/api/reports", authenticate, reportRoutes);
+// Order is significant and matches the previous app.use() calls: operationsRoutes is
+// mounted at both /api and /api/operations (featureGate normalises the alias).
+export const PROTECTED_MOUNTS = [
+  ["/api/inventory", inventoryRoutes],
+  ["/api/procurement", procurementRoutes],
+  ["/api", operationsRoutes],
+  ["/api/reports", reportRoutes],
+  ["/api/operations", operationsRoutes],
+  ["/api/indent-requests", indentRequestRoutes],
+  ["/api/daily-usage", dailyUsageRoutes],
+  ["/api/product-ledger", productLedgerRoutes]
+];
 
-app.use("/api/operations", authenticate, operationsRoutes);
-
-
-
-
-app.use("/api/indent-requests", authenticate, indentRequestRoutes);
-app.use(
-  "/api/daily-usage",
-  authenticate,
-  dailyUsageRoutes
-);
-
-
-app.use("/api/product-ledger", authenticate, productLedgerRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
+for (const [mountPath, router] of PROTECTED_MOUNTS) app.use(mountPath, authenticate, router);
 
 
 // --- 6. ERROR HANDLING (OPTIONAL BUT RECOMMENDED) ---
