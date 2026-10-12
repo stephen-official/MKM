@@ -6,6 +6,7 @@ import { connectDB } from "./config/db.js";
 import { env } from "./config/env.js";
 import { User } from "./models/User.js";
 import { verifyAccessToken } from "./utils/tokens.js";
+import { roomsFor, setIo } from "./realtime.js";
 
 const defaultOrigins = [
   "http://localhost:5173",
@@ -23,6 +24,7 @@ const io = new Server(server, {
     credentials: true 
   } 
 });
+setIo(io);
 
 io.use(async (socket, next) => {
   try {
@@ -46,12 +48,7 @@ io.use(async (socket, next) => {
 });
 
 io.on("connection", (socket) => {
-  const user = socket.data.user;
-  if (user.role === "admin") {
-    socket.join("admins");
-  } else if (user.godownId) {
-    socket.join(user.godownId);
-  }
+  for (const room of roomsFor(socket.data.user)) socket.join(room);
 });
 
 connectDB()

@@ -2,7 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { Consumption, GodownStock, Notification, Request, Transfer } from "../models/FlowModels.js";
-import { io } from "../server.js"; 
+import { io } from "../realtime.js";
 // CRITICAL: Explicitly import these so Mongoose registers the models for population
 import { StockItem, StockGroup, Unit } from "../models/InventoryModels.js";
 import { DailyUsage } from "../models/DailyUsageModel.js";
