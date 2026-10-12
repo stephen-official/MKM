@@ -2,7 +2,9 @@ const roundTo = (value, places) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   const factor = 10 ** places;
-  const rounded = (Math.sign(n) * Math.round((Math.abs(n) + Number.EPSILON) * factor)) / factor;
+  // toPrecision(15) strips binary representation noise at any magnitude before rounding the half up.
+  const scaled = Number((Math.abs(n) * factor).toPrecision(15));
+  const rounded = (Math.sign(n) * Math.round(scaled)) / factor;
   return rounded === 0 ? 0 : rounded;
 };
 

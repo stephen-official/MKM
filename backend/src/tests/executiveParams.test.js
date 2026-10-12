@@ -14,6 +14,10 @@ test("round2 rounds half away from zero and never returns -0", () => {
   assert.equal(round2(2.675), 2.68);
   assert.equal(Object.is(round2(-0.001), 0), true);
   assert.equal(round3(1.0005), 1.001);
+  assert.equal(round2(10.075), 10.08);
+  assert.equal(round2(-10.075), -10.08);
+  assert.equal(round2(1234567.125), 1234567.13);
+  assert.equal(round3(2.0005), 2.001);
 });
 
 test("ISO date validation rejects impossible dates", () => {
