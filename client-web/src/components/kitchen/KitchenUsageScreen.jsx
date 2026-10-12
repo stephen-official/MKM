@@ -1,5 +1,6 @@
 import { ChevronRight, Minus, Plus, Search, Utensils } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toLocalDateKey } from "../../utils/date";
 import "./KitchenUsageScreen.css";
 
 const itemId = (item) => item?.stockRecordId || item?._id || item?.stockItemId?._id || item?.stockItemId;
@@ -42,7 +43,7 @@ export default function KitchenUsageScreen({
 }) {
   const [search, setSearch] = useState("");
   const quantitySource = cart ?? quantities;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toLocalDateKey();
 
   const visibleItems = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
@@ -86,6 +87,7 @@ export default function KitchenUsageScreen({
             type="date"
             value={selectedDate}
             max={today}
+            required
             onChange={(event) => onDateChange?.(event.target.value)}
             disabled={submitting}
           />
@@ -166,7 +168,7 @@ export default function KitchenUsageScreen({
 
       <footer className="kus-review">
         <div><strong>{selectedItems.length}</strong><span>{selectedItems.length === 1 ? "item selected" : "items selected"}</span></div>
-        <button type="button" onClick={onReview} disabled={!selectedItems.length || submitting}>
+        <button type="button" onClick={onReview} disabled={!selectedDate || !selectedItems.length || submitting}>
           {submitting ? "Saving…" : "Review usage"}<ChevronRight size={19} aria-hidden="true" />
         </button>
       </footer>

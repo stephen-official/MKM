@@ -1,147 +1,170 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { api } from "../api.js";
-import { toast } from "react-hot-toast";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { 
-  Search, 
-  ChevronRight, 
-  Layers, 
-  Plus, 
-  Trash2,
-  Download 
-} from "lucide-react";
+import { Search, Plus, Trash2, Download } from "lucide-react";
+import { api } from "../api.js";
+import { useToast } from "../useToast.js";
+import {
+  PageHeader, Button, Badge, EmptyState, ErrorState, DataTable, Tabs, StatusBadge,
+  SplitView, RailList, RailItem, DetailPanel, Meta
+} from "../components/ui/index.jsx";
+import { useConfirm } from "../components/ui/useConfirm.jsx";
+
+const errorMessage = (error, fallback) => error?.response?.data?.message || fallback;
+const idOf = (ref) => ref?._id || ref;
+const fmtNum = (value) => Number(value || 0).toLocaleString("en-IN");
+const fmtMoney = (value) => `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+const fmtDate = (value) => (value ? new Date(value).toLocaleDateString("en-GB") : "-");
+const isoToday = () => new Date().toISOString().split("T")[0];
+const sameItem = (a, b) => String(a) === String(b);
+
+const recordTitle = (record) =>
+  record?.indentId?.indentNo || record?.purchaseOrderId?.indentId?.indentNo || "Distribution";
+
+const receivedItems = (po) => (po?.items || []).filter((it) => (it.receivedQty || 0) > 0);
 
 export const StockDistributionPage = () => {
+  const { showToast } = useToast();
+  const { confirm, dialog } = useConfirm();
+
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [godowns, setGodowns] = useState([]);
   const [stockItems, setStockItems] = useState([]);
   const [distLogs, setDistLogs] = useState([]);
 
-  const [activeTab, setActiveTab] = useState("pending"); 
+  const [activeTab, setActiveTab] = useState("pending");
   const [selectedId, setSelectedId] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [allocations, setAllocations] = useState([]);
+  const requestRef = useRef(0);
+  const extraRowId = useRef(0);
+
+  const isCompleted = activeTab === "completed";
 
   const loadData = useCallback(async () => {
+    const requestId = ++requestRef.current;
     setLoading(true);
+    setLoadError("");
     try {
-      const [poRes, godownRes, stockRes, logRes] = await Promise.all([
+      const [poRes, godownRes, itemRes, logRes] = await Promise.all([
         api.get("/procurement/purchase-orders"),
         api.get("/inventory/godowns"),
-        api.get("/procurement/godown-stocks"),
         api.get("/inventory/stock-items"),
         api.get("/procurement/distributions/logs")
       ]);
-      
-      const validPOs = (poRes.data || []).filter(po => 
-        po.items?.some(it => (it.receivedQty || 0) > 0)
-      );
-
-      setPurchaseOrders(validPOs);
+      if (requestId !== requestRef.current) return;
+      setPurchaseOrders((poRes.data || []).filter((po) => receivedItems(po).length > 0));
       setGodowns(godownRes.data || []);
-      setStockItems(stockRes.data || []);
+      setStockItems(itemRes.data || []);
       setDistLogs(logRes.data || []);
     } catch (error) {
-      toast.error("Failed to sync inventory data");
+      if (requestId !== requestRef.current) return;
+      const message = errorMessage(error, "Failed to load distribution data");
+      setLoadError(message);
+      showToast(message, "error");
     } finally {
-      setLoading(false);
+      if (requestId === requestRef.current) setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   const getStockDetails = useCallback((id) => {
-    const item = stockItems.find((s) => String(s._id) === String(id));
-    if (!item) return { name: "Unknown Item", unit: "-", group: "General" };
-    const unitSymbol = item.unitId?.symbol || item.unitId?.name || item.unit || "unit";
-    const groupName = item.categoryId?.name || item.stockGroupId?.name || "General";
-    return { name: item.name, unit: unitSymbol, group: groupName };
+    const item = stockItems.find((s) => sameItem(s._id, idOf(id)));
+    if (!item) return { name: "Unknown item", unit: "-", group: "General" };
+    return {
+      name: item.name,
+      unit: item.unitId?.symbol || item.unitId?.name || "unit",
+      group: item.stockGroupId?.name || "General"
+    };
   }, [stockItems]);
 
-  const getGodownName = (id) => {
-    const godown = godowns.find(g => String(g._id) === String(id));
-    return godown ? godown.name : "Not Assigned";
-  };
+  const getGodownName = useCallback((id) => {
+    const godown = godowns.find((g) => sameItem(g._id, idOf(id)));
+    return godown ? godown.name : "Not assigned";
+  }, [godowns]);
+
+  const pendingOrders = useMemo(
+    () => purchaseOrders.filter((p) => p.status === "pending" || !p.status),
+    [purchaseOrders]
+  );
 
   const activeRecord = useMemo(() => {
     if (!selectedId) return null;
-    if (activeTab === "completed") return distLogs.find(d => d._id === selectedId);
-    return purchaseOrders.find(p => p._id === selectedId);
-  }, [selectedId, activeTab, purchaseOrders, distLogs]);
+    return (isCompleted ? distLogs : pendingOrders).find((r) => r._id === selectedId) || null;
+  }, [selectedId, isCompleted, pendingOrders, distLogs]);
 
   useEffect(() => {
     if (!activeRecord) {
       setAllocations([]);
       return;
     }
-
-    if (activeTab === "completed") {
+    if (isCompleted) {
       setAllocations((activeRecord.allocations || []).map((it, idx) => ({
         tempId: `log-${it._id || idx}`,
-        stockItemId: it.stockItemId?._id || it.stockItemId,
-        godownId: it.godownId?._id || it.godownId || "",
+        stockItemId: idOf(it.stockItemId),
+        godownId: idOf(it.godownId) || "",
         qtyBaseUnit: it.qtyBaseUnit,
         unitPrice: it.unitPrice || 0,
-        maxQty: it.qtyBaseUnit, 
-        isLog: true
+        maxQty: it.qtyBaseUnit
       })));
       return;
     }
+    setAllocations(receivedItems(activeRecord).map((it, idx) => ({
+      tempId: `po-${idx}`,
+      stockItemId: idOf(it.stockItemId),
+      godownId: "",
+      qtyBaseUnit: 0,
+      unitPrice: it.unitPrice || 0,
+      maxQty: it.receivedQty || 0
+    })));
+  }, [activeRecord, isCompleted]);
 
-    if (activeTab === "pending") {
-      const filteredItems = activeRecord.items.filter(it => (it.receivedQty || 0) > 0);
-      setAllocations(filteredItems.map((it, idx) => ({
-        tempId: `po-${idx}`,
-        stockItemId: it.stockItemId?._id || it.stockItemId,
-        godownId: "",
-        qtyBaseUnit: 0,
-        unitPrice: it.unitPrice || 0,
-        maxQty: it.receivedQty || 0,
-      })));
-    }
-  }, [activeRecord, activeTab]);
-
-  const sidebarItems = useMemo(() => {
-    let list = activeTab === "pending" 
-      ? purchaseOrders.filter(p => p.status === "pending" || !p.status)
-      : distLogs;
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(i => {
-        const indentNo = (i.indentId?.indentNo || i.purchaseOrderId?.indentId?.indentNo || "").toLowerCase();
-        const details = getStockDetails(i.stockItemId || i.items?.[0]?.stockItemId);
-        return indentNo.includes(q) || details.name.toLowerCase().includes(q) || details.group.toLowerCase().includes(q);
+  const railItems = useMemo(() => {
+    const list = isCompleted ? distLogs : pendingOrders;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((record) => {
+      const lines = isCompleted ? record.allocations : record.items;
+      const names = (lines || []).map((l) => {
+        const d = getStockDetails(l.stockItemId);
+        return `${d.name} ${d.group}`;
       });
-    }
-    return list;
-  }, [activeTab, purchaseOrders, distLogs, searchQuery, getStockDetails]);
+      return [recordTitle(record), ...names].join(" ").toLowerCase().includes(q);
+    });
+  }, [isCompleted, pendingOrders, distLogs, searchQuery, getStockDetails]);
+
+  const switchTab = (tab) => {
+    setActiveTab(tab);
+    setSelectedId(null);
+    setSearchQuery("");
+  };
 
   const updateAllocation = (tempId, field, value) => {
-    if (activeTab === "completed") return;
-    setAllocations((prev) => {
-      const currentRow = prev.find(a => a.tempId === tempId);
-      if (!currentRow) return prev;
-      let newValue = field === "qtyBaseUnit" ? Number(value) : value;
-      if (field === "qtyBaseUnit") {
-        const otherRowsTotal = prev
-          .filter(a => a.tempId !== tempId && String(a.stockItemId) === String(currentRow.stockItemId))
-          .reduce((sum, a) => sum + (Number(a.qtyBaseUnit) || 0), 0);
-        const currentAvailableLimit = currentRow.maxQty - otherRowsTotal;
-        if (newValue > currentAvailableLimit) {
-          toast.error(`Max ${currentAvailableLimit} available`);
-          newValue = currentAvailableLimit;
-        }
-        if (newValue < 0) newValue = 0;
+    if (isCompleted) return;
+    const row = allocations.find((a) => a.tempId === tempId);
+    if (!row) return;
+
+    let next = value;
+    if (field === "qtyBaseUnit") {
+      next = Math.max(0, Number(value) || 0);
+      const othersTotal = allocations
+        .filter((a) => a.tempId !== tempId && sameItem(a.stockItemId, row.stockItemId))
+        .reduce((sum, a) => sum + (Number(a.qtyBaseUnit) || 0), 0);
+      const limit = Math.max(0, row.maxQty - othersTotal);
+      if (next > limit) {
+        showToast(`Only ${fmtNum(limit)} ${getStockDetails(row.stockItemId).unit} left to allocate`, "error");
+        next = limit;
       }
-      return prev.map((a) => (a.tempId === tempId ? { ...a, [field]: newValue } : a));
-    });
+    }
+    setAllocations((prev) => prev.map((a) => (a.tempId === tempId ? { ...a, [field]: next } : a)));
   };
 
   const addAllocationRow = (index, baseAlloc) => {
-    const newRow = { ...baseAlloc, tempId: `extra-${Math.random()}`, qtyBaseUnit: 0, godownId: "" };
-    setAllocations(prev => {
+    const newRow = { ...baseAlloc, tempId: `extra-${++extraRowId.current}`, qtyBaseUnit: 0, godownId: "" };
+    setAllocations((prev) => {
       const updated = [...prev];
       updated.splice(index + 1, 0, newRow);
       return updated;
@@ -149,244 +172,278 @@ export const StockDistributionPage = () => {
   };
 
   const removeAllocationRow = (tempId) => {
-    setAllocations(prev => prev.filter(a => a.tempId !== tempId));
+    setAllocations((prev) => prev.filter((a) => a.tempId !== tempId));
   };
 
-  const handleDistributionSubmit = async () => {
-    const validAllocations = allocations.filter((a) => a.godownId && a.qtyBaseUnit > 0);
-    if (validAllocations.length === 0) return toast.error("Assign destinations and quantities.");
+  const totalValue = allocations.reduce((sum, a) => sum + (Number(a.qtyBaseUnit) || 0) * (a.unitPrice || 0), 0);
 
-    const stockItemIds = [...new Set(allocations.map(a => String(a.stockItemId)))];
+  const handleDistributionSubmit = async (event) => {
+    event?.preventDefault();
+    if (!activeRecord || submitting) return;
+
+    if (allocations.some((a) => a.qtyBaseUnit > 0 && !a.godownId)) {
+      return showToast("Choose a destination godown for every row that has a quantity.", "error");
+    }
+    const validAllocations = allocations.filter((a) => a.godownId && a.qtyBaseUnit > 0);
+    if (validAllocations.length === 0) return showToast("Assign destinations and quantities.", "error");
+
+    const stockItemIds = [...new Set(allocations.map((a) => String(a.stockItemId)))];
     for (const sId of stockItemIds) {
-      const firstRow = allocations.find(a => String(a.stockItemId) === sId);
-      const totalAllocated = allocations
-        .filter(a => String(a.stockItemId) === sId)
-        .reduce((sum, a) => sum + (Number(a.qtyBaseUnit) || 0), 0);
-      
-      if (totalAllocated !== firstRow.maxQty) {
+      const rows = allocations.filter((a) => sameItem(a.stockItemId, sId));
+      const total = rows.reduce((sum, a) => sum + (Number(a.qtyBaseUnit) || 0), 0);
+      if (Math.abs(total - rows[0].maxQty) > 1e-9) {
         const details = getStockDetails(sId);
-        return toast.error(`Incomplete: Must distribute all ${firstRow.maxQty} of ${details.name}.`);
+        return showToast(`Incomplete: distribute all ${fmtNum(rows[0].maxQty)} ${details.unit} of ${details.name} (now ${fmtNum(total)}).`, "error");
       }
     }
 
+    const ok = await confirm({
+      title: "Distribute stock",
+      message: `Distribute ${stockItemIds.length} item(s) from ${recordTitle(activeRecord)} to ${new Set(validAllocations.map((a) => a.godownId)).size} godown(s), worth ${fmtMoney(totalValue)}? This adds the stock to the godowns and cannot be undone.`,
+      confirmLabel: "Distribute",
+      variant: "primary"
+    });
+    if (!ok) return;
+
+    setSubmitting(true);
     try {
-      setLoading(true);
-      const payload = {
+      await api.post("/procurement/distributions", {
         purchaseOrderId: activeRecord._id,
         allocations: validAllocations.map(({ stockItemId, godownId, qtyBaseUnit, unitPrice }) => ({
-          stockItemId, 
-          godownId, 
-          qtyBaseUnit,
-          unitPrice // Sending price to backend for historical tracking
+          stockItemId, godownId, qtyBaseUnit, unitPrice
         })),
-        leftovers: [] 
-      };
-
-      api.post("/procurement/distributions", payload);
-      toast.success("Inventory distributed successfully!");
+        leftovers: []
+      });
+      showToast("Inventory distributed successfully", "success");
       setSelectedId(null);
-      await loadData(); 
+      await loadData();
     } catch (error) {
-      toast.error(error.response?.data?.message || "Distribution failed");
+      showToast(errorMessage(error, "Distribution failed"), "error");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
   const downloadAsExcel = (mode = "current") => {
-    let dataToExport = [];
+    let rows = [];
     let fileName = "";
 
     if (mode === "master") {
-      if (!distLogs.length) return toast.error("No completed distributions found");
+      if (!distLogs.length) return showToast("No completed distributions found", "error");
       const itemMap = {};
-      distLogs.forEach(log => {
-        (log.allocations || []).forEach(a => {
-          const details = getStockDetails(a.stockItemId?._id || a.stockItemId);
-          const godownName = getGodownName(a.godownId?._id || a.godownId);
-          const key = details.name;
-          if (!itemMap[key]) {
-            itemMap[key] = {
-              "Stock Item": details.name,
-              "Stock Group": details.group,
-              "Unit Price": a.unitPrice || 0,
-              "Units": details.unit,
-              "Total Quantity": 0,
-              "Total Valuation": 0
-            };
-          }
-          itemMap[key][godownName] = (itemMap[key][godownName] || 0) + a.qtyBaseUnit;
-          itemMap[key]["Total Quantity"] += a.qtyBaseUnit;
-          itemMap[key]["Total Valuation"] += (a.qtyBaseUnit * (a.unitPrice || 0));
+      distLogs.forEach((log) => {
+        (log.allocations || []).forEach((a) => {
+          const details = getStockDetails(a.stockItemId);
+          const godownName = getGodownName(a.godownId);
+          const row = itemMap[details.name] || (itemMap[details.name] = {
+            "Stock Item": details.name,
+            "Stock Group": details.group,
+            "Unit Price": a.unitPrice || 0,
+            Units: details.unit,
+            "Total Quantity": 0,
+            "Total Valuation": 0
+          });
+          row[godownName] = (row[godownName] || 0) + (a.qtyBaseUnit || 0);
+          row["Total Quantity"] += a.qtyBaseUnit || 0;
+          row["Total Valuation"] += (a.qtyBaseUnit || 0) * (a.unitPrice || 0);
         });
       });
-      dataToExport = Object.values(itemMap).map((row, index) => ({ "S.No": index + 1, ...row }));
-      fileName = `Master_Inventory_Valuation_${new Date().toLocaleDateString().replace(/\//g, '_')}.xlsx`;
+      rows = Object.values(itemMap).map((row, index) => ({ "S.No": index + 1, ...row }));
+      fileName = `Master_Inventory_Valuation_${isoToday()}.xlsx`;
     } else {
-      if (!allocations.length) return toast.error("No data to export");
-      dataToExport = allocations.map((a, idx) => {
+      if (!allocations.length) return showToast("No data to export", "error");
+      rows = allocations.map((a, idx) => {
         const details = getStockDetails(a.stockItemId);
         return {
           "S.No": idx + 1,
-          "Item": details.name,
-          "Group": details.group,
-          "Destination": getGodownName(a.godownId),
-          "Quantity": a.qtyBaseUnit,
-          "Unit": details.unit,
+          Item: details.name,
+          Group: details.group,
+          Destination: getGodownName(a.godownId),
+          Quantity: a.qtyBaseUnit,
+          Unit: details.unit,
           "Unit Price": a.unitPrice || 0,
-          "Total Amount": (a.qtyBaseUnit * (a.unitPrice || 0))
+          "Total Amount": (a.qtyBaseUnit || 0) * (a.unitPrice || 0)
         };
       });
-      const ref = activeTab === 'completed' ? "Log" : "Pending";
-      fileName = `Stock_Distribution_Amount_${ref}_${new Date().getTime()}.xlsx`;
+      fileName = `Stock_Distribution_Amount_${isCompleted ? "Log" : "Pending"}_${Date.now()}.xlsx`;
     }
 
-    const ws = XLSX.utils.json_to_sheet(dataToExport);
+    const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Financial_Report");
     XLSX.writeFile(wb, fileName);
   };
 
-  const styles = {
-    container: { height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif" },
-    header: { padding: '16px 32px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-    tabBtn: (active) => ({
-        padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer',
-        background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#64748b', border: 'none'
-    }),
-    sidebar: { width: '350px', display: 'flex', flexDirection: 'column', gap: '10px', padding: '20px' },
-    canvas: { flex: 1, background: '#fff', borderRadius: '20px', margin: '20px 20px 20px 0', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e8f0' },
-    card: (sel) => ({
-        padding: '14px', borderRadius: '12px', cursor: 'pointer', background: sel ? '#fff' : 'transparent',
-        border: sel ? '1px solid #6366f1' : '1px solid transparent', boxShadow: sel ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none'
-    }),
-    badge: { display: 'inline-block', padding: '2px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '700', background: '#f1f5f9', color: '#64748b', marginTop: '4px' }
-  };
+  const railEmpty = (
+    <EmptyState title={searchQuery.trim() ? "No matches" : isCompleted ? "No completed distributions" : "Nothing pending"}>
+      {searchQuery.trim()
+        ? "Try a different indent number or item name."
+        : isCompleted
+          ? "Distributions you complete will be listed here."
+          : "Purchase orders with received stock will appear here, ready to distribute to godowns."}
+    </EmptyState>
+  );
+
+  const rail = (
+    <RailList
+      title={isCompleted ? "Completed" : "Pending"}
+      count={railItems.length}
+      loading={loading && railItems.length === 0 && !loadError}
+      empty={loadError ? <ErrorState message={loadError} onRetry={loadData} /> : railEmpty}
+    >
+      {railItems.map((item) => (
+        <RailItem key={item._id} active={selectedId === item._id} onClick={() => setSelectedId(item._id)}>
+          <strong>{recordTitle(item)}</strong>
+          <div className="page-subtitle">
+            {isCompleted
+              ? `Distributed ${fmtDate(item.createdAt)}`
+              : `${receivedItems(item).length} items pending`}
+          </div>
+        </RailItem>
+      ))}
+    </RailList>
+  );
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h1 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>Stock <span style={{ color: '#6366f1' }}>Distribution</span></h1>
-        
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button onClick={() => downloadAsExcel("master")} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', background: '#4f46e5', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>
-            <Download size={14} /> Valuation Report
-          </button>
-
-          <div style={{ display: 'flex', background: '#f8fafc', padding: '4px', borderRadius: '10px' }}>
-            {["pending", "completed"].map(t => (
-              <button key={t} onClick={() => {setActiveTab(t); setSelectedId(null);}} style={styles.tabBtn(activeTab === t)}>
-                {t.charAt(0).toUpperCase() + t.slice(1)}
-              </button>
-            ))}
-          </div>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Search size={14} style={{ position: 'absolute', left: '10px', color: '#94a3b8' }} />
-            <input type="text" placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 8px 8px 30px', fontSize: '12px' }} />
-          </div>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <PageHeader
+        title="Stock Distribution"
+        actions={
+          <Button variant="dark" size="sm" onClick={() => downloadAsExcel("master")} disabled={loading}>
+            <Download size={14} /> Valuation report
+          </Button>
+        }
+      >
+        <Tabs
+          label="Distribution status"
+          value={activeTab}
+          onChange={switchTab}
+          items={[
+            { value: "pending", label: "Pending", count: pendingOrders.length },
+            { value: "completed", label: "Completed", count: distLogs.length }
+          ]}
+        />
+        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <Search size={14} aria-hidden="true" style={{ position: "absolute", left: 10, color: "var(--muted-soft)" }} />
+          <input
+            type="search" aria-label="Search indents or items" placeholder="Search..."
+            value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ paddingLeft: 30 }}
+          />
         </div>
-      </div>
+      </PageHeader>
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={styles.sidebar}>
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {sidebarItems.map(item => (
-              <div key={item._id} onClick={() => setSelectedId(item._id)} style={styles.card(selectedId === item._id)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ fontWeight: '700', fontSize: '13px', color: selectedId === item._id ? '#6366f1' : '#1e293b' }}>
-                    {item.indentId?.indentNo || item.purchaseOrderId?.indentId?.indentNo || getStockDetails(item.stockItemId).name}
-                  </div>
-                  <ChevronRight size={14} color="#cbd5e1" />
-                </div>
-                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-                    {activeTab === 'completed' 
-                      ? `Distributed: ${new Date(item.createdAt).toLocaleDateString()}` 
-                      : `${item.items?.filter(i => (i.receivedQty || 0) > 0).length || 0} items pending`}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={styles.canvas}>
-          {activeRecord ? (
-            <>
-              <div style={{ padding: '24px 32px', borderBottom: '1px solid #f1f5f9' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <h2 style={{ fontSize: '20px', fontWeight: '800', margin: 0 }}>
-                    {activeRecord.indentId?.indentNo || activeRecord.purchaseOrderId?.indentId?.indentNo || "Distribution View"}
-                  </h2>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <button onClick={() => downloadAsExcel("current")} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                      <Download size={14} /> Export Amount
-                    </button>
-                    {activeTab !== 'completed' && (
-                      <button onClick={handleDistributionSubmit} disabled={loading} style={{ background: '#0f172a', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 16px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}>
-                          {loading ? "Saving..." : "Distribute"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ flex: 1, padding: '24px 32px', overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <SplitView rail={rail}>
+        {activeRecord ? (
+          <form onSubmit={handleDistributionSubmit} style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+            <DetailPanel
+              head={
+                <>
+                  <Meta label={isCompleted ? "Distribution" : "Purchase order"}>{recordTitle(activeRecord)}</Meta>
+                  <Meta label="Status"><StatusBadge status={isCompleted ? "distributed" : "pending"} /></Meta>
+                  <Meta label="Total value" align="end">{fmtMoney(totalValue)}</Meta>
+                </>
+              }
+              foot={
+                <>
+                  <Button variant="success" size="sm" onClick={() => downloadAsExcel("current")}>
+                    <Download size={14} /> Export amount
+                  </Button>
+                  {!isCompleted && (
+                    <Button type="submit" variant="dark" size="sm" disabled={submitting}>
+                      {submitting ? "Distributing…" : "Distribute"}
+                    </Button>
+                  )}
+                </>
+              }
+            >
+              <div style={{ paddingTop: 16 }}>
+                <DataTable>
                   <thead>
-                    <tr style={{ textAlign: 'left', borderBottom: '2px solid #f1f5f9' }}>
-                      <th style={{ padding: '12px', fontSize: '11px', color: '#94a3b8' }}>ITEM & GROUP</th>
-                      <th style={{ padding: '12px', fontSize: '11px', color: '#94a3b8' }}>DESTINATION</th>
-                      <th style={{ padding: '12px', fontSize: '11px', color: '#94a3b8', textAlign: 'center' }}>QUANTITY</th>
-                      <th style={{ padding: '12px', fontSize: '11px', color: '#94a3b8', textAlign: 'right' }}>AMOUNT</th>
-                      <th style={{ padding: '12px' }}></th>
+                    <tr>
+                      <th scope="col">Item &amp; group</th>
+                      <th scope="col">Destination</th>
+                      <th scope="col">Quantity</th>
+                      <th scope="col">Amount</th>
+                      <th scope="col">{isCompleted ? "" : "Split"}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {allocations.map((alloc, idx) => {
                       const details = getStockDetails(alloc.stockItemId);
-                      const isSubRow = idx > 0 && String(allocations[idx-1].stockItemId) === String(alloc.stockItemId);
-                      const currentItemAllocations = allocations.filter(a => String(a.stockItemId) === String(alloc.stockItemId));
-                      const totalAllocated = currentItemAllocations.reduce((sum, a) => sum + (Number(a.qtyBaseUnit) || 0), 0);
+                      const isSubRow = idx > 0 && sameItem(allocations[idx - 1].stockItemId, alloc.stockItemId);
+                      const totalAllocated = allocations
+                        .filter((a) => sameItem(a.stockItemId, alloc.stockItemId))
+                        .reduce((sum, a) => sum + (Number(a.qtyBaseUnit) || 0), 0);
                       const remaining = alloc.maxQty - totalAllocated;
-                      const rowAmount = (alloc.qtyBaseUnit * (alloc.unitPrice || 0));
-
+                      const rowAmount = (Number(alloc.qtyBaseUnit) || 0) * (alloc.unitPrice || 0);
                       return (
-                        <tr key={alloc.tempId} style={{ borderBottom: '1px solid #f8fafc' }}>
-                          <td style={{ padding: '16px 12px' }}>
+                        <tr key={alloc.tempId}>
+                          <td>
                             {!isSubRow ? (
                               <>
-                                <div style={{ fontWeight: '700', fontSize: '13px' }}>{details.name}</div>
-                                <div style={styles.badge}>{details.group}</div>
-                                <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '4px' }}>Rate: ₹{alloc.unitPrice} / {details.unit}</div>
-                                <div style={{ fontSize: '10px', fontWeight: 'bold', color: remaining === 0 ? '#10b981' : '#ef4444', marginTop: '2px' }}>
-                                  {remaining === 0 ? '✓ Balanced' : `Pending: ${remaining} ${details.unit}`}
-                                </div>
+                                <strong>{details.name}</strong>
+                                <div style={{ marginTop: 4 }}><Badge>{details.group}</Badge></div>
+                                <div className="page-subtitle">Rate: {fmtMoney(alloc.unitPrice)} / {details.unit}</div>
+                                {!isCompleted && (
+                                  <div style={{ marginTop: 4 }}>
+                                    <Badge variant={remaining === 0 ? "success" : "warn"}>
+                                      {remaining === 0 ? "Balanced" : `Pending ${fmtNum(remaining)} ${details.unit}`}
+                                    </Badge>
+                                  </div>
+                                )}
                               </>
-                            ) : <div style={{ fontSize: '10px', color: '#6366f1', paddingLeft: '12px' }}>↳ Split Allocation</div>}
+                            ) : <span className="page-subtitle">↳ Split allocation</span>}
                           </td>
-                          <td style={{ padding: '16px 12px' }}>
-                            {activeTab === 'completed' ? getGodownName(alloc.godownId) : (
-                              <select value={alloc.godownId} onChange={(e) => updateAllocation(alloc.tempId, "godownId", e.target.value)} style={{ padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', width: '180px', fontSize: '12px' }}>
-                                <option value="">Select Godown</option>
-                                {godowns.map(g => <option key={g._id} value={g._id}>{g.name}</option>)}
+                          <td>
+                            {isCompleted ? getGodownName(alloc.godownId) : (
+                              <select
+                                aria-label={`Destination godown for ${details.name}`}
+                                value={alloc.godownId}
+                                disabled={submitting}
+                                onChange={(e) => updateAllocation(alloc.tempId, "godownId", e.target.value)}
+                                style={{ minWidth: 160 }}
+                              >
+                                <option value="">Select godown</option>
+                                {godowns.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
                               </select>
                             )}
                           </td>
-                          <td style={{ padding: '16px 12px', textAlign: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                              {activeTab === 'completed' ? alloc.qtyBaseUnit : (
-                                <input type="number" value={alloc.qtyBaseUnit} onChange={(e) => updateAllocation(alloc.tempId, "qtyBaseUnit", e.target.value)} style={{ width: '65px', padding: '4px', border: '1px solid #e2e8f0', borderRadius: '4px', textAlign: 'center', fontSize: '12px' }} />
-                              )}
-                              <span style={{ fontSize: '11px', color: '#64748b' }}>{details.unit}</span>
-                            </div>
+                          <td>
+                            {isCompleted ? `${fmtNum(alloc.qtyBaseUnit)} ${details.unit}` : (
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <input
+                                  type="number" min="0" max={alloc.maxQty} step="any"
+                                  aria-label={`Quantity of ${details.name}`}
+                                  value={alloc.qtyBaseUnit}
+                                  disabled={submitting}
+                                  onChange={(e) => updateAllocation(alloc.tempId, "qtyBaseUnit", e.target.value)}
+                                  style={{ width: 90 }}
+                                />
+                                <span className="page-subtitle">{details.unit}</span>
+                              </div>
+                            )}
                           </td>
-                          <td style={{ padding: '16px 12px', textAlign: 'right', fontWeight: '800', color: '#1e293b', fontSize: '13px' }}>
-                            ₹{rowAmount.toLocaleString()}
-                          </td>
-                          <td style={{ padding: '16px 12px', textAlign: 'right' }}>
-                            {activeTab !== 'completed' && (
-                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                <Plus size={16} color="#6366f1" onClick={() => addAllocationRow(idx, alloc)} style={{ cursor: 'pointer' }} />
-                                {isSubRow && <Trash2 size={16} color="#ef4444" onClick={() => removeAllocationRow(alloc.tempId)} style={{ cursor: 'pointer' }} />}
+                          <td><strong>{fmtMoney(rowAmount)}</strong></td>
+                          <td>
+                            {!isCompleted && (
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <Button
+                                  variant="ghost" size="sm" disabled={submitting}
+                                  onClick={() => addAllocationRow(idx, alloc)}
+                                  aria-label={`Split ${details.name} across another godown`} title="Split to another godown"
+                                >
+                                  <Plus size={14} />
+                                </Button>
+                                {isSubRow && (
+                                  <Button
+                                    variant="danger" size="sm" disabled={submitting}
+                                    onClick={() => removeAllocationRow(alloc.tempId)}
+                                    aria-label="Remove split row" title="Remove split row"
+                                  >
+                                    <Trash2 size={14} />
+                                  </Button>
+                                )}
                               </div>
                             )}
                           </td>
@@ -394,31 +451,19 @@ export const StockDistributionPage = () => {
                       );
                     })}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
-
-              {/* Total Distribution Value Footer */}
-              <div style={{ padding: '16px 32px', borderTop: '2px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: '20px', background: '#f8fafc' }}>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '900', letterSpacing: '0.05em' }}>TOTAL DISTRIBUTION VALUE</div>
-                  <div style={{ fontSize: '22px', fontWeight: '900', color: '#6366f1' }}>
-                    ₹{allocations.reduce((sum, a) => sum + (a.qtyBaseUnit * (a.unitPrice || 0)), 0).toLocaleString()}
-                  </div>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-              <Layers size={40} style={{ marginBottom: '10px', opacity: 0.3 }} />
-              <div style={{ fontSize: '13px' }}>Select an indent or PO to distribute stock</div>
-            </div>
-          )}
-        </div>
-      </div>
+            </DetailPanel>
+          </form>
+        ) : (
+          <DetailPanel>
+            <EmptyState title={isCompleted ? "Select a completed distribution" : "Select an indent or PO to distribute stock"}>
+              {isCompleted ? "Pick a record on the left to review where the stock went." : "Pick a purchase order on the left, then assign each item to a godown."}
+            </EmptyState>
+          </DetailPanel>
+        )}
+      </SplitView>
+      {dialog}
     </div>
   );
 };
-
-
-
-

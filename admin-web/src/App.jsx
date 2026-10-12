@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
-import { NavLink, Route, Routes, Navigate } from "react-router-dom";
-import { setAuthToken } from "./api.js";
+import { useEffect, useMemo, useState } from "react";
+import { Route, Routes, Navigate } from "react-router-dom";
+import { clearSession, SESSION_EXPIRED_EVENT } from "./api.js";
 import { AuthPage } from "./pages/AuthPage.jsx";
 import { ConsumptionPage } from "./pages/ConsumptionPage.jsx";
 import { GodownsPage } from "./pages/GodownsPage.jsx";
@@ -12,21 +12,10 @@ import { ReportsPage } from "./pages/ReportsPage.jsx";
 import { RequestsPage } from "./pages/RequestsPage.jsx";
 import { StockDistributionPage } from "./pages/StockDistributionPage.jsx";
 import { TransferStockPage } from "./pages/TransferStockPage.jsx";
+import { Button } from "./components/ui/index.jsx";
 import ProductLedger from "./pages/ProductLedger.jsx";
-import logo from "./mkmLogo.png";
-
-const modules = [
-  "Inventory Info",
-  "Indent",
-  "Purchase Orders",
-  "Stock Distribution",
-  "Godowns",
-  "Transfer Stock",
-  "Requests",
-  "Consumption",
-  "Reports",
-  "Product Ledger"
-];
+import { Layout } from "./components/Layout.jsx";
+import { NAV } from "./components/navItems.js";
 
 export const App = () => {
   const [session, setSession] = useState(() => {
@@ -51,9 +40,26 @@ export const App = () => {
     []
   );
 
+  const [expired, setExpired] = useState(false);
+
+  // The API client fires this when a token can no longer be refreshed.
+  useEffect(() => {
+    const onExpired = () => {
+      setExpired(true);
+      setSession({ loggedIn: false, role: null });
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, []);
+
+  const handleLogin = ({ role }) => {
+    setExpired(false);
+    setSession({ loggedIn: true, role });
+  };
+
   const handleLogout = () => {
-    setAuthToken(null);
-    localStorage.removeItem("userRole");
+    clearSession();
+    setExpired(false);
     setSession({ loggedIn: false, role: null });
   };
 
@@ -64,7 +70,7 @@ export const App = () => {
       {/* Password Reset Route - Passing 'reset' mode as a prop */}
       <Route 
         path="/reset-password" 
-        element={<AuthPage initialMode="reset" onLogin={({ role }) => setSession({ loggedIn: true, role })} />} 
+        element={<AuthPage initialMode="reset" onLogin={handleLogin} />} 
       />
 
       {/* --- 2. PROTECTED LOGIC --- */}
@@ -72,45 +78,23 @@ export const App = () => {
         path="*"
         element={
           !session.loggedIn ? (
-            <AuthPage onLogin={({ role }) => setSession({ loggedIn: true, role })} />
+            <AuthPage onLogin={handleLogin} notice={expired ? "Your session has expired. Please sign in again." : undefined} />
           ) : session.role !== "admin" ? (
-            <div className="auth-wrap">
+            <div className="access-restricted">
               <h1>Access restricted</h1>
               <p>This web app is for admin role only. Please login with an admin account.</p>
-              <button onClick={handleLogout}>Back to Login</button>
+              <Button onClick={handleLogout}>Back to sign in</Button>
             </div>
           ) : (
-            <div className="layout">
-              <aside className="sidebar">
-                <img src={logo} alt="Montessori Kitchen Logo" className="sidebar-logo" />
-                <h2>Montessori Kitchen Management</h2>
-                {modules.map((name) => {
-                  const to = `/${name.toLowerCase().replaceAll(" ", "-")}`;
-                  return (
-                    <NavLink key={name} to={to} className="nav-item">
-                      {name}
-                    </NavLink>
-                  );
-                })}
-                <button onClick={handleLogout}>Logout</button>
-              </aside>
-              <main className="main">
-                <Routes>
-                  {modules.map((name) => {
-                    const path = `/${name.toLowerCase().replaceAll(" ", "-")}`;
-                    return (
-                      <Route
-                        key={name}
-                        path={path}
-                        element={routeMap[path] || <ModulePage title={name} />}
-                      />
-                    );
-                  })}
-                  {/* Default redirect for logged-in admins */}
-                  <Route path="*" element={<Navigate to="/inventory-info" replace />} />
-                </Routes>
-              </main>
-            </div>
+            <Layout onLogout={handleLogout}>
+              <Routes>
+                {NAV.map(({ label, path }) => (
+                  <Route key={path} path={path} element={routeMap[path] || <ModulePage title={label} />} />
+                ))}
+                {/* Default redirect for logged-in admins */}
+                <Route path="*" element={<Navigate to="/inventory-info" replace />} />
+              </Routes>
+            </Layout>
           )
         }
       />

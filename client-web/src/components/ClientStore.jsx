@@ -3,10 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { api } from "../api";
 import { toast } from 'react-hot-toast';
 import { socket } from "../socket"; 
-import InventoryCard from './InventoryCard';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import DailyUsageCard from "./DailyUsageCard";
 import { UserTransferPage } from "./UserTransferPage";
 import KitchenHome from "./kitchen/KitchenHome";
 import KitchenHeader from "./kitchen/KitchenHeader";
@@ -14,6 +12,15 @@ import KitchenBottomNav from "./kitchen/KitchenBottomNav";
 import KitchenStock from "./kitchen/KitchenStock";
 import KitchenUsageScreen from "./kitchen/KitchenUsageScreen";
 import SupplyRequestsDeliveries from "./kitchen/SupplyRequestsDeliveries";
+import KitchenActivity from "./kitchen/KitchenActivity";
+import KitchenTransfers from "./kitchen/KitchenTransfers";
+import KitchenReceiveDelivery from "./kitchen/KitchenReceiveDelivery";
+import KitchenItemBuilder from "./kitchen/KitchenItemBuilder";
+import KitchenReviewPanel from "./kitchen/KitchenReviewPanel";
+import KitchenMore from "./kitchen/KitchenMore";
+import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../utils/date";
+import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../features/kitchen/workflows";
+import { clearSession } from "../utils/session";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
   <button
@@ -35,8 +42,15 @@ const limitTo3Decimals = (value) => {
 
   return Number(num.toFixed(3));
 };
+const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "more", "activity", "transfers"]);
+const legacyUiEnabled = import.meta.env.VITE_ENABLE_LEGACY_KITCHEN_UI === "true";
+const viewFromLocation = () => {
+  const view = window.location.hash.replace(/^#\/?/, "");
+  return KITCHEN_VIEWS.has(view) ? view : "home";
+};
+
 const ClientStore = () => {
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTabState] = useState(viewFromLocation);
   const [stockFilter, setStockFilter] = useState("all");
   const [supplyInitialTab, setSupplyInitialTab] = useState("requests");
   const [userInfo, setUserInfo] = useState(null);
@@ -68,14 +82,16 @@ const [dailyItems, setDailyItems] = useState([]);
   const [isReceiveView, setIsReceiveView] = useState(false);
   const [activeReceiveIndent, setActiveReceiveIndent] = useState(null);
   const [receiveItems, setReceiveItems] = useState({});
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(toLocalDateKey());
 
   const navigate = useNavigate();
 
-  const isSameDay = (dateString, filterDate) => {
-    if (!filterDate) return true;
-    return new Date(dateString).toISOString().split('T')[0] === filterDate;
+  const setActiveTab = (nextView, options = {}) => {
+    setActiveTabState(nextView);
+    const nextUrl = `${window.location.pathname}${window.location.search}#/${nextView}`;
+    window.history[options.replace ? "replaceState" : "pushState"]({ kitchenView: nextView }, "", nextUrl);
   };
+
 const fetchGodowns = async () => {
   try {
     const res = await api.get("/inventory/godowns");
@@ -92,7 +108,7 @@ const fetchGodowns = async () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("token"); 
+    clearSession();
     socket.disconnect();
     toast.success("Logged out successfully");
     navigate("/login");
@@ -206,6 +222,36 @@ setItems(formatted);
     init();
   }, []);
 
+  const hasDraft = cart.some((item) =>
+    Number(mode === "daily" ? item.qtyBaseUnit : item.requestedQty) > 0
+  );
+
+  useEffect(() => {
+    const warnBeforeLeaving = (event) => {
+      if (!hasDraft) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [hasDraft]);
+
+  useEffect(() => {
+    const handleHistoryNavigation = () => {
+      const nextView = viewFromLocation();
+      if (nextView === activeTab) return;
+      if (hasDraft && !window.confirm("Discard your unfinished draft?")) {
+        const currentUrl = `${window.location.pathname}${window.location.search}#/${activeTab}`;
+        window.history.pushState({ kitchenView: activeTab }, "", currentUrl);
+        return;
+      }
+      if (hasDraft) setCart([]);
+      setActiveTabState(nextView);
+    };
+    window.addEventListener("popstate", handleHistoryNavigation);
+    return () => window.removeEventListener("popstate", handleHistoryNavigation);
+  }, [activeTab, hasDraft]);
+
   const filteredItems = useMemo(() => {
   const source =
     mode === "daily"
@@ -240,7 +286,7 @@ const usageHistory = useMemo(() => {
 
   return [...consumptions, ...dailyUsage]
     .filter(row =>
-      isSameDay(
+      isSameLocalDate(
         row.date || row.createdAt,
         selectedHistoryDate
       )
@@ -267,18 +313,17 @@ if (parsedQty < 0 && activeTransactionType !== "request") return;
 if (isNaN(parsedQty)) return;
     
     if (activeTransactionType === "usage") {
-        if (parsedQty < 0) return; 
-      const existingInCart = cart.find(i => i.stockRecordId === product.stockRecordId);
-      const oldQty = existingInCart ? parseFloat(existingInCart.requestedQty) || 0 : 0;
-      const diff = parsedQty - oldQty;
+      if (parsedQty < 0) return;
       const targetItem = items.find(i => i.stockRecordId === product.stockRecordId);
-      
-      if (diff > 0 && (!targetItem || targetItem.currentQty < diff)) return toast.error("Insufficient Kitchen Stock");
-      
-      setItems(prev => prev.map(item =>
-        item.stockRecordId === product.stockRecordId 
-        ? { ...item, currentQty: Math.round((item.currentQty - diff) * 100) / 100 } : item
-      ));
+
+      // Inventory is server state. Keep it immutable while a usage draft is
+      // edited and derive the projected balance in the usage screen.
+      if (!targetItem || !canRecordUsage(targetItem.currentQty, parsedQty)) {
+        return toast.error("Insufficient Kitchen Stock");
+      }
+    }
+    if (activeTransactionType === "transfer" && parsedQty > Number(product.currentQty || 0)) {
+      return toast.error("Transfer quantity exceeds available stock");
     }
     updateCartState(product, parsedQty);
   };
@@ -329,6 +374,9 @@ if (isNaN(parsedQty)) return;
   const handleSubmit = async () => {
 
   console.log("===== SUBMIT =====");
+  if (activeTransactionType === "usage" && !selectedDate) {
+    return toast.error("Select a usage date");
+  }
 // DIRECT DAILY USAGE ONLY
 if (
   mode === "daily" &&
@@ -365,18 +413,7 @@ if (
 
   console.log("editIndentId =", editIndentId);
   console.log("activeTransactionType =", activeTransactionType);
-    const validItems = cart.map(item => ({
-  stockItemId: item.stockItemId || item._id || item.stockRecordId,
-  qtyBaseUnit: limitTo3Decimals(
-    mode === "daily"
-      ? item.qtyBaseUnit
-      : item.requestedQty
-  ),
-  stockRecordId: item.stockRecordId
-})).filter(it =>
-  !isNaN(it.qtyBaseUnit) &&
-  Number(it.qtyBaseUnit) !== 0
-); // Only submit quantities > 0
+    const validItems = buildTransactionItems(cart, mode, { allowNegative: activeTransactionType === "request" });
 
     if (validItems.length === 0) return toast.error("Add valid quantities");
     if (
@@ -409,6 +446,8 @@ if (
   setTransferDestination("");
   setCart([]);
   setIsCartOpen(false);
+  setActiveTransactionType("usage");
+  setActiveTab("more");
 
   await fetchItems(false);
 
@@ -424,14 +463,14 @@ if (editIndentId !== null && editIndentId !== undefined) {
     payload
   );
 
-  toast.success("Indent Updated!");
+  toast.success("Supply request updated");
 } else {
   await api.post(
     "/indent-requests",
     payload
   );
 
-  toast.success("Indent Sent!");
+  toast.success("Supply request sent");
 }
        
       } else if (activeTransactionType === "request") {
@@ -461,9 +500,13 @@ if (editIndentId !== null && editIndentId !== undefined) {
       setCart([]);
       setRequestReason("");
       setIsCartOpen(false);
-    setEditIndentId(null);  
-    setActiveTransactionType("usage");
-    setRequestType("stock_request");
+      setEditIndentId(null);
+      if (activeTransactionType === "indent") {
+        setSupplyInitialTab("requests");
+        setActiveTab("requests");
+      }
+      setActiveTransactionType("usage");
+      setRequestType("stock_request");
       await Promise.all([fetchItems(false), fetchIndents(), fetchMyRequests(), fetchMyOrders()]);
     } catch (err) {
       toast.error(err.response?.data?.error || "Failed");
@@ -473,33 +516,7 @@ if (editIndentId !== null && editIndentId !== undefined) {
   };
 
   const submitReceive = async () => {
-   const payload = Object.entries(receiveItems)
-  .map(([stockItemId, qty]) => {
-    const item = activeReceiveIndent.items.find(
-      i => i.stockItemId._id === stockItemId
-    );
-
-    return {
-      stockItemId,
-      receivedQty: Number(limitTo3Decimals(qty)),
-      status: item?.status
-    };
-  })
-  .filter(p => {
-  const item = activeReceiveIndent.items.find(
-    i => i.stockItemId._id === p.stockItemId
-  );
-
-  const balance =
-    Number(item.qtyBaseUnit || 0) -
-    Number(item.receivedQty || 0);
-
-  return (
-    p.status === "approved" &&
-    p.receivedQty > 0 &&
-    balance > 0
-  );
-});
+   const payload = buildReceiptPayload(activeReceiveIndent, receiveItems);
     if (payload.length === 0) return toast.error("Enter items to receive");
 
     const loadingToast = toast.loading("Updating Inventory...");
@@ -509,9 +526,11 @@ if (editIndentId !== null && editIndentId !== undefined) {
       setIsReceiveView(false);
       setActiveReceiveIndent(null);
       setReceiveItems({});
+      setSupplyInitialTab("deliveries");
+      setActiveTab("requests");
       await Promise.all([fetchItems(false), fetchIndents()]);
     } catch (err) {
-      toast.error(err.response?.data?.error || "Failed to receive stock");
+      toast.error(err.response?.data?.message || err.response?.data?.error || "Failed to receive stock");
     } finally {
       toast.dismiss(loadingToast);
     }
@@ -561,23 +580,29 @@ setEditIndentId(indent._id);
     setIsCartOpen(true);
   };
 
-  const openStock = () => {
+  const openStock = (skipDraftCheck = false) => {
+    if (skipDraftCheck !== true && hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
     setActiveTab("stock");
     setActiveTransactionType("usage");
     setMode("stock");
     setCart([]);
     fetchItems(false);
+    return true;
   };
 
-  const openUsage = () => {
+  const openUsage = (skipDraftCheck = false) => {
+    if (skipDraftCheck !== true && hasDraft && activeTab !== "usage" && !window.confirm("Discard your unfinished draft?")) return false;
     setActiveTab("usage");
     setActiveTransactionType("usage");
     setMode("stock");
     setCart([]);
+    setSelectedDate(toLocalDateKey());
     fetchItems(false);
+    return true;
   };
 
   const openSupplyRequest = () => {
+    if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
     setActiveTab("request-builder");
     setActiveTransactionType("indent");
     setMode("stock");
@@ -585,29 +610,38 @@ setEditIndentId(indent._id);
     setRequestReason("");
     setEditIndentId(null);
     fetchItems(true);
+    return true;
   };
 
   const openDeliveries = () => {
+    if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
+    setCart([]);
     setSupplyInitialTab("deliveries");
     setActiveTab("requests");
+    return true;
   };
 
-  const openActivity = (tab = "usage") => {
-    setLogTab(tab);
+  const openActivity = () => {
+    if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
+    setCart([]);
     setIsReceiveView(false);
-    setIsActivityLogOpen(true);
+    setIsActivityLogOpen(false);
+    setActiveTab("activity");
+    return true;
   };
 
   const handleTabChange = (tab) => {
-    setActiveTab(tab);
-    if (tab === "home") return;
-    if (tab === "stock") return openStock();
-    if (tab === "usage") return openUsage();
+    if (tab === activeTab) return;
+    if (hasDraft && !window.confirm("Discard your unfinished draft?")) return;
+    setCart([]);
+    if (tab === "home") return setActiveTab("home");
+    if (tab === "stock") return openStock(true);
+    if (tab === "usage") return openUsage(true);
     if (tab === "requests") {
       setSupplyInitialTab("requests");
       return;
     }
-    if (tab === "more") return openActivity("usage");
+    if (tab === "more") return setActiveTab("more");
   };
 
   const deleteSupplyRequest = async (indent) => {
@@ -624,17 +658,10 @@ setEditIndentId(indent._id);
   const receiveDelivery = (indent) => {
     setActiveReceiveIndent(indent);
     setReceiveItems({});
-    setIsReceiveView(true);
-    setIsActivityLogOpen(true);
+    setActiveTab("receive-delivery");
   };
 
-  const usageItems = items.map((item) => {
-    const selected = cart.find((entry) => entry.stockRecordId === item.stockRecordId);
-    return {
-      ...item,
-      currentQty: Number(item.currentQty || 0) + Number(selected?.requestedQty || 0),
-    };
-  });
+  const usageItems = items;
 
   const attentionCount =
     requests.filter((request) => request.status === "pending").length +
@@ -643,11 +670,11 @@ setEditIndentId(indent._id);
     ).length;
 
   return (
-    <div className="min-h-screen bg-[#F8F9FA] pb-24 font-sans text-slate-900">
+    <div className="kitchen-app-shell min-h-screen bg-[#F8F9FA] pb-24 font-sans text-slate-900">
       <KitchenHeader
         kitchenName={userInfo?.godown?.name || "Kitchen"}
         attentionCount={attentionCount}
-        onNotificationsClick={() => openActivity("indents")}
+        onNotificationsClick={openDeliveries}
         onLogout={handleLogout}
       />
 
@@ -663,7 +690,7 @@ setEditIndentId(indent._id);
           onViewStock={openStock}
           onRequestSupplies={openSupplyRequest}
           onReceiveDelivery={openDeliveries}
-          onOpenActivity={() => openActivity("usage")}
+          onOpenActivity={openActivity}
         />
       ) : activeTab === "stock" ? (
         <KitchenStock
@@ -675,8 +702,7 @@ setEditIndentId(indent._id);
           onFilterChange={setStockFilter}
           onRefresh={() => fetchItems(false)}
           onRecordUsage={(item) => {
-            openUsage();
-            addToCart(item, 1);
+            if (openUsage()) addToCart(item, 1);
           }}
         />
       ) : activeTab === "usage" ? (
@@ -701,152 +727,58 @@ setEditIndentId(indent._id);
           onReceiveDelivery={receiveDelivery}
           refresh={fetchIndents}
         />
+      ) : activeTab === "activity" ? (
+        <KitchenActivity entries={usageHistory} />
+      ) : activeTab === "transfers" ? (
+        <KitchenTransfers
+          onCreate={() => {
+            setActiveTransactionType("transfer");
+            setActiveTab("request-builder");
+            setMode("stock");
+            setCart([]);
+            setTransferDestination("");
+            fetchItems(false);
+          }}
+        />
+      ) : activeTab === "receive-delivery" ? (
+        <KitchenReceiveDelivery
+          indent={activeReceiveIndent}
+          values={receiveItems}
+          onChange={(stockItemId, raw, remaining) => {
+            if (!/^\d*(\.\d{0,3})?$/.test(raw)) return;
+            if (raw !== "" && Number(raw) > remaining) {
+              toast.error(`Only ${remaining.toFixed(3)} remains to receive`);
+              return;
+            }
+            setReceiveItems((previous) => ({ ...previous, [stockItemId]: raw }));
+          }}
+          onBack={() => {
+            setActiveReceiveIndent(null);
+            setReceiveItems({});
+            openDeliveries();
+          }}
+          onSubmit={submitReceive}
+        />
       ) : activeTab === "more" ? (
-        <main className="max-w-2xl mx-auto p-4 space-y-3">
-          <h1 className="text-2xl font-bold">More</h1>
-          <p className="text-sm text-gray-500">Activity, transfers and account actions.</p>
-          <button type="button" onClick={() => openActivity("usage")} className="w-full text-left bg-white border rounded-2xl p-4 font-bold">Activity history</button>
-          <button type="button" onClick={() => openActivity("transfer")} className="w-full text-left bg-white border rounded-2xl p-4 font-bold">Kitchen transfers</button>
-          <button type="button" onClick={handleLogout} className="w-full text-left bg-red-50 text-red-700 border border-red-100 rounded-2xl p-4 font-bold">Log out</button>
-        </main>
+        <KitchenMore userInfo={userInfo} onActivity={openActivity} onTransfers={() => setActiveTab("transfers")} onLogout={handleLogout} />
       ) : (
-      <>
-
-      <div className="bg-white border-b border-gray-100 p-3 sticky top-[125px] z-30 shadow-sm">
-        <div className="max-w-7xl mx-auto">
-          {activeTransactionType !== 'usage' && (
-              <div className={`mb-3 p-3 rounded-xl flex justify-between items-center ${activeTransactionType === 'indent' ? 'bg-orange-50 border border-orange-100' : 'bg-blue-50 border border-blue-100'}`}>
-                <p className={`text-[10px] font-black uppercase ${activeTransactionType === 'indent' ? 'text-orange-700' : 'text-blue-700'}`}>
-                  🚀 Mode:
-{
-activeTransactionType === "indent"
-? "Warehouse Indent"
-: requestType === "daily_usage"
-? "Daily Usage Request"
-: "Stock Request"
-}
-                </p>
-                <button
-  onClick={() => {
-    setActiveTransactionType("usage");
-    setRequestType("stock_request");
-
-    
-    setEditIndentId(null);
-    setRequestReason("");
-    setRequestDate(new Date());
-    setCart([]);
-    setMode("stock");
-    fetchItems(false);
-   }} className="text-[10px] font-bold text-red-500 underline uppercase">Exit Mode</button>
-              </div>
-          )}
-          <div className="relative">
-            <div className="flex gap-2 mb-3">
-  <button
-  disabled={
-    activeTransactionType === "request" &&
-    requestType === "daily_usage"
-  }
-  onClick={() => {
-    if (
-      activeTransactionType === "request" &&
-      requestType === "daily_usage"
-    )
-      return;
-
-    setMode("stock");
-    setCart([]);
-  }}
-  className={`px-4 py-2 rounded-xl font-bold transition ${
-    activeTransactionType === "request" &&
-    requestType === "daily_usage"
-      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-      : mode === "stock"
-      ? "bg-green-600 text-white"
-      : "bg-white border"
-  }`}
->
-  Stock Consumption
-</button>
-
-<button
-  disabled={
-    activeTransactionType === "indent" ||
-    (
-      activeTransactionType === "request" &&
-      requestType === "stock_request"
-    )
-  }
-  onClick={() => {
-    if (
-      activeTransactionType === "indent" ||
-      (
-        activeTransactionType === "request" &&
-        requestType === "stock_request"
-      )
-    )
-      return;
-
-    setMode("daily");
-    setCart([]);
-  }}
-  className={`px-4 py-2 rounded-xl font-bold transition ${
-    activeTransactionType === "indent" ||
-    (
-      activeTransactionType === "request" &&
-      requestType === "stock_request"
-    )
-      ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-      : mode === "daily"
-      ? "bg-blue-600 text-white"
-      : "bg-white border"
-  }`}
->
-  Daily Usage
-</button>
-</div>
-            <input type="text" placeholder={`Search items...`} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-11 text-xs font-bold outline-none" />
-            {/* <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg> */}
-          </div>
-        </div>
-      </div>
-
-      <main className="max-w-7xl mx-auto p-4 md:p-8">
-        {loading ? (
-            <div className="py-20 text-center uppercase font-black text-xs text-gray-400 animate-pulse">Syncing...</div>
-        ) : filteredItems.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-8">
-            {filteredItems.map((item) =>
-  mode === "daily" ? (
-    <DailyUsageCard
-      key={item.stockItemId}
-      item={item}
-      onAdd={handleDailyUsageAdd}
-    />
-  ) : (
-    <InventoryCard
-      key={item.stockRecordId}
-      item={item}
-      isRequestMode={activeTransactionType !== "usage"}
-      cartQty={
-        cart.find(
-          c => c.stockRecordId === item.stockRecordId
-        )?.requestedQty || 0
-      }
-      onAddToCart={addToCart}
-    />
-  )
-)}
-          </div>
-        ) : (
-          <div className="py-20 text-center text-gray-400 font-black uppercase text-xs">No items found</div>
-        )}
-      </main>
-      </>
+        <KitchenItemBuilder
+          type={activeTransactionType}
+          items={filteredItems}
+          cart={cart}
+          loading={loading}
+          search={searchQuery}
+          onSearch={setSearchQuery}
+          onQuantityChange={addToCart}
+          onCancel={() => {
+            setCart([]);
+            setEditIndentId(null);
+            setActiveTab(activeTransactionType === "transfer" ? "transfers" : "requests");
+          }}
+        />
       )}
 
-      {isActivityLogOpen && (
+      {legacyUiEnabled && isActivityLogOpen && (
         <div className="fixed inset-0 z-[110] flex justify-end">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setIsActivityLogOpen(false)} />
           <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col">
@@ -878,7 +810,7 @@ activeTransactionType === "indent"
                     ))}
                 </div>
                 <div className="px-4 py-3 bg-white border-b">
-                   <DatePicker selected={selectedHistoryDate ? new Date(selectedHistoryDate) : null} onChange={(date) => setSelectedHistoryDate(date ? date.toISOString().split('T')[0] : "")} customInput={<CustomDateInput placeholder={`Filter by Date`} />} wrapperClassName="w-full" isClearable />
+                   <DatePicker selected={selectedHistoryDate ? localDateFromKey(selectedHistoryDate) : null} onChange={(date) => setSelectedHistoryDate(date ? toLocalDateKey(date) : "")} customInput={<CustomDateInput placeholder={`Filter by Date`} />} wrapperClassName="w-full" isClearable />
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/50">
                 {logTab === "transfer" && (
@@ -889,6 +821,7 @@ activeTransactionType === "indent"
   <button
     onClick={() => {
       setActiveTransactionType("transfer");
+      setActiveTab("request-builder");
       setMode("stock");
       setCart([]);
       setTransferDestination("");
@@ -1002,7 +935,7 @@ activeTransactionType === "indent"
 </div>
                           
 {requests.filter(r =>
-  isSameDay(
+  isSameLocalDate(
     r.targetDate || r.createdAt,
     selectedHistoryDate
   )
@@ -1060,7 +993,7 @@ activeTransactionType === "indent"
   setIsActivityLogOpen(false);
   fetchItems(true);
 }} className="w-full bg-orange-600 text-white py-3 rounded-xl font-black text-[11px] uppercase shadow-md mb-4">+ Create Indent</button>
-                          {indents.filter(i => isSameDay(i.createdAt, selectedHistoryDate)).map((indent) => (
+                          {indents.filter(i => isSameLocalDate(i.createdAt, selectedHistoryDate)).map((indent) => (
                              <details key={indent._id} className="group bg-white border border-gray-100 rounded-2xl mb-3 shadow-sm overflow-hidden">
                               <summary className="list-none cursor-pointer p-4 flex justify-between items-center">
                                 <div className="flex-1">
@@ -1200,9 +1133,14 @@ activeTransactionType === "indent"
 )
 .map((item) => {
     const isApproved = item.status === "approved";
+    const stockItemId = String(item.stockItemId?._id || item.stockItemId);
+    const remainingQuantity = Math.max(
+      0,
+      Number(item.qtyBaseUnit || 0) - Number(item.receivedQty || 0)
+    );
 
     return (
-                        <tr key={item.stockItemId?._id}>
+                        <tr key={stockItemId}>
   <td className="py-4 text-[10px] font-black uppercase leading-tight pr-2">
     {item.stockItemId?.name}
   </td>
@@ -1226,9 +1164,9 @@ activeTransactionType === "indent"
 <input
   type="number"
   min="0"
-  max={Math.max(0, Number(item.qtyBaseUnit || 0) - Number(item.receivedQty || 0))}
+  max={remainingQuantity}
   step="0.001"
-  value={receiveItems[item.stockItemId?._id] ?? ""}
+  value={receiveItems[stockItemId] ?? ""}
   disabled={!isApproved}
   placeholder={isApproved ? "0.000" : "Rejected"}
       className={`w-20 p-2 text-right text-xs font-black rounded-xl border ${
@@ -1246,9 +1184,14 @@ activeTransactionType === "indent"
     return;
   }
 
+  if (raw !== "" && Number(raw) > remainingQuantity) {
+    toast.error(`Only ${remainingQuantity.toFixed(3)} remains to receive`);
+    return;
+  }
+
   setReceiveItems(prev => ({
     ...prev,
-    [item.stockItemId?._id]: raw
+    [stockItemId]: raw
   }));
 }}
     />
@@ -1276,7 +1219,7 @@ activeTransactionType === "indent"
       )}
 
       {/* --- CART DRAWER --- */}
-      {isCartOpen && (
+      {legacyUiEnabled && isCartOpen && (
         <div className="fixed inset-0 z-[110] flex justify-end">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setIsCartOpen(false)} />
           <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col">
@@ -1287,6 +1230,8 @@ activeTransactionType === "request"
 ? requestType === "daily_usage"
     ? "Review Daily Usage Request"
     : "Review Stock Request"
+: activeTransactionType === "indent"
+? "Review Supply Request"
 : `Review ${activeTransactionType}`
 }
 </h2>
@@ -1446,6 +1391,8 @@ activeTransactionType === "request"
         <input
           type="date"
           value={selectedDate}
+          max={toLocalDateKey()}
+          required
           onChange={(e) =>
             setSelectedDate(e.target.value)
           }
@@ -1469,6 +1416,8 @@ activeTransactionType === "request"
 ? requestType === "daily_usage"
     ? "Submit Daily Usage Request"
     : "Submit Stock Request"
+: activeTransactionType === "indent"
+? editIndentId ? "Update Supply Request" : "Submit Supply Request"
 : `Submit ${activeTransactionType}`
 }
     </button>
@@ -1479,8 +1428,56 @@ activeTransactionType === "request"
           </div>
         </div>
       )}
+      {isCartOpen && (
+        <KitchenReviewPanel
+          type={activeTransactionType}
+          items={cart}
+          usageDate={selectedDate}
+          onUsageDateChange={setSelectedDate}
+          requestDate={toLocalDateKey(requestDate)}
+          onRequestDateChange={(value) => setRequestDate(localDateFromKey(value) || new Date())}
+          reason={requestReason}
+          onReasonChange={setRequestReason}
+          destination={transferDestination}
+          onDestinationChange={setTransferDestination}
+          destinations={godowns}
+          currentGodownId={userInfo?.godown?._id}
+          onQuantityChange={(item, quantity) => mode === "daily" ? handleDailyUsageAdd(item, quantity) : addToCart(item, quantity)}
+          onRemove={(item) => setCart((previous) => previous.filter((entry) => mode === "daily" ? entry.stockItemId !== item.stockItemId : entry.stockRecordId !== item.stockRecordId))}
+          onClose={() => setIsCartOpen(false)}
+          onSubmit={handleSubmit}
+        />
+      )}
+      {activeTab === "request-builder" && (
+        <div className="kitchen-builder-review fixed z-30 right-0 bottom-[67px] left-0 border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur-md">
+          <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
+            <div className="min-w-0">
+              <strong className="block text-sm text-gray-900">
+                {cart.filter(item => Number(mode === "daily" ? item.qtyBaseUnit : item.requestedQty) > 0).length} items selected
+              </strong>
+              <span className="block truncate text-xs text-gray-500">
+                {activeTransactionType === "transfer" ? "Review destination and quantities" : "Review quantities, date and reason"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsCartOpen(true)}
+              disabled={!cart.some(item => Number(mode === "daily" ? item.qtyBaseUnit : item.requestedQty) > 0)}
+              className="min-h-11 shrink-0 rounded-xl bg-green-700 px-5 text-sm font-bold text-white disabled:bg-gray-200 disabled:text-gray-500"
+            >
+              Review &amp; continue
+            </button>
+          </div>
+        </div>
+      )}
       <KitchenBottomNav
-        activeTab={activeTab === "request-builder" ? "requests" : activeTab}
+        activeTab={
+          activeTab === "request-builder"
+            ? activeTransactionType === "transfer" ? "more" : "requests"
+            : ["activity", "transfers"].includes(activeTab) ? "more"
+            : activeTab === "receive-delivery" ? "requests"
+            : activeTab
+        }
         onTabChange={handleTabChange}
         requestCount={attentionCount}
       />

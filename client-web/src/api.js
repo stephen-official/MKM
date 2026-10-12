@@ -1,4 +1,5 @@
 import axios from "axios";
+import { clearSession } from "./utils/session";
 
 /**
  * API Configuration
@@ -29,12 +30,27 @@ api.interceptors.request.use(
 );
 
 // Optional: Response Interceptor (Useful for handling 401/403 globally)
+let refreshRequest = null;
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-      console.error("Auth Error: Redirecting to login or clearing session...");
-      // You could handle logout logic here if the token expires
+  async (error) => {
+    const originalRequest = error.config;
+    const refreshToken = localStorage.getItem("refreshToken");
+    if (error.response?.status === 401 && refreshToken && !originalRequest?._retried && !originalRequest?.url?.includes("/auth/")) {
+      originalRequest._retried = true;
+      try {
+        refreshRequest ||= axios.post(`${BASE_URL}/auth/refresh`, { refreshToken });
+        const { data } = await refreshRequest;
+        localStorage.setItem("token", data.accessToken);
+        originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+        return api(originalRequest);
+      } catch {
+        clearSession();
+        if (window.location.pathname !== "/login") window.location.assign("/login");
+      } finally {
+        refreshRequest = null;
+      }
     }
     return Promise.reject(error);
   }

@@ -1,66 +1,84 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
+import { Search, FileSpreadsheet, Plus, Trash2, Edit3, Package, Layers, MapPin, Ruler, Upload, Loader2, Check, X } from "lucide-react";
 import { api } from "../api.js";
-import { useToast } from "../toast.jsx";
-import * as XLSX from 'xlsx';
-import { 
-  Search, FileSpreadsheet, Plus, Trash2, Edit3, 
-  Package, Layers, MapPin, Ruler, Upload, Loader2 
-} from "lucide-react";
+import { useToast } from "../useToast.js";
+import {
+  PageHeader, Button, Badge, Field, EmptyState, ErrorState, LoadingState,
+  DataTable, Tabs, DetailPanel
+} from "../components/ui/index.jsx";
+import { useConfirm } from "../components/ui/useConfirm.jsx";
 
-const tabs = [
-  { key: "stock-groups", label: "Stock Groups", icon: Layers },
-  { key: "units", label: "Units & Sub-units", icon: Ruler },
-  { key: "stock-items", label: "Stock Items", icon: Package },
-  { key: "godowns", label: "Godowns", icon: MapPin }
+const TABS = [
+  { value: "stock-groups", label: "Stock Groups", singular: "Stock Group", icon: <Layers size={14} /> },
+  { value: "units", label: "Units & Sub-units", singular: "Unit", icon: <Ruler size={14} /> },
+  { value: "stock-items", label: "Stock Items", singular: "Stock Item", icon: <Package size={14} /> },
+  { value: "godowns", label: "Godowns", singular: "Godown", icon: <MapPin size={14} /> }
 ];
+
+const ITEM_TYPES = [
+  { value: "stock", label: "Stock Item" },
+  { value: "daily_use", label: "Daily Use Item" }
+];
+
+const ROW_LIMIT = 100;
+
+const EMPTY_FORM = { name: "", symbol: "", stockGroupId: "", subName: "", factor: "", imageUrl: "", unitId: "", itemType: "stock" };
+const EMPTY_EDIT = { name: "", symbol: "", stockGroupId: "", unitId: "", itemType: "stock", file: null };
+
+const errorMessage = (error, fallback) => error?.response?.data?.message || fallback;
+const isoToday = () => new Date().toISOString().split("T")[0];
+const itemTypeLabel = (type) => (type === "daily_use" ? "Daily Use" : "Stock Item");
 
 export const InventoryPage = () => {
   const { showToast } = useToast();
+  const { confirm, dialog } = useConfirm();
+
   const [tab, setTab] = useState("stock-groups");
   const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [q, setQ] = useState("");
-  const [form, setForm] = useState({
-  name: "",
-  symbol: "",
-  stockGroupId: "",
-  subName: "",
-  factor: "",
-  imageUrl: "",
-  unitId: "",
-  defaultThreshold: "",
-  itemType: "stock"
-});
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [showAll, setShowAll] = useState(false);
+
+  const [form, setForm] = useState(EMPTY_FORM);
   const [meta, setMeta] = useState({ stockGroups: [], units: [] });
   const [editingId, setEditingId] = useState("");
-const [editForm, setEditForm] = useState({
-  name: "",
-  stockGroupId: "",
-  unitId: "",
-  imageUrl: "",
-  itemType: "stock"
-});
+  const [editForm, setEditForm] = useState(EMPTY_EDIT);
   const [uploading, setUploading] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [savingId, setSavingId] = useState("");
+  const [deletingId, setDeletingId] = useState("");
 
-  const filteredUnits = meta.units;
-  // Auto-select first unit when group changes
+  const fileInputRef = useRef(null);
+  const requestRef = useRef(0);
+
+  const currentTab = TABS.find((t) => t.value === tab);
+
   useEffect(() => {
-    if (tab === "stock-items") {
-      if (filteredUnits.length > 0) {
-        setForm(prev => ({ ...prev, unitId: filteredUnits[0]._id }));
-      } else {
-        setForm(prev => ({ ...prev, unitId: "" }));
-      }
-    }
-  }, [filteredUnits, tab]);
+    const timer = window.setTimeout(() => setDebouncedQ(q.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [q]);
 
   const load = useCallback(async () => {
+    const requestId = ++requestRef.current;
+    setLoading(true);
+    setLoadError("");
     try {
-      const res = await api.get(`/inventory/${tab}`, { params: { q } });
-      setRows(res.data || []);
+      const res = await api.get(`/inventory/${tab}`, { params: { q: debouncedQ } });
+      if (requestId !== requestRef.current) return;
+      setRows(Array.isArray(res.data) ? res.data : []);
     } catch (error) {
-      showToast("Failed to load data", "error");
+      if (requestId !== requestRef.current) return;
+      const message = errorMessage(error, "Failed to load data");
+      setRows([]);
+      setLoadError(message);
+      showToast(message, "error");
+    } finally {
+      if (requestId === requestRef.current) setLoading(false);
     }
-  }, [tab, q, showToast]);
+  }, [tab, debouncedQ, showToast]);
 
   const refreshMeta = useCallback(async () => {
     try {
@@ -68,637 +86,430 @@ const [editForm, setEditForm] = useState({
         api.get("/inventory/stock-groups"),
         api.get("/inventory/units")
       ]);
-      setMeta({ stockGroups: groupsRes.data, units: unitsRes.data });
+      const units = unitsRes.data || [];
+      setMeta({ stockGroups: groupsRes.data || [], units });
+      setForm((prev) => (prev.unitId || !units[0] ? prev : { ...prev, unitId: units[0]._id }));
     } catch (error) {
-      console.error("Meta fetch error", error);
+      showToast(errorMessage(error, "Failed to load groups and units"), "error");
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { refreshMeta(); }, [refreshMeta]);
+  useEffect(() => { setShowAll(false); }, [tab, debouncedQ]);
 
-  // --- EXPORT LOGIC ---
+  const switchTab = (next) => {
+    if (next === tab) return;
+    setTab(next);
+    setQ("");
+    setDebouncedQ("");
+    setEditingId("");
+    setEditForm(EMPTY_EDIT);
+    setForm({ ...EMPTY_FORM, unitId: meta.units[0]?._id || "" });
+  };
+
+  const duplicateName = useMemo(() => {
+    const name = form.name.trim().toLowerCase();
+    return Boolean(name) && rows.some((r) => String(r.name || "").toLowerCase() === name);
+  }, [form.name, rows]);
+
+  const visibleRows = showAll ? rows : rows.slice(0, ROW_LIMIT);
+
   const handleExport = () => {
-    if (rows.length === 0) {
-      return showToast("No data to export", "error");
-    }
+    if (rows.length === 0) return showToast("No data to export", "error");
 
-    const dataToExport = rows.map(row => {
-      const baseData = {
-        ID: row._id,
-        Name: row.name,
-      };
-
-      if (tab === "units") {
-        return { 
-          ...baseData, 
-          Symbol: row.symbol, 
-          Group: row.stockGroupId?.name || 'Unassigned' 
+    const data = rows.map((row) => {
+      const base = { ID: row._id, Name: row.name };
+      if (tab === "units") return { ...base, Symbol: row.symbol, Group: row.stockGroupId?.name || "Unassigned" };
+      if (tab === "stock-items") {
+        return {
+          ...base,
+          Unit: row.unitId?.symbol || "N/A",
+          Group: row.stockGroupId?.name || "Unassigned",
+          StockType: itemTypeLabel(row.itemType),
+          Threshold: row.defaultThreshold || 0
         };
       }
-
-      if (tab === "stock-items") {
-  return {
-    ...baseData,
-    Unit: row.unitId?.symbol || "N/A",
-    Group: row.stockGroupId?.name || "Unassigned",
-    StockType: row.itemType === "daily_use" ? "Daily Use" : "Stock Item",
-    Threshold: row.defaultThreshold || 0
-  };
-}
-
-      return baseData;
+      return base;
     });
 
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, tab);
-    XLSX.writeFile(workbook, `Inventory_${tab}_${new Date().toLocaleDateString()}.xlsx`);
+    XLSX.writeFile(workbook, `Inventory_${tab}_${isoToday()}.xlsx`);
     showToast("Excel file downloaded", "success");
   };
 
   const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
     setUploading(true);
     const formData = new FormData();
     formData.append("image", file);
     try {
       const res = await api.post("/inventory/stock-items/upload-image", formData);
-      setForm(prev => ({ ...prev, imageUrl: res.data.imageUrl }));
+      setForm((prev) => ({ ...prev, imageUrl: res.data.imageUrl }));
       showToast("Image uploaded successfully", "success");
     } catch (error) {
-      showToast("Image upload failed", "error");
+      showToast(errorMessage(error, "Image upload failed"), "error");
     } finally {
       setUploading(false);
     }
   };
 
-  const addRow = async () => {
-    try {
-      if (!form.name?.trim()) return showToast("Name is required", "error");
-      
-      const payload = tab === "stock-groups" || tab === "godowns" 
-        ? { name: form.name }
-        : tab === "units" 
-? { 
-    name: form.name, 
-    symbol: form.symbol,
-    subUnits: form.subName 
-      ? [{ name: form.subName, factorToBase: Number(form.factor || 1) }] 
-      : [] 
-  }
-        : {
-    name: form.name,
-    imageUrl: form.imageUrl,
-    stockGroupId: form.stockGroupId,
-    unitId: form.unitId,
-    defaultThreshold: 0,
-    itemType: form.itemType
-  };
+  const addRow = async (event) => {
+    event.preventDefault();
+    if (adding || uploading) return;
 
+    const name = form.name.trim();
+    if (!name) return showToast("Name is required", "error");
+    if (duplicateName) return showToast(`${currentTab.singular} "${name}" already exists`, "error");
+    if (tab === "units" && !form.symbol.trim()) return showToast("Symbol is required for a unit", "error");
+    if (tab === "units" && form.subName.trim() && !(Number(form.factor) > 0)) {
+      return showToast("Enter a sub-unit factor greater than zero", "error");
+    }
+    if (tab === "stock-items" && !form.stockGroupId) return showToast("Choose a stock group", "error");
+    if (tab === "stock-items" && !form.unitId) return showToast("Choose a unit (add one under Units first)", "error");
+
+    let payload;
+    if (tab === "units") {
+      payload = {
+        name,
+        symbol: form.symbol.trim(),
+        subUnits: form.subName.trim() ? [{ name: form.subName.trim(), factorToBase: Number(form.factor) }] : []
+      };
+    } else if (tab === "stock-items") {
+      payload = {
+        name,
+        imageUrl: form.imageUrl,
+        stockGroupId: form.stockGroupId,
+        unitId: form.unitId,
+        defaultThreshold: 0,
+        itemType: form.itemType
+      };
+    } else {
+      payload = { name };
+    }
+
+    setAdding(true);
+    try {
       await api.post(`/inventory/${tab}`, payload);
-      showToast("Added successfully", "success");
-      setForm({
-  name: "",
-  symbol: "",
-  stockGroupId: "",
-  subName: "",
-  factor: "",
-  imageUrl: "",
-  unitId: "",
-  defaultThreshold: "",
-  itemType: "stock"
-});
-      load();
-      refreshMeta();
+      showToast(`${currentTab.singular} added`, "success");
+      setForm({ ...EMPTY_FORM, unitId: meta.units[0]?._id || "" });
+      await Promise.all([load(), refreshMeta()]);
     } catch (error) {
-      showToast(error?.response?.data?.message || "Action failed", "error");
+      showToast(errorMessage(error, "Could not add"), "error");
+    } finally {
+      setAdding(false);
     }
   };
 
-  const removeRow = async (id) => {
-    if (!window.confirm("Delete this item?")) return;
+  const removeRow = async (row) => {
+    const ok = await confirm({
+      title: `Delete ${currentTab.singular.toLowerCase()}`,
+      message: `Delete "${row.name}"? Records that already reference it may stop showing correctly. This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger"
+    });
+    if (!ok) return;
+
+    setDeletingId(row._id);
     try {
-      await api.delete(`/inventory/${tab}/${id}`);
+      await api.delete(`/inventory/${tab}/${row._id}`);
       showToast("Deleted", "success");
-      load();
+      if (editingId === row._id) cancelEdit();
+      await Promise.all([load(), refreshMeta()]);
     } catch (error) {
-      showToast("Delete failed", "error");
+      showToast(errorMessage(error, "Delete failed"), "error");
+    } finally {
+      setDeletingId("");
     }
   };
+
+  const startEdit = (row) => {
+    setEditingId(row._id);
+    setEditForm({
+      name: row.name || "",
+      symbol: row.symbol || "",
+      stockGroupId: row.stockGroupId?._id || "",
+      unitId: row.unitId?._id || "",
+      itemType: row.itemType || "stock",
+      file: null
+    });
+  };
+
+  function cancelEdit() {
+    setEditingId("");
+    setEditForm(EMPTY_EDIT);
+  }
 
   const saveEdit = async (id) => {
-  try {
-    let payload;
-
-    if (tab === "stock-groups") {
-      payload = { name: editForm.name };
-
-      await api.put(`/inventory/${tab}/${id}`, payload);
+    if (savingId) return;
+    const name = editForm.name.trim();
+    if (!name) return showToast("Name is required", "error");
+    if (tab === "units" && !editForm.symbol.trim()) return showToast("Symbol is required for a unit", "error");
+    if (tab === "stock-items" && (!editForm.stockGroupId || !editForm.unitId)) {
+      return showToast("Stock group and unit are required", "error");
     }
 
-    else if (tab === "units") {
-      payload = { name: editForm.name, symbol: editForm.symbol };
-
-      await api.put(`/inventory/${tab}/${id}`, payload);
-    }
-
-    else if (tab === "stock-items") {
-      // Stock-item edits may include a new image, so this request must use multipart data.
-      const formData = new FormData();
-      formData.append("name", editForm.name);
-      formData.append("itemType", editForm.itemType);
-      formData.append("stockGroupId", editForm.stockGroupId);
-      formData.append("unitId", editForm.unitId);
-
-      if (editForm.file) {
-        formData.append("image", editForm.file);
+    setSavingId(id);
+    try {
+      if (tab === "stock-items") {
+        // Stock-item edits may include a new image, so the request is multipart.
+        const formData = new FormData();
+        formData.append("name", name);
+        formData.append("itemType", editForm.itemType);
+        formData.append("stockGroupId", editForm.stockGroupId);
+        formData.append("unitId", editForm.unitId);
+        if (editForm.file) formData.append("image", editForm.file);
+        await api.put(`/inventory/${tab}/${id}`, formData);
+      } else if (tab === "units") {
+        await api.put(`/inventory/${tab}/${id}`, { name, symbol: editForm.symbol.trim() });
+      } else {
+        await api.put(`/inventory/${tab}/${id}`, { name });
       }
+      showToast("Updated", "success");
+      cancelEdit();
+      await Promise.all([load(), refreshMeta()]);
+    } catch (error) {
+      showToast(errorMessage(error, "Update failed"), "error");
+    } finally {
+      setSavingId("");
+    }
+  };
 
-      await api.put(`/inventory/${tab}/${id}`, formData, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
-    }else if (tab === "godowns") {
-  payload = { name: editForm.name };
+  const onEditKeyDown = (event, id) => {
+    if (event.key === "Enter" && event.target.type !== "file") {
+      event.preventDefault();
+      saveEdit(id);
+    } else if (event.key === "Escape") {
+      cancelEdit();
+    }
+  };
 
-  await api.put(`/inventory/${tab}/${id}`, payload);
-}
+  const setEdit = (field) => (e) => setEditForm((prev) => ({ ...prev, [field]: e.target.value }));
+  const setAdd = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-    setEditingId("");
-    setEditForm({
-  name: "",
-  symbol: "",
-  stockGroupId: "",
-  unitId: "",
-  imageUrl: "",
-  itemType: "stock"
-});
+  const hasDetailsColumn = tab === "units" || tab === "stock-items";
 
-    load();
-    showToast("Updated", "success");
-
-  } catch (error) {
-    showToast("Update failed", "error");
-  }
-};
-const suggestions = useMemo(() => {
-  if (!form.name.trim()) return [];
-
-  return rows
-    .filter(r =>
-      r.name.toLowerCase().startsWith(form.name.toLowerCase())
-    )
-    .slice(0, 5);
-}, [form.name, rows]);
-  return (
-    <div style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif" }}>
-      
-      {/* Header Area */}
-      <div style={{ padding: '20px 32px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>
-           <span style={{ color: '#6366f1', fontWeight: '500' }}>Inventory Management</span>
-        </h1>
-        
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', color: '#94a3b8' }} />
-            <input 
-              type="text"
-              placeholder="Search items..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px 10px 36px', fontSize: '13px', fontWeight: '600', width: '200px', outline: 'none' }}
-            />
-          </div>
-          <button 
-            onClick={handleExport}
-            style={{ background: '#10b981', border: 'none', color: '#fff', padding: '0 16px', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-          >
-            <FileSpreadsheet size={16} /> Export
-          </button>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '24px', gap: '24px' }}>
-        
-        {/* Sidebar Tabs */}
-        <div style={{ width: '280px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontSize: '11px', fontWeight: '900', color: '#64748b', paddingLeft: '8px', letterSpacing: '0.5px' }}>CATEGORIES</div>
-          {tabs.map((t) => (
-            <div 
-              key={t.key}
-              onClick={() => { setTab(t.key); setQ(""); }}
-              style={{
-                padding: '14px 18px', borderRadius: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px',
-                background: tab === t.key ? '#fff' : 'transparent',
-                color: tab === t.key ? '#6366f1' : '#64748b',
-                border: tab === t.key ? '1px solid #6366f1' : '1px solid transparent',
-                boxShadow: tab === t.key ? '0 10px 15px -3px rgba(99, 102, 241, 0.1)' : 'none',
-                transition: 'all 0.2s', fontWeight: '700', fontSize: '14px'
-              }}
-            >
-              <t.icon size={18} strokeWidth={tab === t.key ? 2.5 : 2} />
-              {t.label}
-            </div>
-          ))}
-        </div>
-
-        {/* Main Content Card */}
-        <div style={{ flex: 1, background: '#fff', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-          
-          {/* Quick Add Form Header */}
-          <div style={{ padding: '24px 32px', background: '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
-              <div style={{ flex: 1, minWidth: '200px' }}>
-                <label style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', display: 'block', marginBottom: '6px' }}>NAME</label>
-                <div style={{ position: "relative" }}>
-  <input 
-    style={{ 
-      width: '100%', padding: '10px', borderRadius: '8px', 
-      border: '1px solid #e2e8f0', fontSize: '13px', fontWeight: '600' 
-    }} 
-    placeholder="Enter name..." 
-    value={form.name} 
-    onChange={(e) => setForm({...form, name: e.target.value})} 
-  />
-
-  {suggestions.length > 0 && (
-    <div style={{
-      position: "absolute",
-      top: "110%",
-      left: 0,
-      right: 0,
-      background: "#fff",
-      border: "1px solid #e2e8f0",
-      borderRadius: "8px",
-      boxShadow: "0 4px 10px rgba(0,0,0,0.05)",
-      zIndex: 10
-    }}>
-      {suggestions.map(item => (
-        <div
-          key={item._id}
-          onClick={() => setForm({ ...form, name: item.name })}
-          style={{ padding: "8px", cursor: "pointer" }}
-        >
-          {item.name}
-        </div>
-      ))}
+  const renderEditor = (row) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 200 }} onKeyDown={(e) => onEditKeyDown(e, row._id)}>
+      <input autoFocus aria-label="Name" placeholder="Name" value={editForm.name} onChange={setEdit("name")} />
+      {tab === "units" && (
+        <input aria-label="Symbol" placeholder="Symbol" value={editForm.symbol} onChange={setEdit("symbol")} />
+      )}
+      {tab === "stock-items" && (
+        <>
+          <select aria-label="Stock group" value={editForm.stockGroupId} onChange={setEdit("stockGroupId")}>
+            <option value="">Select group...</option>
+            {meta.stockGroups.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
+          </select>
+          <select aria-label="Unit" value={editForm.unitId} onChange={setEdit("unitId")}>
+            <option value="">Select unit...</option>
+            {meta.units.map((u) => <option key={u._id} value={u._id}>{u.symbol}</option>)}
+          </select>
+          <select aria-label="Item type" value={editForm.itemType} onChange={setEdit("itemType")}>
+            {ITEM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <input
+            type="file" accept="image/*" aria-label="Replace image"
+            onChange={(e) => setEditForm((prev) => ({ ...prev, file: e.target.files?.[0] || null }))}
+          />
+        </>
+      )}
     </div>
-  )}
-</div>
-                {/* <input style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', fontWeight: '600' }} placeholder="Enter name..." value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} /> */}
-              </div>
+  );
 
-              {tab === "stock-items" && (
-                <>
-                  <div style={{ width: '150px' }}>
-                    <label style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', display: 'block', marginBottom: '6px' }}>ASSIGN TO GROUP</label>
-                    <select style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', fontWeight: '600' }} value={form.stockGroupId} onChange={(e) => setForm({...form, stockGroupId: e.target.value})}>
-                      <option value="">Select Group...</option>
-                      {meta.stockGroups.map(sg => <option key={sg._id} value={sg._id}>{sg.name}</option>)}
-                    </select>
-                  </div>
-<div style={{ width: "160px" }}>
-  <label
-    style={{
-      fontSize: "10px",
-      fontWeight: "900",
-      color: "#6366f1",
-      display: "block",
-      marginBottom: "6px"
-    }}
-  >
-    ITEM TYPE
-  </label>
-
-  <select
-    value={form.itemType}
-    onChange={(e) =>
-      setForm({
-        ...form,
-        itemType: e.target.value
-      })
-    }
-    style={{
-      width: "100%",
-      padding: "10px",
-      borderRadius: "8px",
-      border: "1px solid #e2e8f0"
-    }}
-  >
-    <option value="stock">
-      Stock Item
-    </option>
-
-    <option value="daily_use">
-      Daily Use Item
-    </option>
-  </select>
-</div>
-                  <div style={{ width: '150px' }}>
-                    <label style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', display: 'block', marginBottom: '6px' }}>UNIT</label>
-      
-                    <select 
-                      style={{ 
-                        width: '100%', padding: '10px', borderRadius: '8px', 
-                        border: '1px solid #e2e8f0', fontSize: '13px', fontWeight: '600',
-                        background: !form.stockGroupId ? '#f8fafc' : '#fff'
-                      }} 
-                      value={form.unitId} 
-                      disabled={!form.stockGroupId}
-                      onChange={(e) => setForm({...form, unitId: e.target.value})}
-                    >
-                      {!form.stockGroupId ? (
-                        <option value="">Select Group First</option>
-                      ) : (
-                        filteredUnits.map(u => <option key={u._id} value={u._id}>{u.symbol}</option>)
+  let body;
+  if (loading && rows.length === 0) {
+    body = <LoadingState label="Loading…" />;
+  } else if (loadError) {
+    body = <ErrorState message={loadError} onRetry={load} />;
+  } else if (rows.length === 0) {
+    body = (
+      <EmptyState title={debouncedQ ? `No ${currentTab.label.toLowerCase()} match "${debouncedQ}"` : `No ${currentTab.label.toLowerCase()} yet`}>
+        {debouncedQ ? "Try a different search." : `Use the form above to add your first ${currentTab.singular.toLowerCase()}.`}
+      </EmptyState>
+    );
+  } else {
+    body = (
+      <>
+        <DataTable>
+          <thead>
+            <tr>
+              <th scope="col">Name</th>
+              {hasDetailsColumn && <th scope="col">Details</th>}
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((row) => {
+              const editing = editingId === row._id;
+              const busy = savingId === row._id || deletingId === row._id;
+              return (
+                <tr key={row._id}>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      {tab === "stock-items" && (
+                        <div style={{ width: 40, height: 40, flex: "none", background: "var(--bg-subtle)", borderRadius: "var(--radius)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid var(--border)" }}>
+                          {row.imageUrl
+                            ? <img src={row.imageUrl} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
+                            : <Package size={20} aria-hidden="true" color="var(--border-strong)" />}
+                        </div>
                       )}
-                    </select>
-                  </div>
-
-                  <div style={{ width: '180px' }}>
-                    <label style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', display: 'block', marginBottom: '6px' }}>IMAGE</label>
-                    <div style={{ position: 'relative' }}>
-                      <input 
-                        type="file" 
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        style={{ display: 'none' }} 
-                        id="file-upload" 
-                      />
-                      <label 
-                        htmlFor="file-upload" 
-                        style={{ 
-                          display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', 
-                          background: form.imageUrl ? '#f0fdf4' : '#fff', 
-                          border: form.imageUrl ? '1px solid #22c55e' : '1px solid #e2e8f0',
-                          borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', color: form.imageUrl ? '#16a34a' : '#64748b'
-                        }}
-                      >
-                        {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                        {form.imageUrl ? "Uploaded" : "Choose File"}
-                      </label>
+                      <div>
+                        {editing ? renderEditor(row) : (
+                          <strong>{row.name}{tab === "units" && row.symbol ? ` (${row.symbol})` : ""}</strong>
+                        )}
+                        <div className="page-subtitle">ID: {String(row._id).slice(-6).toUpperCase()}</div>
+                      </div>
                     </div>
-                  </div>
-                </>
-              )}
+                  </td>
 
-              {/* {tab === "units" && (
-                <div style={{ width: '150px' }}>
-                  <label style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', display: 'block', marginBottom: '6px' }}>ASSIGN TO GROUP</label>
-                  <select style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', fontWeight: '600' }} value={form.stockGroupId} onChange={(e) => setForm({...form, stockGroupId: e.target.value})}>
-                    <option value="">Select Group...</option>
-                    {meta.stockGroups.map(sg => <option key={sg._id} value={sg._id}>{sg.name}</option>)}
-                  </select>
-                </div>
-              )} */}
-
-              {tab === "units" && (
-                <div style={{ width: '100px' }}>
-                  <label style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', display: 'block', marginBottom: '6px' }}>SYMBOL</label>
-                  <input style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', fontWeight: '600' }} placeholder="e.g. Kg" value={form.symbol} onChange={(e) => setForm({...form, symbol: e.target.value})} />
-                </div>
-              )}
-
-              <button onClick={addRow} style={{ background: '#0f172a', color: '#fff', border: 'none', padding: '11px 24px', borderRadius: '8px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Plus size={16} /> Add {tabs.find(t => t.key === tab).label.split(' ')[0]}
-              </button>
-            </div>
-          </div>
-
-          {/* List Section */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '0 32px' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ textAlign: 'left' }}>
-                  <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>DETAILS</th>
-                  {tab !== "stock-items" && (
-                    <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>
-                      {tab === "units" ? "GROUP ASSIGNMENT" : ""}
-                    </th>
+                  {tab === "stock-items" && (
+                    <td>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <Badge variant="info">Unit: {row.unitId?.symbol || "No unit"}</Badge>
+                        <Badge>Group: {row.stockGroupId?.name || "Unassigned"}</Badge>
+                        <Badge variant="success">{itemTypeLabel(row.itemType)}</Badge>
+                      </div>
+                    </td>
                   )}
-                  <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0', textAlign: 'right' }}>ACTIONS</th>
+                  {tab === "units" && (
+                    <td>
+                      {(row.subUnits || []).length > 0
+                        ? row.subUnits.map((s, i) => <Badge key={s._id || i}>{s.name} = {s.factorToBase} {row.symbol}</Badge>)
+                        : <span className="page-subtitle">No sub-units</span>}
+                    </td>
+                  )}
+
+                  <td>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {editing ? (
+                        <>
+                          <Button variant="success" size="sm" disabled={busy} onClick={() => saveEdit(row._id)} aria-label={`Save ${row.name}`} title="Save">
+                            <Check size={14} /> {savingId === row._id ? "Saving…" : "Save"}
+                          </Button>
+                          <Button variant="ghost" size="sm" disabled={busy} onClick={cancelEdit} aria-label="Cancel editing" title="Cancel">
+                            <X size={14} />
+                          </Button>
+                        </>
+                      ) : (
+                        <Button variant="ghost" size="sm" disabled={busy} onClick={() => startEdit(row)} aria-label={`Edit ${row.name}`} title="Edit">
+                          <Edit3 size={14} />
+                        </Button>
+                      )}
+                      <Button variant="danger" size="sm" disabled={busy} onClick={() => removeRow(row)} aria-label={`Delete ${row.name}`} title="Delete">
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row._id}>
-                    <td style={{ padding: '16px 0', borderBottom: '1px solid #f8fafc' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {tab === "stock-items" && (
-                          <div style={{ width: '40px', height: '40px', background: '#f1f5f9', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                            {row.imageUrl ? <img src={row.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="item" /> : <Package size={20} color="#cbd5e1" />}
-                          </div>
-                        )}
-                        <div>
-                          {editingId === row._id ? (
-  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-
-    {/* ✅ STOCK GROUP → ONLY NAME */}
-    {tab === "stock-groups" && (
-      <input
-        autoFocus
-        value={editForm.name}
-        onChange={(e) =>
-          setEditForm(prev => ({ ...prev, name: e.target.value }))
-        }
-        style={{ padding: "6px", border: "1px solid #ccc", borderRadius: "6px" }}
-      />
-    )}
-
-    {/* ✅ UNITS → NAME + SYMBOL */}
-    {tab === "units" && (
-      <>
-        <input
-          autoFocus
-          value={editForm.name}
-          onChange={(e) =>
-            setEditForm(prev => ({ ...prev, name: e.target.value }))
-          }
-          placeholder="Unit name"
-        />
-
-        <input
-          value={editForm.symbol || ""}
-          onChange={(e) =>
-            setEditForm(prev => ({ ...prev, symbol: e.target.value }))
-          }
-          placeholder="Symbol"
-        />
-      </>
-    )}
-
-    {/* ✅ STOCK ITEMS → FULL */}
-    {tab === "stock-items" && (
-      <>
-        <input
-          autoFocus
-          value={editForm.name}
-          onChange={(e) =>
-            setEditForm(prev => ({ ...prev, name: e.target.value }))
-          }
-        />
-
-        <select
-          value={editForm.stockGroupId}
-          onChange={(e) =>
-            setEditForm(prev => ({ ...prev, stockGroupId: e.target.value }))
-          }
-        >
-          {meta.stockGroups.map(g => (
-            <option key={g._id} value={g._id}>{g.name}</option>
-          ))}
-        </select>
-
-        <select
-          value={editForm.unitId}
-          onChange={(e) =>
-            setEditForm(prev => ({ ...prev, unitId: e.target.value }))
-          }
-        >
-          {meta.units.map(u => (
-            <option key={u._id} value={u._id}>{u.symbol}</option>
-          ))}
-        </select>
-
-        <select
-  value={editForm.itemType}
-  onChange={(e) =>
-    setEditForm(prev => ({
-      ...prev,
-      itemType: e.target.value
-    }))
-  }
->
-  <option value="stock">Stock Item</option>
-  <option value="daily_use">Daily Use Item</option>
-</select>
-
-
-        <input
-          type="file"
-          onChange={(e) =>
-            setEditForm(prev => ({ ...prev, file: e.target.files[0] }))
-          }
-        />
-      </>
-    )}
-
-
-
-
-    {/* ✅ GODOWNS → ONLY NAME */}
-{tab === "godowns" && (
-  <input
-    autoFocus
-    value={editForm.name}
-    onChange={(e) =>
-      setEditForm(prev => ({ ...prev, name: e.target.value }))
-    }
-    style={{ padding: "6px", border: "1px solid #ccc", borderRadius: "6px" }}
-    placeholder="Godown name"
-  />
-)}
-
-  </div>
-) : (                    <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>
-                              {row.name} {row.symbol && <span style={{ color: '#6366f1', fontSize: '12px' }}>({row.symbol})</span>}
-                             {tab === "stock-items" && (
-  <span style={{ marginLeft: "10px", display: "inline-flex", gap: "6px", flexWrap: "wrap" }}>
-
-    {/* Unit */}
-    <span
-      style={{
-        fontSize: "10px",
-        color: "#6366f1",
-        background: "#eef2ff",
-        padding: "2px 8px",
-        borderRadius: "100px",
-        border: "1px solid #e0e7ff"
-      }}
-    >
-      Unit: {row.unitId?.symbol || "No Unit"}
-    </span>
-
-    {/* Stock Group */}
-    <span
-      style={{
-        fontSize: "10px",
-        color: "#475569",
-        background: "#f8fafc",
-        padding: "2px 8px",
-        borderRadius: "100px",
-        border: "1px solid #f1f5f9"
-      }}
-    >
-      Group: {row.stockGroupId?.name || "Unassigned"}
-    </span>
-
-    {/* Stock Type */}
-    <span
-      style={{
-        fontSize: "10px",
-        color: "#166534",
-        background: "#dcfce7",
-        padding: "2px 8px",
-        borderRadius: "100px",
-        border: "1px solid #bbf7d0"
-      }}
-    >
-      {row.itemType === "daily_use" ? "Daily Use" : "Stock Item"}
-    </span>
-
-  </span>
-)}
-                            </div>
-                          )}
-                          <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>ID: {row._id.slice(-6).toUpperCase()}</div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {tab !== "stock-items" && (
-                      <td style={{ padding: '16px 0', borderBottom: '1px solid #f8fafc' }}>
-                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>
-                          
-                          {tab === "units" && <span>-</span>}
-                          {/* {tab === "units" && <span>{row.stockGroupId?.name || 'Unassigned'}</span>} */}
-                        </div>
-                      </td>
-                    )}
-
-                    <td style={{ padding: '16px 0', textAlign: 'right', borderBottom: '1px solid #f8fafc' }}>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                        {editingId === row._id ? (
-                          <button onClick={() => saveEdit(row._id)} style={{ color: '#10b981', background: 'none', border: 'none', cursor: 'pointer', fontWeight: '800' }}>SAVE</button>
-                        ) : (
-                          <button onClick={() => {
-  setEditingId(row._id);
-
-  setEditForm({
-  name: row.name || "",
-  symbol: row.symbol || "",
-  stockGroupId: row.stockGroupId?._id || "",
-  unitId: row.unitId?._id || "",
-  imageUrl: row.imageUrl || "",
-  itemType: row.itemType || "stock"
-});
-}} style={{ padding: '8px', color: '#6366f1', background: '#f5f3ff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}><Edit3 size={14} /></button>
-                        )}
-                        <button onClick={() => removeRow(row._id)} style={{ padding: '8px', color: '#ef4444', background: '#fef2f2', border: 'none', borderRadius: '8px', cursor: 'pointer' }}><Trash2 size={14} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              );
+            })}
+          </tbody>
+        </DataTable>
+        {!showAll && rows.length > ROW_LIMIT && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: 12 }}>
+            <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>Show all {rows.length}</Button>
           </div>
-        </div>
+        )}
+      </>
+    );
+  }
+
+  const addForm = (
+    <form onSubmit={addRow} style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-end", flex: 1 }}>
+      <Field label="Name">
+        <input
+          placeholder="Enter name..." value={form.name} onChange={setAdd("name")}
+          aria-invalid={duplicateName || undefined} style={{ minWidth: 200 }}
+        />
+        {duplicateName && <span className="page-subtitle" role="status">Already exists</span>}
+      </Field>
+
+      {tab === "stock-items" && (
+        <>
+          <Field label="Stock group">
+            <select value={form.stockGroupId} onChange={setAdd("stockGroupId")}>
+              <option value="">Select group...</option>
+              {meta.stockGroups.map((sg) => <option key={sg._id} value={sg._id}>{sg.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Item type">
+            <select value={form.itemType} onChange={setAdd("itemType")}>
+              {ITEM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Unit">
+            <select value={form.unitId} onChange={setAdd("unitId")}>
+              {meta.units.length === 0 && <option value="">No units yet</option>}
+              {meta.units.map((u) => <option key={u._id} value={u._id}>{u.symbol}</option>)}
+            </select>
+          </Field>
+          <div className="field">
+            <span className="field__label">Image</span>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} style={{ display: "none" }} aria-label="Item image" />
+            <Button variant={form.imageUrl ? "success" : "ghost"} disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {uploading ? "Uploading…" : form.imageUrl ? "Uploaded" : "Choose file"}
+            </Button>
+          </div>
+        </>
+      )}
+
+      {tab === "units" && (
+        <>
+          <Field label="Symbol">
+            <input placeholder="e.g. Kg" value={form.symbol} onChange={setAdd("symbol")} style={{ width: 100 }} />
+          </Field>
+          <Field label="Sub-unit (optional)">
+            <input placeholder="e.g. Gram" value={form.subName} onChange={setAdd("subName")} style={{ width: 130 }} />
+          </Field>
+          <Field label="Factor to base">
+            <input
+              type="number" min="0" step="any" placeholder="e.g. 0.001"
+              value={form.factor} onChange={setAdd("factor")} disabled={!form.subName.trim()} style={{ width: 110 }}
+            />
+          </Field>
+        </>
+      )}
+
+      <Button type="submit" variant="dark" disabled={adding || uploading}>
+        <Plus size={16} /> {adding ? "Adding…" : `Add ${currentTab.singular}`}
+      </Button>
+    </form>
+  );
+
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <PageHeader
+        title="Inventory Info"
+        actions={
+          <>
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <Search size={14} aria-hidden="true" style={{ position: "absolute", left: 10, color: "var(--muted-soft)" }} />
+              <input
+                type="search" aria-label={`Search ${currentTab.label.toLowerCase()}`} placeholder="Search..."
+                value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 30, width: 180 }}
+              />
+            </div>
+            <Button variant="success" size="sm" onClick={handleExport} disabled={loading || rows.length === 0}>
+              <FileSpreadsheet size={14} /> Export
+            </Button>
+          </>
+        }
+      >
+        <Tabs label="Inventory categories" items={TABS} value={tab} onChange={switchTab} />
+      </PageHeader>
+
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "20px 32px 28px" }}>
+        <DetailPanel head={addForm}>
+          <div style={{ paddingTop: 16 }}>{body}</div>
+        </DetailPanel>
       </div>
+      {dialog}
     </div>
   );
 };
-
-
-

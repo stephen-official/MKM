@@ -1,3 +1,5 @@
+import { toLocalDateKey } from "../../utils/date.js";
+
 const number = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -32,7 +34,7 @@ export const deriveDashboardMetrics = ({
   today = new Date(),
 } = {}) => {
   const stockHealth = stock.map(getStockHealth);
-  const dateKey = new Date(today).toISOString().slice(0, 10);
+  const dateKey = toLocalDateKey(today);
   const usageRecordedToday = usageEntries.some((entry) => {
     const value = entry.date || entry.createdAt;
     return value && String(value).slice(0, 10) === dateKey;
@@ -54,3 +56,4 @@ export const deriveDashboardMetrics = ({
       deliveries.filter(({ status }) => ["dispatched", "partially_received"].includes(status?.key)).length,
   };
 };
+

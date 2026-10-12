@@ -1,182 +1,185 @@
-import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom"; 
-import { api, setAuthToken } from "../api.js";
-import { useToast } from "../toast.jsx";
+import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import logo from "../mkmLogo.png";
+import { api, setSession } from "../api.js";
+import { Banner, Button, Tabs } from "../components/ui/index.jsx";
+import { useToast } from "../useToast.js";
 
-export const AuthPage = ({ onLogin, initialMode = "login" }) => {
+const MIN_PASSWORD_LENGTH = 8;
+
+const errorMessage = (error, fallback) => error?.response?.data?.message || fallback;
+
+/* Admin accounts are provisioned by the organisation (the API refuses admin
+   self-registration), so this portal offers sign-in and password recovery only. */
+export const AuthPage = ({ onLogin, initialMode = "login", notice }) => {
   const { showToast } = useToast();
   const [searchParams] = useSearchParams();
-  
-  const [mode, setMode] = useState(initialMode);
-  const [godowns, setGodowns] = useState([]);
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "admin", godownId: "" });
-  const [forgotEmail, setForgotEmail] = useState("");
-  
-  // Captures token from URL automatically if user clicked the email link
-  const [forgotToken, setForgotToken] = useState(searchParams.get("token") || "");
+  const resetToken = searchParams.get("token") || "";
+
+  const [mode, setMode] = useState(resetToken ? "reset" : initialMode === "reset" ? "reset" : "login");
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState(notice ? { variant: "warn", text: notice } : null);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [token, setToken] = useState(resetToken);
   const [newPassword, setNewPassword] = useState("");
-  const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    if (mode === "register") {
-      api.get("/auth/register-godowns")
-        .then((res) => setGodowns(res.data))
-        .catch(() => setGodowns([]));
-    }
-    
-    // If a token is in the URL, prioritize the 'forgot' (reset) view
-    if (searchParams.get("token")) {
-      setMode("forgot");
-    }
-  }, [mode, searchParams]);
+  const switchMode = (next) => {
+    setMode(next);
+    setStatus(null);
+  };
 
-  const onChange = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
-
-  const login = async () => {
+  const run = async (action, failure) => {
+    setBusy(true);
+    setStatus(null);
     try {
-      if (!form.email || !form.password) return showToast("Email and password are required", "error");
-      const res = await api.post("/auth/login", { email: form.email, password: form.password });
-      setAuthToken(res.data.accessToken);
-      localStorage.setItem("userRole", res.data.role);
-      showToast("Login successful", "success");
-      onLogin({ role: res.data.role, godownId: res.data.godownId });
+      await action();
     } catch (error) {
-      const errMsg = error?.response?.data?.message || "Login failed";
-      setMessage(errMsg);
-      showToast(errMsg, "error");
+      const text = errorMessage(error, failure);
+      setStatus({ variant: "alert", text });
+      showToast(text, "error");
+    } finally {
+      setBusy(false);
     }
   };
 
-  const register = async () => {
-    try {
-      if (!form.name || !form.email || !form.password) return showToast("Name, email and password are required", "error");
-      if (form.role === "user" && !form.godownId) return showToast("Please select godown for user role", "error");
-      await api.post("/auth/register", form);
-      setMessage("Registration successful. Please login.");
-      showToast("Registration successful", "success");
+  const submitLogin = (event) => {
+    event.preventDefault();
+    run(async () => {
+      const { data } = await api.post("/auth/login", { email: email.trim(), password });
+      // A kitchen account is valid, just not for this console: never keep its token.
+      if (data.role !== "admin") {
+        setStatus({ variant: "alert", text: "This console is for administrators. Kitchen accounts sign in on the kitchen app." });
+        return;
+      }
+      setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken, role: data.role });
+      onLogin({ role: data.role });
+    }, "Sign-in failed. Check your email and password.");
+  };
+
+  const submitForgot = (event) => {
+    event.preventDefault();
+    run(async () => {
+      const { data } = await api.post("/auth/forgot-password", { email: email.trim() });
+      setStatus({ variant: "success", text: data.message || "If that email is registered, a reset link is on its way." });
+    }, "Could not send the reset email. Try again shortly.");
+  };
+
+  const submitReset = (event) => {
+    event.preventDefault();
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setStatus({ variant: "alert", text: `Password must be at least ${MIN_PASSWORD_LENGTH} characters.` });
+      return;
+    }
+    run(async () => {
+      await api.post("/auth/reset-password", { token: token.trim(), newPassword });
+      setNewPassword("");
+      setToken("");
       setMode("login");
-    } catch (error) {
-      const errMsg = error?.response?.data?.message || "Registration failed";
-      setMessage(errMsg);
-      showToast(errMsg, "error");
-    }
+      setStatus({ variant: "success", text: "Password updated. You can sign in now." });
+      showToast("Password updated", "success");
+    }, "Reset failed or the link has expired. Request a new one.");
   };
 
-  // --- FIXED FORGOT PASSWORD LOGIC ---
-  const forgot = async () => {
-    if (!forgotEmail) return showToast("Please enter your email", "error");
-    try {
-      const res = await api.post("/auth/forgot-password", { email: forgotEmail });
-      // SUCCESS: The backend sends a generic confirmation message
-      setMessage(res.data.message); 
-      showToast("Check your inbox", "success");
-    } catch (error) {
-      console.error("Forgot Password Error:", error);
-      const errMsg = error?.response?.data?.message || "Failed to send reset email";
-      setMessage(errMsg);
-      showToast(errMsg, "error");
-    }
-  };
+  const passwordField = (id, label, value, onChange, autoComplete) => (
+    <div className="field">
+      <label className="field__label" htmlFor={id}>{label}</label>
+      <div className="password-field">
+        <input
+          id={id}
+          type={showPassword ? "text" : "password"}
+          autoComplete={autoComplete}
+          required
+          minLength={id === "new-password" ? MIN_PASSWORD_LENGTH : undefined}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <button
+          type="button"
+          className="password-field__toggle"
+          aria-label={showPassword ? "Hide password" : "Show password"}
+          aria-pressed={showPassword}
+          onClick={() => setShowPassword((v) => !v)}
+        >
+          {showPassword ? "Hide" : "Show"}
+        </button>
+      </div>
+    </div>
+  );
 
-  const resetPassword = async () => {
-    if (!forgotToken || !newPassword) return showToast("Token and new password are required", "error");
-    try {
-      await api.post("/auth/reset-password", { token: forgotToken, newPassword });
-      setMessage("Password reset successful. You can now login.");
-      showToast("Password reset successful", "success");
-      setMode("login");
-    } catch (error) {
-      const errMsg = error?.response?.data?.message || "Reset failed or token expired";
-      setMessage(errMsg);
-      showToast(errMsg, "error");
-    }
-  };
+  const emailField = (
+    <div className="field">
+      <label className="field__label" htmlFor="email">Email address</label>
+      <input
+        id="email"
+        type="email"
+        autoComplete="username"
+        required
+        autoFocus
+        placeholder="you@example.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+      />
+    </div>
+  );
 
   return (
-    <div className="auth-wrap">
-      <h1>MKM Inventory</h1>
-      <div className="auth-tabs">
-        <button onClick={() => setMode("login")} className={mode === "login" ? "tab-active" : ""}>Login</button>
-        <button onClick={() => setMode("register")} className={mode === "register" ? "tab-active" : ""}>Register</button>
-        <button onClick={() => setMode("forgot")} className={mode === "forgot" ? "tab-active" : ""}>Forgot Password</button>
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-header">
+          <img src={logo} alt="Montessori Kitchen" className="auth-logo" />
+          <h1 className="auth-title">Admin Portal</h1>
+          <p className="auth-subtitle">Montessori Kitchen Management</p>
+        </div>
+
+        {mode !== "reset" && (
+          <Tabs
+            className="auth-tabs"
+            label="Account"
+            value={mode}
+            onChange={switchMode}
+            items={[
+              { value: "login", label: "Sign in" },
+              { value: "forgot", label: "Forgot password" }
+            ]}
+          />
+        )}
+
+        {status && <Banner variant={status.variant}>{status.text}</Banner>}
+
+        {mode === "login" && (
+          <form className="auth-form" onSubmit={submitLogin}>
+            {emailField}
+            {passwordField("password", "Password", password, setPassword, "current-password")}
+            <Button type="submit" block disabled={busy}>{busy ? "Signing in…" : "Sign in"}</Button>
+          </form>
+        )}
+
+        {mode === "forgot" && (
+          <form className="auth-form" onSubmit={submitForgot}>
+            <p className="auth-help">Enter your account email and we will send you a link to choose a new password.</p>
+            {emailField}
+            <Button type="submit" block disabled={busy}>{busy ? "Sending…" : "Send reset link"}</Button>
+          </form>
+        )}
+
+        {mode === "reset" && (
+          <form className="auth-form" onSubmit={submitReset}>
+            <p className="auth-help">Choose a new password for your account.</p>
+            {!resetToken && (
+              <div className="field">
+                <label className="field__label" htmlFor="reset-token">Reset code</label>
+                <input id="reset-token" required value={token} onChange={(e) => setToken(e.target.value)} />
+              </div>
+            )}
+            {passwordField("new-password", "New password", newPassword, setNewPassword, "new-password")}
+            <Button type="submit" block disabled={busy}>{busy ? "Updating…" : "Update password"}</Button>
+            <Button variant="ghost" block onClick={() => switchMode("login")}>Back to sign in</Button>
+          </form>
+        )}
       </div>
-
-      {mode !== "forgot" && (
-        <div className="auth-form">
-          {mode === "register" && (
-            <input 
-              placeholder="Full Name" 
-              value={form.name} 
-              onChange={(e) => onChange("name", e.target.value)} 
-            />
-          )}
-          <input 
-            placeholder="Email Address" 
-            value={form.email} 
-            onChange={(e) => onChange("email", e.target.value)} 
-          />
-          <input 
-            placeholder="Password" 
-            type="password" 
-            value={form.password} 
-            onChange={(e) => onChange("password", e.target.value)} 
-          />
-          
-          {mode === "register" && (
-            <>
-              <select value={form.role} onChange={(e) => onChange("role", e.target.value)}>
-                <option value="admin">Admin</option>
-                <option value="user">User</option>
-              </select>
-              {form.role === "user" && (
-                <select value={form.godownId} onChange={(e) => onChange("godownId", e.target.value)}>
-                  <option value="">Select Associated Godown</option>
-                  {godowns.map((g) => (
-                    <option key={g._id} value={g._id}>{g.name}</option>
-                  ))}
-                </select>
-              )}
-            </>
-          )}
-          <button className="btn-primary" onClick={mode === "login" ? login : register}>
-            {mode === "login" ? "Login" : "Register"}
-          </button>
-        </div>
-      )}
-
-      {mode === "forgot" && (
-        <div className="auth-form">
-          <div className="forgot-section">
-            <p>Enter your email to receive a reset link.</p>
-            <input 
-              placeholder="Registered Email" 
-              value={forgotEmail} 
-              onChange={(e) => setForgotEmail(e.target.value)} 
-            />
-            <button className="btn-secondary" onClick={forgot}>Send Reset Link</button>
-          </div>
-
-          <hr className="auth-divider" />
-
-          <div className="reset-section">
-            <p>Or enter the token from your email manually.</p>
-            <input 
-              placeholder="Reset Token" 
-              value={forgotToken} 
-              onChange={(e) => setForgotToken(e.target.value)} 
-            />
-            <input 
-              placeholder="New Password" 
-              type="password" 
-              value={newPassword} 
-              onChange={(e) => setNewPassword(e.target.value)} 
-            />
-            <button className="btn-primary" onClick={resetPassword}>Update Password</button>
-          </div>
-        </div>
-      )}
-      
-      {message && <p className="auth-status-message">{message}</p>}
     </div>
   );
 };

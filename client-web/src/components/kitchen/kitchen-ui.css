@@ -1,12 +1,12 @@
 :root {
-  --kitchen-brand: #176b4d;
-  --kitchen-brand-strong: #0f513a;
-  --kitchen-brand-soft: #e8f5ef;
-  --kitchen-ink: #17211d;
-  --kitchen-muted: #60706a;
-  --kitchen-border: #dce5e1;
-  --kitchen-surface: #ffffff;
-  --kitchen-danger: #c4362b;
+  --kitchen-brand: var(--color-brand);
+  --kitchen-brand-strong: var(--color-brand-strong);
+  --kitchen-brand-soft: var(--color-brand-soft);
+  --kitchen-ink: var(--color-ink);
+  --kitchen-muted: var(--color-muted);
+  --kitchen-border: var(--color-border);
+  --kitchen-surface: var(--color-surface);
+  --kitchen-danger: var(--color-danger);
 }
 
 .kitchen-header,
@@ -31,7 +31,7 @@
   gap: 12px;
   width: 100%;
   min-height: 76px;
-  padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+  padding: max(12px, env(safe-area-inset-top)) var(--page-gutter) 12px;
   background: var(--kitchen-surface);
   border-bottom: 1px solid var(--kitchen-border);
 }
@@ -283,6 +283,21 @@
   .kitchen-header__actions {
     gap: 0;
   }
+}
+
+@media (min-width: 1024px) {
+  .kitchen-app-shell { min-height: 100vh; padding-bottom: 0 !important; padding-left: 232px; }
+  .kitchen-header { position: sticky; top: 0; width: calc(100% + 232px); margin-left: -232px; padding: 14px 28px; box-shadow: 0 1px 12px rgba(16,33,28,.04); }
+  .kitchen-bottom-nav { top: 77px; right: auto; bottom: 0; left: 0; width: 232px; padding: 22px 14px; border-top: 0; border-right: 1px solid var(--kitchen-border); border-left: 0; border-radius: 0; box-shadow: 8px 0 28px rgba(20,49,38,.05); transform: none; }
+  .kitchen-bottom-nav__items { display: flex; width: 100%; flex-direction: column; gap: 7px; }
+  .kitchen-bottom-nav__item { min-height: 52px; padding: 8px 12px; justify-content: flex-start; flex-direction: row; gap: 12px; border-radius: 13px; }
+  .kitchen-bottom-nav__item--active { background: var(--kitchen-brand-soft); }
+  .kitchen-bottom-nav__icon-wrap { flex: 0 0 36px; }
+  .kitchen-bottom-nav__item--active .kitchen-bottom-nav__icon-wrap { background: transparent; }
+  .kitchen-bottom-nav__label { font-size: 14px; }
+  .kitchen-builder-review, .kus-review, .kss-submit { left: 232px; bottom: 0; }
+  .kitchen-more { max-width: 900px !important; padding: 32px !important; }
+  .kitchen-builder-review > div { width: min(100%, 1208px); max-width: 1208px !important; }
 }
 
 @media (prefers-reduced-motion: no-preference) {

@@ -1,0 +1,117 @@
+/* Design tokens for the Montessori Kitchen apps.
+   "Pine & Saffron": deep pine chrome, a teal primary, mint highlights and a
+   saffron accent over cool, green-tinted neutrals. Two layers on purpose: the
+   raw palette first, then semantic tokens that components reference, so a
+   re-theme means editing the aliases rather than hunting hex codes. */
+
+:root {
+  /* ---- palette ------------------------------------------------------- */
+  --white: #ffffff;
+
+  --sage-50: #f3f6f4;
+  --sage-100: #eaf0ed;
+  --sage-200: #dde5e0;
+  --sage-300: #c5d1ca;
+  --sage-400: #8fa198;
+  --sage-500: #5d7068;
+  --sage-600: #3f544c;
+  --sage-700: #2b3d36;
+  --sage-800: #16302a;
+  --sage-900: #10211c;
+
+  --teal-50: #e3f4f1;
+  --teal-100: #d0ece7;
+  --teal-400: #14a093;
+  --teal-600: #0f766e;
+  --teal-700: #0b5f58;
+
+  --pine-900: #0c2622;
+  --pine-800: #12332e;
+  --pine-700: #1a423b;
+  --mint-300: #7fe3d0;
+
+  --saffron-100: #fdf1d6;
+  --saffron-500: #d99a1e;
+  --saffron-700: #94620a;
+
+  --green-50: #eef7f0;
+  --green-100: #d9eede;
+  --green-200: #b7dec2;
+  --green-600: #2f8f4e;
+  --green-700: #26763f;
+  --green-800: #1d5c31;
+
+  --red-50: #fdf1ef;
+  --red-100: #fbe4e1;
+  --red-500: #d14343;
+  --red-600: #c0392b;
+  --red-700: #9e2c20;
+
+  --sky-50: #e4f2f7;
+  --sky-600: #2a7f9e;
+
+  /* ---- semantic ------------------------------------------------------ */
+  --bg: var(--sage-50);
+  --bg-subtle: var(--sage-100);
+  --surface: var(--white);
+  --border: var(--sage-200);
+  --border-strong: var(--sage-300);
+
+  --ink: var(--sage-900);
+  --ink-strong: var(--sage-800);
+  --ink-soft: var(--sage-700);
+  --ink-dim: var(--sage-600);
+  --muted: var(--sage-500);
+  --muted-soft: var(--sage-400);
+  --on-dark: var(--white);
+
+  --primary: var(--teal-600);
+  --primary-hover: var(--teal-700);
+  --primary-light: var(--teal-400);
+  --primary-bg: var(--teal-50);
+
+  --success: var(--green-600);
+  --success-strong: var(--green-700);
+  --success-deep: var(--green-800);
+  --success-bg: var(--green-50);
+  --success-bg-strong: var(--green-100);
+  --success-border: var(--green-200);
+
+  --danger: var(--red-600);
+  --danger-light: var(--red-500);
+  --danger-strong: var(--red-700);
+  --danger-bg: var(--red-50);
+  --danger-bg-strong: var(--red-100);
+
+  --warn: var(--saffron-500);
+  --warn-ink: var(--saffron-700);
+  --warn-bg: var(--saffron-100);
+
+  --info: var(--sky-600);
+  --info-bg: var(--sky-50);
+
+  /* The rail: pine board, pale-mint type. */
+  --chrome: var(--pine-900);
+  --chrome-raised: var(--pine-800);
+  --chrome-hover: var(--pine-700);
+  --chrome-ink: #e8f3ef;
+  --chrome-muted: #a5bdb5;
+  --chrome-faint: #7d968d;
+  --chrome-line: rgba(232, 243, 239, 0.09);
+  --chrome-accent: var(--mint-300);
+
+  /* ---- shape --------------------------------------------------------- */
+  --radius-sm: 8px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --shadow-card: 0 1px 2px rgba(16, 33, 28, 0.05);
+  --shadow-raised: 0 10px 28px -14px rgba(16, 33, 28, 0.34);
+
+  --font-sans: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
+
+  --rail-collapsed-width: 72px;
+  --topbar-height: 68px;
+}

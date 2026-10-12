@@ -1,574 +1,447 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import XLSX from "xlsx-js-style";
-import { ArrowRightLeft, Search, FileSpreadsheet, Tag } from "lucide-react";
-import { toast } from "react-hot-toast";
+import { ArrowRightLeft, Search, FileSpreadsheet, X } from "lucide-react";
+import { useToast } from "../useToast.js";
+import {
+  PageHeader, Card, Button, Badge, EmptyState, Field, SplitView, RailList, RailItem, DetailPanel,
+  Meta, StatusBadge, ErrorState, DateField } from "../components/ui/index.jsx";
+import { useConfirm } from "../components/ui/useConfirm.jsx";
+
+const MAX_RAIL_ROWS = 200;
+const EMPTY_FORM = { fromGodownId: "", toGodownId: "", stockGroupId: "", stockItemId: "", qtyBaseUnit: "" };
+
+const errorMessage = (error, fallback) => error?.response?.data?.message || error?.response?.data?.error || fallback;
+const idOf = (ref) => ref?._id || ref;
+const fmtDate = (value) => (value ? new Date(value).toLocaleDateString("en-GB") : "—");
+const fmtDateTime = (value) =>
+  value
+    ? new Date(value).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
+    : "—";
+// Local calendar day as yyyy-mm-dd, so it compares correctly with <input type="date"> values.
+const dayKey = (value) => new Date(value).toLocaleDateString("en-CA");
+const transferRef = (t) => `TRN-${t._id.slice(-6).toUpperCase()}`;
 
 export const TransferStockPage = () => {
+  const { showToast } = useToast();
+  const { confirm, dialog } = useConfirm();
   const [godowns, setGodowns] = useState([]);
   const [stockGroups, setStockGroups] = useState([]);
   const [stockItems, setStockItems] = useState([]);
   const [transfers, setTransfers] = useState([]);
-  const [selectedTransfer, setSelectedTransfer] = useState(null);
+  const [transfersLoading, setTransfersLoading] = useState(true);
+  const [transfersError, setTransfersError] = useState("");
+  const [stockLoading, setStockLoading] = useState(false);
+  const [selectedId, setSelectedId] = useState(null);
   const [itemSearch, setItemSearch] = useState("");
-  const [showItemDropdown, setShowItemDropdown] = useState(false);
   const [fromDate, setFromDate] = useState("");
-const [toDate, setToDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+  const transfersRequest = useRef(0);
+  const stockRequest = useRef(0);
 
-  const [form, setForm] = useState({
-    fromGodownId: "",
-    toGodownId: "",
-    stockGroupId: "",
-    stockItemId: "",
-    qtyBaseUnit: ""
-  });
-
-  const loadInitialData = useCallback(async () => {
+  const loadTransfers = useCallback(async () => {
+    const current = ++transfersRequest.current;
+    setTransfersLoading(true);
+    setTransfersError("");
     try {
-      const [gRes, tRes, grpRes] = await Promise.all([
-        api.get("/inventory/godowns"),
-        api.get("/transfers"),
-        api.get("/inventory/stock-groups")
-      ]);
+      const res = await api.get("/transfers");
+      if (current !== transfersRequest.current) return;
+      setTransfers(
+        [...(res.data || [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      );
+    } catch (error) {
+      if (current !== transfersRequest.current) return;
+      const message = errorMessage(error, "Failed to load transfers");
+      setTransfersError(message);
+      showToast(message, "error");
+    } finally {
+      if (current === transfersRequest.current) setTransfersLoading(false);
+    }
+  }, [showToast]);
+
+  const loadReferenceData = useCallback(async () => {
+    try {
+      const [gRes, grpRes] = await Promise.all([api.get("/inventory/godowns"), api.get("/inventory/stock-groups")]);
       setGodowns(gRes.data || []);
       setStockGroups(grpRes.data || []);
-
-      const sorted = (tRes.data || []).sort((a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-      setTransfers(sorted);
-      if (sorted.length > 0 && !selectedTransfer) setSelectedTransfer(sorted[0]);
     } catch (error) {
-      toast.error("Failed to fetch initial data");
+      showToast(errorMessage(error, "Failed to load godowns and stock groups"), "error");
     }
-  }, [selectedTransfer]);
+  }, [showToast]);
 
-  const loadGodownStock = useCallback(async () => {
-    if (!form.fromGodownId) {
+  const loadGodownStock = useCallback(async (godownId) => {
+    const current = ++stockRequest.current;
+    if (!godownId) {
       setStockItems([]);
+      setStockLoading(false);
       return;
     }
+    setStockLoading(true);
     try {
       const res = await api.get("/godown-stocks");
-      const currentGodownStock = res.data.filter(s =>
-        (s.godownId?._id || s.godownId) === form.fromGodownId
-      );
-      setStockItems(currentGodownStock);
+      if (current !== stockRequest.current) return;
+      setStockItems((res.data || []).filter((s) => idOf(s.godownId) === godownId));
     } catch (error) {
-      toast.error("Failed to fetch godown stock levels");
+      if (current !== stockRequest.current) return;
+      setStockItems([]);
+      showToast(errorMessage(error, "Failed to fetch godown stock levels"), "error");
+    } finally {
+      if (current === stockRequest.current) setStockLoading(false);
     }
-  }, [form.fromGodownId]);
+  }, [showToast]);
 
-  useEffect(() => { loadInitialData(); }, [loadInitialData]);
-  useEffect(() => { loadGodownStock(); }, [loadGodownStock]);
+  useEffect(() => { loadTransfers(); loadReferenceData(); }, [loadTransfers, loadReferenceData]);
+  useEffect(() => { loadGodownStock(form.fromGodownId); }, [loadGodownStock, form.fromGodownId]);
 
-  const currentSelectedItem = useMemo(() => {
-    return stockItems.find(item => (item.stockItemId?._id || item.stockItemId) === form.stockItemId);
-  }, [stockItems, form.stockItemId]);
+  const currentSelectedItem = useMemo(
+    () => stockItems.find((item) => idOf(item.stockItemId) === form.stockItemId),
+    [stockItems, form.stockItemId]
+  );
+  const available = Number(currentSelectedItem?.qtyBaseUnit) || 0;
+  const unitSymbol = currentSelectedItem?.stockItemId?.unitId?.symbol || "";
 
   const filteredItems = useMemo(() => {
-    return stockItems.filter(item => {
-      const matchesSearch = (item.stockItemId?.name || "").toLowerCase().includes(itemSearch.toLowerCase());
-      const matchesGroup = form.stockGroupId
-        ? (item.stockItemId?.stockGroupId?._id || item.stockItemId?.stockGroupId) === form.stockGroupId
-        : true;
+    const term = itemSearch.trim().toLowerCase();
+    return stockItems.filter((item) => {
+      const matchesSearch = (item.stockItemId?.name || "").toLowerCase().includes(term);
+      const matchesGroup = form.stockGroupId ? idOf(item.stockItemId?.stockGroupId) === form.stockGroupId : true;
       return matchesSearch && matchesGroup;
     });
   }, [stockItems, itemSearch, form.stockGroupId]);
 
+  const processedTransfers = useMemo(
+    () => transfers.filter((t) => {
+      const day = dayKey(t.createdAt);
+      return !(fromDate && day < fromDate) && !(toDate && day > toDate);
+    }),
+    [transfers, fromDate, toDate]
+  );
 
-const processedTransfers = useMemo(() => {
+  const selectedTransfer = processedTransfers.find((t) => t._id === selectedId) || processedTransfers[0] || null;
 
-    let data = [...transfers];
-
-    data = data.filter(t => {
-
-        const date = new Date(t.createdAt)
-            .toISOString()
-            .split("T")[0];
-
-        if (fromDate && date < fromDate) return false;
-
-        if (toDate && date > toDate) return false;
-
-        return true;
-
+  const patchForm = (patch) => {
+    setForm((prev) => ({ ...prev, ...patch }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      Object.keys(patch).forEach((key) => delete next[key]);
+      if ("fromGodownId" in patch || "toGodownId" in patch) { delete next.fromGodownId; delete next.toGodownId; }
+      return next;
     });
+  };
 
-    return data;
+  const onSourceChange = (value) => {
+    setItemSearch("");
+    patchForm({
+      fromGodownId: value,
+      toGodownId: form.toGodownId === value ? "" : form.toGodownId,
+      stockItemId: "",
+      qtyBaseUnit: ""
+    });
+  };
 
-}, [transfers, fromDate, toDate]);
-
-
-  const handleTransfer = async () => {
+  const validate = () => {
+    const next = {};
     const qty = Number(form.qtyBaseUnit);
-    if (!form.fromGodownId || !form.toGodownId || !form.stockItemId || !form.qtyBaseUnit) {
-      toast.error("Please fill all fields");
-      return;
-    }
-    if (form.fromGodownId === form.toGodownId) {
-      toast.error("Source and Destination cannot be the same");
-      return;
-    }
+    if (!form.fromGodownId) next.fromGodownId = "Choose a source godown.";
+    if (!form.toGodownId) next.toGodownId = "Choose a destination godown.";
+    else if (form.fromGodownId && form.fromGodownId === form.toGodownId) next.toGodownId = "Destination must differ from the source.";
+    if (!form.stockItemId) next.stockItemId = "Choose an item to transfer.";
+    if (form.qtyBaseUnit === "" || !Number.isFinite(qty) || qty <= 0) next.qtyBaseUnit = "Enter a quantity greater than 0.";
+    else if (form.stockItemId && qty > available) next.qtyBaseUnit = `Only ${available} ${unitSymbol} available.`.trim();
+    return next;
+  };
 
-    const available = currentSelectedItem?.qtyBaseUnit || 0;
-    if (qty <= 0) {
-      toast.error("Quantity must be greater than 0");
+  const handleTransfer = async (event) => {
+    event.preventDefault();
+    if (submitting) return;
+    const found = validate();
+    setErrors(found);
+    if (Object.keys(found).length) {
+      showToast(Object.values(found)[0], "error");
       return;
     }
-    if (qty > available) {
-      toast.error(`Insufficient Stock! Available: ${available}`);
-      return;
-    }
+    const qty = Number(form.qtyBaseUnit);
+    const fromName = godowns.find((g) => g._id === form.fromGodownId)?.name || "source";
+    const toName = godowns.find((g) => g._id === form.toGodownId)?.name || "destination";
+    const ok = await confirm({
+      title: "Post transfer",
+      message: `Transfer ${qty} ${unitSymbol} of ${currentSelectedItem?.stockItemId?.name || "this item"} from ${fromName} to ${toName}?`,
+      confirmLabel: "Post transfer"
+    });
+    if (!ok) return;
 
+    setSubmitting(true);
     try {
       await api.post("/transfers", {
         fromGodownId: form.fromGodownId,
         toGodownId: form.toGodownId,
         items: [{ stockItemId: form.stockItemId, qtyBaseUnit: qty }]
       });
-
-      toast.success("Transfer Posted Successfully");
-      setForm({ ...form, stockItemId: "", qtyBaseUnit: "" });
+      showToast("Transfer posted", "success");
+      setForm((prev) => ({ ...prev, stockItemId: "", qtyBaseUnit: "" }));
       setItemSearch("");
-      loadInitialData();
-      loadGodownStock();
+      setSelectedId(null);
+      await Promise.all([loadTransfers(), loadGodownStock(form.fromGodownId)]);
     } catch (error) {
-      toast.error(error.response?.data?.error || "Transfer failed");
+      showToast(errorMessage(error, "Transfer failed"), "error");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDownloadAllTransfersExcel = () => {
-
     if (!processedTransfers.length) return;
-
     const groupedByDate = {};
-    const consolidatedMap = {};
+    const consolidated = {};
+    const godownColumns = new Set();
 
-    processedTransfers.forEach(tr => {
+    const addQty = (bucket, item, from, to, qty) => {
+      const id = idOf(item.stockItemId);
+      if (!bucket[id]) {
+        bucket[id] = {
+          name: item.stockItemId?.name || "",
+          group: item.stockItemId?.stockGroupId?.name || "General",
+          unit: item.stockItemId?.unitId?.symbol || "",
+          total: 0,
+          godowns: {}
+        };
+      }
+      const entry = bucket[id];
+      entry.total += qty;
+      entry.godowns[`${from} (-)`] = (entry.godowns[`${from} (-)`] || 0) + qty;
+      entry.godowns[`${to} (+)`] = (entry.godowns[`${to} (+)`] || 0) + qty;
+    };
 
-        const date = new Date(tr.createdAt)
-            .toISOString()
-            .split("T")[0];
-
-        if (!groupedByDate[date])
-            groupedByDate[date] = [];
-
-        groupedByDate[date].push(tr);
-
+    processedTransfers.forEach((tr) => {
+      const from = tr.fromGodownId?.name || "Unknown";
+      const to = tr.toGodownId?.name || "Unknown";
+      godownColumns.add(`${from} (-)`);
+      godownColumns.add(`${to} (+)`);
+      const day = dayKey(tr.createdAt);
+      (groupedByDate[day] ||= {});
+      (tr.items || []).forEach((item) => {
+        const qty = Number(item.qtyBaseUnit) || 0;
+        addQty(groupedByDate[day], item, from, to, qty);
+        addQty(consolidated, item, from, to, qty);
+      });
     });
 
-    const aoa = [];
-
-    aoa.push(["TRANSFER REPORT"]);
-    aoa.push([]);
-
-    const allGodowns = [
-    ...new Set(
-        processedTransfers.flatMap(t => [
-            `${t.fromGodownId?.name} (-)`,
-            `${t.toGodownId?.name} (+)`
-        ])
-    )
-];
-
-    Object.keys(groupedByDate)
-        .sort((a, b) => new Date(b) - new Date(a))
-        .forEach(date => {
-
-            aoa.push([`DATE : ${date}`]);
-            aoa.push([]);
-
-            const itemMap = {};
-
-            groupedByDate[date].forEach(tr => {
-
-                const from = tr.fromGodownId?.name || "";
-const to = tr.toGodownId?.name || "";
-                tr.items.forEach(item => {
-
-                    const id =
-                        item.stockItemId?._id ||
-                        item.stockItemId;
-
-                    if (!itemMap[id]) {
-
-                        itemMap[id] = {
-
-                            name: item.stockItemId?.name || "",
-
-                            group:
-                                item.stockItemId?.stockGroupId?.name ||
-                                "General",
-
-                            unit:
-                                item.stockItemId?.unitId?.symbol || "",
-
-                            total: 0,
-
-                            godowns: {}
-
-                        };
-
-                    }
-
-                    if (!consolidatedMap[id]) {
-
-                        consolidatedMap[id] = {
-
-                            name: item.stockItemId?.name || "",
-
-                            group:
-                                item.stockItemId?.stockGroupId?.name ||
-                                "General",
-
-                            unit:
-                                item.stockItemId?.unitId?.symbol || "",
-
-                            total: 0,
-
-                            godowns: {}
-
-                        };
-
-                    }
-
-                    const qty = Number(item.qtyBaseUnit);
-
-                    itemMap[id].total += qty;
-
-                    consolidatedMap[id].total += qty;
-
-                    itemMap[id].godowns[`${from} (-)`] =
-(itemMap[id].godowns[`${from} (-)`] || 0) + qty;
-
-itemMap[id].godowns[`${to} (+)`] =
-(itemMap[id].godowns[`${to} (+)`] || 0) + qty;
-consolidatedMap[id].godowns[`${from} (-)`] =
-(consolidatedMap[id].godowns[`${from} (-)`] || 0) + qty;
-
-consolidatedMap[id].godowns[`${to} (+)`] =
-(consolidatedMap[id].godowns[`${to} (+)`] || 0) + qty;
-
-                    consolidatedMap[id].godowns[from] =
-                        (consolidatedMap[id].godowns[from] || 0) + qty;
-
-                });
-
-            });
-
-            aoa.push([
-                "S.No",
-                "Stock Item",
-                "Group",
-                "Unit",
-                ...allGodowns,
-                "TOTAL"
-            ]);
-
-            Object.values(itemMap).forEach((item, i) => {
-
-                const row = [
-
-                    i + 1,
-
-                    item.name,
-
-                    item.group,
-
-                    item.unit
-
-                ];
-
-                allGodowns.forEach(g => {
-
-                    row.push(item.godowns[g] || 0);
-
-                });
-
-                row.push(item.total);
-
-                aoa.push(row);
-
-            });
-
-            aoa.push([]);
-            aoa.push([]);
-
-        });
-
-    aoa.push(["CONSOLIDATED"]);
-    aoa.push([]);
-
-    aoa.push([
-        "S.No",
-        "Stock Item",
-        "Group",
-        "Unit",
-        ...allGodowns,
-        "TOTAL"
-    ]);
-
-    Object.values(consolidatedMap).forEach((item, i) => {
-
-        const row = [
-
-            i + 1,
-
-            item.name,
-
-            item.group,
-
-            item.unit
-
-        ];
-
-        allGodowns.forEach(g => {
-
-            row.push(item.godowns[g] || 0);
-
-        });
-
-        row.push(item.total);
-
-        aoa.push(row);
-
+    const columns = [...godownColumns];
+    const header = ["S.No", "Stock Item", "Group", "Unit", ...columns, "TOTAL"];
+    const rowsFor = (bucket) =>
+      Object.values(bucket).map((item, i) => [
+        i + 1, item.name, item.group, item.unit, ...columns.map((g) => item.godowns[g] || 0), item.total
+      ]);
+
+    const aoa = [["TRANSFER REPORT"], []];
+    Object.keys(groupedByDate).sort().reverse().forEach((day) => {
+      aoa.push([`DATE : ${fmtDate(`${day}T00:00:00`)}`], [], header, ...rowsFor(groupedByDate[day]), [], []);
     });
-
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    aoa.push(["CONSOLIDATED"], [], header, ...rowsFor(consolidated));
 
     const wb = XLSX.utils.book_new();
-
-    XLSX.utils.book_append_sheet(
-        wb,
-        ws,
-        "Transfers"
-    );
-
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), "Transfers");
     XLSX.writeFile(
-        wb,
-        fromDate || toDate
-            ? `Transfer_Report_${fromDate || "start"}_to_${toDate || "end"}.xlsx`
-            : "Transfer_Report.xlsx"
+      wb,
+      fromDate || toDate ? `Transfer_Report_${fromDate || "start"}_to_${toDate || "end"}.xlsx` : "Transfer_Report.xlsx"
     );
-
-};
-
-  const styles = {
-    pageContainer: { flex: 1, display: 'flex', flexDirection: 'column', background: '#f8fafc', padding: '24px', height: '100vh', fontFamily: 'Inter, sans-serif' },
-    formBar: { background: '#fff', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', display: 'flex', gap: '12px', marginBottom: '24px', alignItems: 'flex-end', position: 'relative', zIndex: 10 },
-    inputGroup: { display: 'flex', flexDirection: 'column', gap: '4px', flex: 1, position: 'relative' },
-    label: { fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase' },
-    input: (isError) => ({ padding: '10px 12px', borderRadius: '8px', border: isError ? '2px solid #ef4444' : '1px solid #e2e8f0', fontSize: '13px', outline: 'none', background: isError ? '#fef2f2' : '#fff' }),
-    searchDropdown: { position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: '8px', marginTop: '4px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', maxHeight: '200px', overflowY: 'auto', zIndex: 100 },
-    searchOption: { padding: '10px', fontSize: '13px', cursor: 'pointer', borderBottom: '1px solid #f1f5f9' },
-    postBtn: { background: '#0f172a', color: '#fff', padding: '10px 24px', borderRadius: '8px', border: 'none', fontWeight: '700', cursor: 'pointer' },
-    contentWrapper: { display: 'flex', gap: '24px', flex: 1, overflow: 'hidden' },
-    leftList: { width: '350px', background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-    rightDetail: { flex: 1, background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-    listItem: (isActive) => ({ padding: '16px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: isActive ? '#f0f4ff' : 'transparent', borderLeft: isActive ? '4px solid #6366f1' : '4px solid transparent' }),
-    tableHeader: { padding: '12px', fontSize: '11px', fontWeight: '800', color: '#94a3b8', textAlign: 'left', borderBottom: '1px solid #f1f5f9', textTransform: 'uppercase' },
-    excelBtn: { display: 'flex', alignItems: 'center', gap: '8px', background: '#10b981', color: '#fff', padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: '600' },
-    stockBadge: (low) => ({ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: low ? '#fee2e2' : '#f1f5f9', color: low ? '#ef4444' : '#475569', fontWeight: '600' }),
-    groupBadge: { fontSize: '10px', background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px', color: '#64748b', fontWeight: '600', border: '1px solid #e2e8f0' }
   };
 
-  const isQtyInvalid = Number(form.qtyBaseUnit) > (currentSelectedItem?.qtyBaseUnit || 0);
+  const railItems = processedTransfers.slice(0, MAX_RAIL_ROWS).map((t) => (
+    <RailItem key={t._id} active={selectedTransfer?._id === t._id} onClick={() => setSelectedId(t._id)}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+        <strong>{transferRef(t)}</strong>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>{fmtDate(t.createdAt)}</span>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginTop: 6 }}>
+        <span style={{ fontSize: 12, color: "var(--muted)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+          {t.fromGodownId?.name || "—"} <ArrowRightLeft size={10} aria-label="to" /> {t.toGodownId?.name || "—"}
+        </span>
+        {t.status && <StatusBadge status={t.status} />}
+      </div>
+    </RailItem>
+  ));
+  if (processedTransfers.length > MAX_RAIL_ROWS) {
+    railItems.push(
+      <p key="more" style={{ padding: 8, fontSize: 12, color: "var(--muted)" }}>
+        Showing the latest {MAX_RAIL_ROWS} of {processedTransfers.length}. Narrow the dates to see others.
+      </p>
+    );
+  }
+
+  const railEmpty = transfersError ? (
+    <ErrorState message={transfersError} onRetry={loadTransfers} />
+  ) : (
+    <EmptyState title={transfers.length ? "No transfers in this range" : "No transfers yet"}>
+      {transfers.length ? "Clear or widen the date filter." : "Posted transfers will appear here."}
+    </EmptyState>
+  );
 
   return (
-    <div style={styles.pageContainer}>
-      <h1 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '20px' }}>Transfer <span style={{ color: '#6366f1' }}>Stock</span></h1>
+    <div style={{ height: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+      <PageHeader
+        title="Transfer Stock"
+        actions={
+          <Button variant="success" size="sm" onClick={handleDownloadAllTransfersExcel} disabled={!processedTransfers.length}>
+            <FileSpreadsheet size={16} /> Export transfers
+          </Button>
+        }
+      >
+        <DateField  aria-label="Transfers from date" title="From date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} />
+        <span aria-hidden="true" style={{ color: "var(--muted)" }}>to</span>
+        <DateField  aria-label="Transfers to date" title="To date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} />
+        {(fromDate || toDate) && (
+          <Button variant="ghost" size="sm" aria-label="Clear dates" title="Clear dates" onClick={() => { setFromDate(""); setToDate(""); }}>
+            <X size={14} />
+          </Button>
+        )}
+      </PageHeader>
 
-      <div style={styles.formBar}>
-        <div style={styles.inputGroup}><label style={styles.label}>Source Godown</label>
-          <select style={styles.input()} value={form.fromGodownId} onChange={e => setForm({ ...form, fromGodownId: e.target.value, stockItemId: "", itemSearch: "" })}>
-            <option value="">Select Source</option>
-            {godowns.map(g => <option key={g._id} value={g._id}>{g.name}</option>)}
-          </select>
-        </div>
+      <div style={{ padding: "20px 32px 0" }}>
+        <Card as="form" onSubmit={handleTransfer} noValidate tight style={{ marginTop: 0 }} aria-label="New transfer">
+          <div className="form-row form-row--grid">
+            <FormField label="Source godown" error={errors.fromGodownId} style={{ flex: "1 1 170px" }}>
+              <select value={form.fromGodownId} disabled={submitting} aria-invalid={!!errors.fromGodownId} onChange={(e) => onSourceChange(e.target.value)}>
+                <option value="">Select source</option>
+                {godowns.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
+              </select>
+            </FormField>
 
-        <div style={styles.inputGroup}><label style={styles.label}>Destination Godown</label>
-          <select style={styles.input()} value={form.toGodownId} onChange={e => setForm({ ...form, toGodownId: e.target.value })}>
-            <option value="">Select Dest.</option>
-            {godowns.map(g => <option key={g._id} value={g._id}>{g.name}</option>)}
-          </select>
-        </div>
+            <FormField label="Destination godown" error={errors.toGodownId} style={{ flex: "1 1 170px" }}>
+              <select value={form.toGodownId} disabled={submitting} aria-invalid={!!errors.toGodownId} onChange={(e) => patchForm({ toGodownId: e.target.value })}>
+                <option value="">Select destination</option>
+                {godowns.filter((g) => g._id !== form.fromGodownId).map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
+              </select>
+            </FormField>
 
-        <div style={styles.inputGroup}><label style={styles.label}>Stock Group Filter</label>
-          <select
-            style={styles.input()}
-            value={form.stockGroupId}
-            onChange={e => {
-              setForm({ ...form, stockGroupId: e.target.value, stockItemId: "" });
-              setItemSearch("");
-            }}
+            <FormField label="Stock group" style={{ flex: "1 1 150px" }}>
+              <select value={form.stockGroupId} disabled={submitting} onChange={(e) => { setItemSearch(""); patchForm({ stockGroupId: e.target.value, stockItemId: "" }); }}>
+                <option value="">All groups</option>
+                {stockGroups.map((grp) => <option key={grp._id} value={grp._id}>{grp.name}</option>)}
+              </select>
+            </FormField>
+
+            <FormField label="Find item" style={{ flex: "1 1 150px" }}>
+              <span style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <Search size={16} aria-hidden="true" style={{ position: "absolute", left: 10, color: "var(--muted-soft)" }} />
+                <input
+                  type="search"
+                  placeholder={form.fromGodownId ? "Type to filter items" : "Select source first"}
+                  disabled={!form.fromGodownId || submitting}
+                  value={itemSearch}
+                  onChange={(e) => setItemSearch(e.target.value)}
+                  style={{ width: "100%", paddingLeft: 34 }}
+                />
+              </span>
+            </FormField>
+
+            <FormField label="Item" error={errors.stockItemId} style={{ flex: "2 1 220px" }}>
+              <select
+                value={form.stockItemId}
+                disabled={!form.fromGodownId || stockLoading || submitting}
+                aria-invalid={!!errors.stockItemId}
+                onChange={(e) => patchForm({ stockItemId: e.target.value, qtyBaseUnit: "" })}
+              >
+                <option value="">
+                  {!form.fromGodownId ? "Select source first" : stockLoading ? "Loading stock…" : filteredItems.length ? "Select item" : "No items in stock"}
+                </option>
+                {filteredItems.map((item) => (
+                  <option key={item._id} value={idOf(item.stockItemId)} disabled={!(item.qtyBaseUnit > 0)}>
+                    {item.stockItemId?.name} ({item.qtyBaseUnit} {item.stockItemId?.unitId?.symbol || ""})
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            <FormField
+              label={currentSelectedItem ? `Qty (max ${available} ${unitSymbol})`.trim() : "Qty"}
+              error={errors.qtyBaseUnit}
+              style={{ flex: "1 1 120px" }}
+            >
+              <input
+                type="number" min="0" step="any" inputMode="decimal"
+                max={currentSelectedItem ? available : undefined}
+                placeholder="0"
+                value={form.qtyBaseUnit}
+                disabled={submitting}
+                aria-invalid={!!errors.qtyBaseUnit}
+                onChange={(e) => patchForm({ qtyBaseUnit: e.target.value })}
+              />
+            </FormField>
+
+            <Button type="submit" variant="dark" disabled={submitting}>
+              {submitting ? "Posting…" : "Post transfer"}
+            </Button>
+          </div>
+        </Card>
+      </div>
+
+      <SplitView
+        rail={
+          <RailList
+            title="Recent activity"
+            count={transfersLoading ? undefined : processedTransfers.length}
+            loading={transfersLoading && !transfers.length}
+            empty={railEmpty}
           >
-            <option value="">All Groups</option>
-            {stockGroups.map(grp => <option key={grp._id} value={grp._id}>{grp.name}</option>)}
-          </select>
-        </div>
-
-        <div style={{ ...styles.inputGroup, flex: 1.5 }}><label style={styles.label}>Search Item</label>
-          <div style={{ position: 'relative' }}>
-            <input
-              style={{ ...styles.input(), width: '100%', paddingLeft: '35px' }}
-              placeholder={form.fromGodownId ? "Search items..." : "Select source first"}
-              disabled={!form.fromGodownId}
-              value={itemSearch}
-              onFocus={() => setShowItemDropdown(true)}
-              onChange={(e) => setItemSearch(e.target.value)}
-            />
-            <Search size={16} style={{ position: 'absolute', left: '10px', top: '12px', color: '#94a3b8' }} />
-          </div>
-          {showItemDropdown && form.fromGodownId && (
-            <div style={styles.searchDropdown}>
-              {filteredItems.length > 0 ? filteredItems.map(item => (
-                <div key={item._id} style={{ ...styles.searchOption, background: form.stockItemId === item.stockItemId?._id ? '#eef2ff' : '#fff' }}
-                  onClick={() => { setForm({ ...form, stockItemId: item.stockItemId?._id }); setItemSearch(item.stockItemId?.name); setShowItemDropdown(false); }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: '600' }}>{item.stockItemId?.name}</div>
-                      <div style={{ fontSize: '10px', color: '#94a3b8' }}>{item.stockItemId?.stockGroupId?.name || "General"}</div>
-                    </div>
-                    <span style={styles.stockBadge(item.qtyBaseUnit <= 0)}>
-                      {item.qtyBaseUnit} {item.stockItemId?.unitId?.symbol}
-                    </span>
-                  </div>
-                </div>
-              )) : <div style={{ padding: '10px', fontSize: '12px', color: '#94a3b8' }}>No items found</div>}
-            </div>
-          )}
-        </div>
-
-        <div style={{ ...styles.inputGroup, flex: 0.5 }}>
-          <label style={styles.label}>Qty</label>
-          <input
-            type="number"
-            style={styles.input(isQtyInvalid)}
-            placeholder="0"
-            value={form.qtyBaseUnit}
-            onChange={e => setForm({ ...form, qtyBaseUnit: e.target.value })}
-          />
-        </div>
-
-        <button
-          style={{ ...styles.postBtn, opacity: (isQtyInvalid || !form.stockItemId) ? 0.6 : 1 }}
-          onClick={handleTransfer}
-          disabled={isQtyInvalid || !form.stockItemId}
-        >
-          Post Transfer
-        </button>
-      </div>
-
-      <div style={styles.contentWrapper}>
-        <div style={styles.leftList}>
-          <div style={{ padding: '16px', background: '#fcfcfe', borderBottom: '1px solid #f1f5f9', fontWeight: '800', fontSize: '11px', color: '#64748b' }}>RECENT ACTIVITY</div>
-          <div style={{ overflowY: 'auto' }}>
-            {processedTransfers.map((t) => (
-              <div key={t._id} style={styles.listItem(selectedTransfer?._id === t._id)} onClick={() => setSelectedTransfer(t)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontWeight: '800', fontSize: '13px' }}>TRN-{t._id.slice(-6).toUpperCase()}</span>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>{new Date(t.createdAt).toLocaleDateString()}</span>
-                </div>
-                <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  {t.fromGodownId?.name} <ArrowRightLeft size={10} /> {t.toGodownId?.name}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={styles.rightDetail}>
-          {selectedTransfer ? (
-            <>
-              <div style={{ padding: '24px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800' }}>Transfer Details</h2>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8' }}>Ref: TRN-{selectedTransfer._id.toUpperCase()}</p>
-                </div>
-                <div
-    style={{
-        display: "flex",
-        gap: "10px",
-        alignItems: "center"
-    }}
->
-
-<input
-    type="date"
-    value={fromDate}
-    onChange={e=>setFromDate(e.target.value)}
-/>
-
-<input
-    type="date"
-    value={toDate}
-    onChange={e=>setToDate(e.target.value)}
-/>
-
-<button
-onClick={()=>{
-setFromDate("");
-setToDate("");
-}}
->
-Clear
-</button>
-
-<button
-style={styles.excelBtn}
-onClick={handleDownloadAllTransfersExcel}
->
-
-<FileSpreadsheet size={18}/>
-
-Export All Transfers
-
-</button>
-
-</div>
-                {/* <button style={styles.excelBtn} onClick={handleDownloadAllTransfersExcel}><FileSpreadsheet size={18} /> Export Excel</button> */}
-              </div>
-              <div style={{ padding: '24px', overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr>
-                      <th style={styles.tableHeader}>Item Name</th>
-                      <th style={styles.tableHeader}>Stock Group</th>
-                      <th style={{ ...styles.tableHeader, textAlign: 'center' }}>Quantity</th>
-                      <th style={{ ...styles.tableHeader, textAlign: 'right' }}>Unit</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedTransfer.items?.map((it, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #f8fafc' }}>
-                        <td style={{ padding: '16px 12px', fontWeight: '700', fontSize: '14px' }}>
-                          {it.stockItemId?.name}
-                        </td>
-                        <td style={{ padding: '16px 12px' }}>
-                          <span style={styles.groupBadge}>
-                            {it.stockItemId?.stockGroupId?.name || "General"}
-                          </span>
-                        </td>
-                        <td style={{ padding: '16px 12px', textAlign: 'center', fontWeight: '800', color: '#6366f1' }}>
-                          {it.qtyBaseUnit}
-                        </td>
-                        <td style={{ padding: '16px 12px', textAlign: 'right', color: '#94a3b8', fontWeight: '600', fontSize: '12px' }}>
-                          {it.stockItemId?.unitId?.symbol || "units"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          ) : (
-            <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#94a3b8' }}>
-              Select a transfer to view details
-            </div>
-          )}
-        </div>
-      </div>
+            {railItems}
+          </RailList>
+        }
+      >
+        {selectedTransfer ? (
+          <DetailPanel
+            head={
+              <>
+                <Meta label="Reference">{transferRef(selectedTransfer)}</Meta>
+                <Meta label="Route">
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    {selectedTransfer.fromGodownId?.name || "—"} <ArrowRightLeft size={14} aria-label="to" /> {selectedTransfer.toGodownId?.name || "—"}
+                  </span>
+                </Meta>
+                <Meta label="Posted">{fmtDateTime(selectedTransfer.createdAt)}</Meta>
+                {selectedTransfer.status && <Meta label="Status"><StatusBadge status={selectedTransfer.status} /></Meta>}
+              </>
+            }
+          >
+            <table className="table">
+              <thead>
+                <tr>
+                  <th scope="col">Item</th>
+                  <th scope="col">Stock group</th>
+                  <th scope="col" style={{ textAlign: "right" }}>Quantity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(selectedTransfer.items || []).map((it, i) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 650 }}>{it.stockItemId?.name || "Unknown item"}</td>
+                    <td><Badge>{it.stockItemId?.stockGroupId?.name || "General"}</Badge></td>
+                    <td style={{ textAlign: "right", fontWeight: 650 }}>
+                      {it.qtyBaseUnit} {it.stockItemId?.unitId?.symbol || "units"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </DetailPanel>
+        ) : (
+          <EmptyState title="No transfer selected">Choose a transfer from the list to see its items.</EmptyState>
+        )}
+      </SplitView>
+      {dialog}
     </div>
   );
 };
+
+// A form control with its label and an inline validation message.
+function FormField({ label, error, children, style }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, ...style }}>
+      <Field label={label}>{children}</Field>
+      {error && <span role="alert" style={{ fontSize: 12, color: "var(--danger-strong)" }}>{error}</span>}
+    </div>
+  );
+}

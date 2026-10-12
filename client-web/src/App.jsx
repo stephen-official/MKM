@@ -1,17 +1,21 @@
 import React, { useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
-import { jwtDecode } from "jwt-decode";
 
 import Login from "./pages/Login";
 import ClientStore from "./components/ClientStore";
 
 import { socket, connectSocket, disconnectSocket } from "./socket";
 import RefreshButton from "./components/RefreshButton";
+import { clearSession, isAccessTokenValid } from "./utils/session";
 
 const ProtectedRoute = ({ children }) => {
   const token = localStorage.getItem("token");
-  return token ? children : <Navigate to="/login" />;
+  if (!isAccessTokenValid(token)) {
+    clearSession();
+    return <Navigate to="/login" replace />;
+  }
+  return children;
 };
 
 function App() {
@@ -21,7 +25,10 @@ function App() {
     if (!token) return;
 
     try {
-      jwtDecode(token);
+      if (!isAccessTokenValid(token)) {
+        clearSession();
+        return;
+      }
 
       // Connect socket
       connectSocket();
@@ -52,7 +59,7 @@ function App() {
 
     } catch (err) {
       console.error(err);
-      localStorage.removeItem("token");
+      clearSession();
     }
 
     return () => {

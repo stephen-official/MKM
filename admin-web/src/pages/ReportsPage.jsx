@@ -1,329 +1,286 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
-import { Search, Download, Table as TableIcon, Filter, X } from "lucide-react";
+import { useToast } from "../useToast.js";
+import { Search, Download, Table as TableIcon, X } from "lucide-react";
+import {
+  PageHeader, Button, Badge, EmptyState, SplitView, RailList, RailItem, DetailPanel, Meta,
+  StatusBadge, ErrorState, DateField } from "../components/ui/index.jsx";
 
 const reportEntities = ["indents", "purchase-orders", "distributions", "transfers", "requests", "consumptions"];
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const MAX_RAIL_ROWS = 200;
+const HIDDEN_KEYS = new Set([
+  "_id", "__v", "items", "allocations", "leftovers", "updatedAt", "userId", "createdBy", "indentId",
+  "purchaseOrderId", "leftoverSourceId", "fromGodownId", "toGodownId", "godownId", "status", "createdAt"
+]);
+
+const entityLabel = (entity) => entity.replaceAll("-", " ");
+const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
+const fmtDate = (value) => (value ? new Date(value).toLocaleDateString("en-GB") : "—");
+const fmtDateTime = (value) =>
+  value
+    ? new Date(value).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })
+    : "—";
+const errorMessage = (error, fallback) => error?.response?.data?.message || fallback;
+const docNumber = (row) =>
+  row.indentNo || row.orderNo || row.transferNo || row.requestNo || row.distributionNo || row.consumptionNo || "";
+const humanizeKey = (key) => key.replace(/([A-Z])/g, " $1");
+
+const formatValue = (key, value) => {
+  if (value === null || value === undefined || value === "") return "—";
+  if (/amount/i.test(key)) return money(value);
+  if (/(At|Date)$/.test(key)) return fmtDateTime(value);
+  if (typeof value === "object") return value.name || value.symbol || "—";
+  return String(value);
+};
+
+const saveBlob = (data, filename) => {
+  const url = window.URL.createObjectURL(new Blob([data], { type: XLSX_MIME }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
 
 export const ReportsPage = () => {
+  const { showToast } = useToast();
   const [entity, setEntity] = useState("indents");
   const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRowId, setSelectedRowId] = useState(null);
-  
-  // Date Filter States
+  const [exporting, setExporting] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const requestId = useRef(0);
 
-  /**
-   * LOAD DATA: 
-   * Fetches data based on the active entity selection and date range.
-   */
+  // Loads the active entity for the date range; responses from superseded requests are ignored.
   const load = useCallback(async () => {
+    const current = ++requestId.current;
     setLoading(true);
+    setLoadError("");
+    setRows([]);
+    setSelectedRowId(null);
     try {
-      const res = await api.get(`/reports/${entity}`, {
-        params: { startDate, endDate }
-      });
-      const data = res.data || [];
+      const res = await api.get(`/reports/${entity}`, { params: { startDate, endDate } });
+      if (current !== requestId.current) return;
+      const data = Array.isArray(res.data) ? res.data : [];
       setRows(data);
-      setSelectedRowId(data.length > 0 ? data[0]._id : null);
+      setSelectedRowId(data[0]?._id ?? null);
     } catch (error) {
-      console.error("Failed to load report data:", error);
-      setRows([]);
-      setSelectedRowId(null);
+      if (current !== requestId.current) return;
+      const message = errorMessage(error, `Failed to load ${entityLabel(entity)}`);
+      setLoadError(message);
+      showToast(message, "error");
     } finally {
-      setLoading(false);
+      if (current === requestId.current) setLoading(false);
     }
-  }, [entity, startDate, endDate]);
+  }, [entity, startDate, endDate, showToast]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
-  /**
-   * SEARCH LOGIC: 
-   * Filters the sidebar list based on user input across all object values.
-   */
   const filteredRows = useMemo(() => {
-    return rows.filter(row => 
-      Object.values(row).some(val => 
-        String(val).toLowerCase().includes(searchTerm.toLowerCase())
-      )
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter((row) =>
+      [docNumber(row), row.status, row._id, ...Object.values(row).filter((v) => typeof v === "string" || typeof v === "number")]
+        .some((val) => String(val).toLowerCase().includes(term))
     );
   }, [rows, searchTerm]);
 
-  const activeRow = useMemo(() => 
-    rows.find(r => r._id === selectedRowId), 
-  [selectedRowId, rows]);
+  const visibleRows = filteredRows.slice(0, MAX_RAIL_ROWS);
+  const activeRow = useMemo(() => rows.find((r) => r._id === selectedRowId), [selectedRowId, rows]);
 
   const resolveStatus = (row) => {
-    if (row.status) return row.status.toUpperCase();
-    if (["distributions", "transfers", "consumptions"].includes(entity)) return "COMPLETED";
-    return "N/A";
+    if (row.status) return row.status;
+    return ["distributions", "transfers", "consumptions"].includes(entity) ? "completed" : null;
   };
 
-  /**
-   * EXPORT UTILITIES
-   */
-  const exportAllExcel = async () => {
+  const download = async (url, params, filename, failMessage) => {
+    if (exporting) return;
+    setExporting(true);
     try {
-      const response = await api.get(`/reports/${entity}/export/excel`, {
-        params: { startDate, endDate },
-        responseType: 'arraybuffer',
-        headers: { 'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
-      });
-      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `all-${entity}-${startDate || 'start'}-to-${endDate || 'end'}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const response = await api.get(url, { params, responseType: "arraybuffer", headers: { Accept: XLSX_MIME } });
+      saveBlob(response.data, filename);
     } catch (error) {
-      console.error("Bulk Export Error:", error);
-      alert("Export failed.");
+      // An arraybuffer error body has to be decoded before it can be read.
+      let message = failMessage;
+      try {
+        message = JSON.parse(new TextDecoder().decode(error.response?.data)).message || failMessage;
+      } catch { /* not JSON; keep the generic message */ }
+      showToast(message, "error");
+    } finally {
+      setExporting(false);
     }
   };
 
-  const exportSingleExcel = async (id) => {
-    try {
-      const response = await api.get(`/reports/${entity}/export/excel/${id}`, { 
-        responseType: 'arraybuffer' 
-      });
-      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `${entity}-${id}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Single Export Error:", error);
-      alert("Download failed.");
-    }
+  const exportAllExcel = () =>
+    download(`/reports/${entity}/export/excel`, { startDate, endDate },
+      `all-${entity}-${startDate || "start"}-to-${endDate || "end"}.xlsx`, "Export failed");
+
+  const exportSingleExcel = (id) =>
+    download(`/reports/${entity}/export/excel/${id}`, undefined, `${entity}-${id}.xlsx`, "Download failed");
+
+  const visibleKeys = activeRow ? Object.keys(activeRow).filter((key) => !HIDDEN_KEYS.has(key)) : [];
+  const lineItems = activeRow ? activeRow.items || activeRow.allocations : null;
+  const activeStatus = activeRow ? resolveStatus(activeRow) : null;
+
+  const changeEntity = (value) => {
+    setEntity(value);
+    setSearchTerm("");
   };
 
-  const getVisibleKeys = (item) => {
-    if (!item) return [];
-    return Object.keys(item).filter(key => 
-      !["_id", "__v", "items", "allocations", "leftovers", "updatedAt", "userId", "createdBy", 
-        "indentId", "purchaseOrderId", "leftoverSourceId", "fromGodownId", "toGodownId", "godownId", "status", "createdAt"].includes(key)
+  const railEmpty = loadError ? (
+    <ErrorState message={loadError} onRetry={load} />
+  ) : (
+    <EmptyState title={rows.length ? "No matching records" : `No ${entityLabel(entity)} found`}>
+      {rows.length ? "Try a different search term." : "Try widening the date range or choosing another report."}
+    </EmptyState>
+  );
+
+  const railItems = visibleRows.map((row) => {
+    const status = resolveStatus(row);
+    return (
+      <RailItem key={row._id} active={selectedRowId === row._id} onClick={() => setSelectedRowId(row._id)}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+          <strong>{docNumber(row) || row._id.slice(-8).toUpperCase()}</strong>
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>{fmtDate(row.createdAt)}</span>
+        </div>
+        <div style={{ marginTop: 6 }}>
+          {status ? <StatusBadge status={status} /> : <Badge>No status</Badge>}
+        </div>
+      </RailItem>
     );
-  };
+  });
+  if (filteredRows.length > MAX_RAIL_ROWS) {
+    railItems.push(
+      <p key="more" style={{ padding: 8, fontSize: 12, color: "var(--muted)" }}>
+        Showing the first {MAX_RAIL_ROWS} of {filteredRows.length}. Search or narrow the dates to see others.
+      </p>
+    );
+  }
 
   return (
-    <div style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif" }}>
-      
-      {/* Top Navigation */}
-      <div style={{ padding: '20px 32px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a', textTransform: 'uppercase', letterSpacing: '-0.5px' }}>
-            Data <span style={{ color: '#6366f1' }}>Analytics</span>
-          </h1>
-          
-          <select 
-            value={entity} 
-            onChange={(e) => { 
-                setEntity(e.target.value); 
-                setRows([]); 
-                setSelectedRowId(null); 
-            }}
-            style={{ padding: '8px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc', fontSize: '12px', fontWeight: '700', cursor: 'pointer', outline: 'none', color: '#475569' }}
-          >
-            {reportEntities.map((r) => <option key={r} value={r}>{r.replace("-", " ").toUpperCase()}</option>)}
-          </select>
-        </div>
+    <div style={{ height: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+      <PageHeader
+        title="Reports"
+        actions={
+          <Button variant="dark" onClick={exportAllExcel} disabled={exporting || loading || !rows.length}>
+            <Download size={14} /> {exporting ? "Exporting…" : "Export all"}
+          </Button>
+        }
+      >
+        <select aria-label="Report type" value={entity} onChange={(e) => changeEntity(e.target.value)} style={{ textTransform: "capitalize" }}>
+          {reportEntities.map((r) => <option key={r} value={r}>{entityLabel(r)}</option>)}
+        </select>
+        <DateField  aria-label="From date" title="From date" value={startDate} max={endDate || undefined} onChange={(e) => setStartDate(e.target.value)} />
+        <span aria-hidden="true" style={{ color: "var(--muted)" }}>to</span>
+        <DateField  aria-label="To date" title="To date" value={endDate} min={startDate || undefined} onChange={(e) => setEndDate(e.target.value)} />
+        {(startDate || endDate) && (
+          <Button variant="ghost" size="sm" aria-label="Clear dates" title="Clear dates" onClick={() => { setStartDate(""); setEndDate(""); }}>
+            <X size={14} />
+          </Button>
+        )}
+      </PageHeader>
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {/* Date Filters */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', padding: '4px 12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-            <span style={{ fontSize: '10px', fontWeight: '800', color: '#94a3b8' }}>FROM</span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              style={{ border: 'none', background: 'transparent', fontSize: '12px', outline: 'none', color: '#475569' }}
-            />
-            <span style={{ fontSize: '10px', fontWeight: '800', color: '#94a3b8' }}>TO</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              style={{ border: 'none', background: 'transparent', fontSize: '12px', outline: 'none', color: '#475569' }}
-            />
-            {(startDate || endDate) && (
-              <button 
-                onClick={() => { setStartDate(""); setEndDate(""); }}
-                style={{ border: 'none', background: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                title="Clear Dates"
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', color: '#94a3b8' }} />
-            <input
-              type="text"
-              placeholder="Search records..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px 10px 36px', fontSize: '13px', width: '200px', outline: 'none' }}
-            />
-          </div>
-          
-          <button onClick={exportAllExcel} style={{ background: '#0f172a', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '10px', fontSize: '11px', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Download size={14}/> EXPORT ALL
-          </button>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '24px', gap: '24px' }}>
-        
-        {/* Sidebar */}
-        <div style={{ width: '350px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', paddingLeft: '8px', letterSpacing: '1px' }}>
-            {entity.replace("-", " ").toUpperCase()} RECORDS ({filteredRows.length})
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px', paddingRight: '4px' }}>
-            {loading ? (
-              <div style={{ padding: '20px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>Fetching records...</div>
-            ) : filteredRows.length > 0 ? filteredRows.map(row => (
-              <div
-                key={row._id}
-                onClick={() => setSelectedRowId(row._id)}
-                style={{
-                  padding: '16px', borderRadius: '16px', cursor: 'pointer', transition: 'all 0.2s',
-                  background: selectedRowId === row._id ? '#fff' : 'rgba(255,255,255,0.4)',
-                  border: selectedRowId === row._id ? '1px solid #6366f1' : '1px solid transparent',
-                  boxShadow: selectedRowId === row._id ? '0 10px 15px -3px rgba(99, 102, 241, 0.1)' : 'none',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <div style={{ fontWeight: '800', fontSize: '13px', color: selectedRowId === row._id ? '#6366f1' : '#1e293b' }}>
-                    {row.indentNo || row.orderNo || row.transferNo || row.requestNo || row.distributionNo || row.consumptionNo || row._id.slice(-8).toUpperCase()}
-                  </div>
-                  <div style={{ fontSize: '10px', fontWeight: '700', color: '#94a3b8' }}>
-                    {row.createdAt ? new Date(row.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : ''}
-                  </div>
-                </div>
-                <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>
-                  Status: <span style={{ color: selectedRowId === row._id ? '#6366f1' : '#0f172a' }}>{resolveStatus(row)}</span>
-                </div>
-              </div>
-            )) : (
-              <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: '12px', background: 'rgba(255,255,255,0.3)', borderRadius: '16px', border: '1px dashed #cbd5e1' }}>
-                No records found.
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Detail View */}
-        <div style={{ flex: 1, background: '#fff', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
-          {activeRow ? (
-            <>
-              <div style={{ padding: '32px 40px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to right, #ffffff, #f8fafc)' }}>
-                <div>
-                  <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '4px' }}>DOCUMENT ID</div>
-                  <div style={{ fontSize: '20px', fontWeight: '900', color: '#0f172a' }}>
-                    {activeRow.indentNo || activeRow.orderNo || activeRow.transferNo || activeRow.requestNo || activeRow.distributionNo || activeRow.consumptionNo || activeRow._id}
-                  </div>
-                </div>
-                <button 
-                  onClick={() => exportSingleExcel(activeRow._id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '12px', fontWeight: '800', cursor: 'pointer', fontSize: '12px', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.2)' }}
-                >
-                  <Download size={16}/> DOWNLOAD XLSX
-                </button>
-              </div>
-
-              <div style={{ flex: 1, padding: '40px', overflowY: 'auto' }}>
-                {/* Meta Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '32px', marginBottom: '48px' }}>
-                  <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px' }}>DATE CREATED</div>
-                    <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>
-                        {activeRow.createdAt ? new Date(activeRow.createdAt).toLocaleString('en-GB') : 'N/A'}
-                    </div>
-                  </div>
-
-                  <div style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px' }}>STATUS</div>
-                    <div style={{ fontWeight: '700', color: '#6366f1', fontSize: '14px' }}>{resolveStatus(activeRow)}</div>
-                  </div>
-
-                  {getVisibleKeys(activeRow).map(key => (
-                    <div key={key} style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '12px' }}>
-                      <div style={{ fontSize: '10px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', marginBottom: '4px' }}>{key.replace(/([A-Z])/g, ' $1')}</div>
-                      <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>
-                        {key.toLowerCase().includes('amount') ? `₹${activeRow[key]?.toLocaleString()}` : String(activeRow[key])}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Items Table */}
-                {(activeRow.items || activeRow.allocations) && (
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-                      <TableIcon size={16} color="#6366f1" />
-                      <span style={{ fontSize: '12px', fontWeight: '900', color: '#0f172a' }}>ITEMIZED BREAKDOWN</span>
-                    </div>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ textAlign: 'left', borderBottom: '2px solid #f1f5f9' }}>
-                          <th style={{ padding: '12px 0', fontSize: '11px', fontWeight: '900', color: '#94a3b8' }}>ITEM</th>
-                          <th style={{ padding: '12px 0', fontSize: '11px', fontWeight: '900', color: '#94a3b8' }}>GROUP</th>
-                          <th style={{ padding: '12px 0', fontSize: '11px', fontWeight: '900', color: '#94a3b8', textAlign: 'center' }}>QUANTITY</th>
-                          <th style={{ padding: '12px 0', fontSize: '11px', fontWeight: '900', color: '#94a3b8', textAlign: 'right' }}>AMOUNT</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(activeRow.items || activeRow.allocations || []).map((item, idx) => {
-                          const quantity = item.quantity || item.qtyBaseUnit || item.receivedQty || item.orderedQty || 0;
-                          const groupName = item.stockItemId?.stockGroupId?.name || item.stockItemId?.groupName || item.groupName || "General";
-                          const unitSymbol = item.stockItemId?.unitId?.symbol || item.unitId?.symbol || item.unit || "";
-
-                          return (
-                            <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
-                              <td style={{ padding: '16px 0', fontWeight: '700', color: '#334155', fontSize: '13px' }}>
-                                {item.stockItemId?.name || item.itemName || "Unknown Item"}
-                              </td>
-                              <td style={{ padding: '16px 0', fontSize: '11px', fontWeight: '600', color: '#64748b' }}>
-                                <span style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '6px', textTransform: 'uppercase' }}>
-                                  {groupName}
-                                </span>
-                              </td>
-                              <td style={{ padding: '16px 0', textAlign: 'center', fontWeight: '600', color: '#64748b' }}>
-                                {quantity} <span style={{ fontSize: '10px', color: '#94a3b8' }}>{unitSymbol}</span>
-                              </td>
-                              <td style={{ padding: '16px 0', textAlign: 'right', fontWeight: '800', color: '#6366f1' }}>
-                                {item.amount || item.unitPrice ? `₹${(item.amount || (quantity * (item.unitPrice || 0))).toLocaleString()}` : "—"}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px' }}>
-              <Filter size={48} color="#e2e8f0" />
-              <div style={{ color: '#94a3b8', fontWeight: '600' }}>Select a record to view analytics</div>
+      <SplitView
+        rail={
+          <>
+            <div style={{ position: "relative", display: "flex", alignItems: "center", marginBottom: 10 }}>
+              <Search size={16} aria-hidden="true" style={{ position: "absolute", left: 12, color: "var(--muted-soft)" }} />
+              <input
+                type="search"
+                aria-label="Search records"
+                placeholder="Search records…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ paddingLeft: 36, width: "100%" }}
+              />
             </div>
-          )}
-        </div>
-      </div>
+            <RailList
+              title={entityLabel(entity)}
+              count={loading ? undefined : filteredRows.length}
+              loading={loading}
+              empty={railEmpty}
+            >
+              {railItems}
+            </RailList>
+          </>
+        }
+      >
+        {activeRow ? (
+          <DetailPanel
+            head={
+              <>
+                <Meta label="Document">{docNumber(activeRow) || activeRow._id}</Meta>
+                <Meta label="Created">{fmtDateTime(activeRow.createdAt)}</Meta>
+                <Meta label="Status">{activeStatus ? <StatusBadge status={activeStatus} /> : "—"}</Meta>
+              </>
+            }
+            foot={
+              <Button variant="success" onClick={() => exportSingleExcel(activeRow._id)} disabled={exporting}>
+                <Download size={16} /> Download XLSX
+              </Button>
+            }
+          >
+            {visibleKeys.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 20, padding: "20px 0 24px" }}>
+                {visibleKeys.map((key) => (
+                  <Meta key={key} label={humanizeKey(key)}>
+                    <span style={{ fontSize: 14, fontWeight: 600, overflowWrap: "anywhere" }}>{formatValue(key, activeRow[key])}</span>
+                  </Meta>
+                ))}
+              </div>
+            )}
+
+            {lineItems && (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 4px", fontWeight: 650 }}>
+                  <TableIcon size={16} aria-hidden="true" /> Itemised breakdown
+                </div>
+                {lineItems.length ? (
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Item</th>
+                        <th scope="col">Group</th>
+                        <th scope="col" style={{ textAlign: "center" }}>Quantity</th>
+                        <th scope="col" style={{ textAlign: "right" }}>Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lineItems.map((item, idx) => {
+                        const quantity = item.quantity || item.qtyBaseUnit || item.receivedQty || item.orderedQty || 0;
+                        const groupName = item.stockItemId?.stockGroupId?.name || item.stockItemId?.groupName || item.groupName || "General";
+                        const unitSymbol = item.stockItemId?.unitId?.symbol || item.unitId?.symbol || item.unit || "";
+                        const amount = item.amount || (item.unitPrice ? quantity * item.unitPrice : 0);
+                        return (
+                          <tr key={idx}>
+                            <td style={{ fontWeight: 650 }}>{item.stockItemId?.name || item.itemName || "Unknown item"}</td>
+                            <td><Badge>{groupName}</Badge></td>
+                            <td style={{ textAlign: "center" }}>{quantity} {unitSymbol}</td>
+                            <td style={{ textAlign: "right", fontWeight: 650 }}>{amount ? money(amount) : "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <EmptyState title="No line items">This record has no itemised lines.</EmptyState>
+                )}
+              </>
+            )}
+          </DetailPanel>
+        ) : (
+          <EmptyState title={loading ? "Loading…" : "No record selected"}>
+            {loading ? "Fetching the report." : "Choose a record from the list to see its details."}
+          </EmptyState>
+        )}
+      </SplitView>
     </div>
   );
 };

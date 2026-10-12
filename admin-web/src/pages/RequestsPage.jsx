@@ -1,476 +1,293 @@
-import { useEffect, useState, useMemo } from "react";
-import { api } from "../api.js";
-import { toast } from "react-hot-toast";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import XLSX from "xlsx-js-style";
-import { Calendar, Search, FileSpreadsheet, CheckCircle, XCircle } from "lucide-react";
+import { CheckCircle, FileSpreadsheet, Search, XCircle } from "lucide-react";
+import { api } from "../api.js";
+import { useToast } from "../useToast.js";
+import {
+  Banner, Button, DataTable, DetailPanel, EmptyState, ErrorState, Field, LoadingState, Meta, PageHeader,
+  RailItem, RailList, SplitView, StatusBadge, DateField } from "../components/ui/index.jsx";
+import { useConfirm } from "../components/ui/useConfirm.jsx";
+import { errMsg, fmtDate, fmtDateTime, fmtTime, formatQty, inDateRange, rangeLabel } from "./indent/helpers.js";
+
+const PAGE = 100;
+const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 };
+const mutedStyle = { color: "var(--muted)", fontSize: 12 };
+
+const qtyOf = (item) => item.qtyBaseUnit || item.quantity || 0;
+const unitOf = (item) => item.stockItemId?.unitId?.symbol || item.unit || "";
+const targetOf = (req) => (req.targetDate ? fmtDate(req.targetDate) : "Immediate");
+
+const HEADER_STYLE = {
+  font: { bold: true, color: { rgb: "FFFFFF" } },
+  fill: { patternType: "solid", fgColor: { rgb: "1E40AF" } }
+};
+
+const exportOne = (req) => {
+  const rows = (req.items || []).map((item) => ({
+    "Stock Item": item.stockItemId?.name || "",
+    Quantity: qtyOf(item),
+    Unit: unitOf(item) || "Units",
+    Status: req.status,
+    Reason: req.reason || "",
+    "Authorised By": req.userId?.name || "Admin",
+    Date: fmtDate(req.createdAt),
+    "Target Date": targetOf(req)
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Inventory Request");
+  XLSX.writeFile(wb, `Request_${req.requestedBy || req.userId?.name || "Admin"}_${Date.now()}.xlsx`);
+};
+
+const exportMany = (requests, from, to) => {
+  const rows = [["Date", "Target Date", "Godown", "Requested By", "Reason", "Status", "Item", "Quantity", "Unit"]];
+  const groupOf = []; // request index per data row, for banding
+  requests.forEach((req, ri) => {
+    (req.items || []).forEach((item, i) => {
+      const first = i === 0;
+      rows.push([
+        first ? fmtDate(req.createdAt) : "",
+        first ? targetOf(req) : "",
+        first ? req.godownId?.name || "" : "",
+        first ? req.userId?.name || "" : "",
+        first ? req.reason || "" : "",
+        first ? req.status || "" : "",
+        item.stockItemId?.name || "",
+        qtyOf(item),
+        unitOf(item)
+      ]);
+      groupOf.push(ri);
+    });
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const cols = rows[0].length;
+  for (let c = 0; c < cols; c += 1) {
+    const head = ws[XLSX.utils.encode_cell({ r: 0, c })];
+    if (head) head.s = HEADER_STYLE;
+    groupOf.forEach((ri, i) => {
+      const cell = ws[XLSX.utils.encode_cell({ r: i + 1, c })];
+      if (cell) cell.s = { fill: { patternType: "solid", fgColor: { rgb: ri % 2 === 0 ? "E0F2FE" : "ECFDF5" } } };
+    });
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Requests");
+  XLSX.writeFile(wb, `Requests_${rangeLabel(from, to)}.xlsx`);
+};
 
 export const RequestsPage = () => {
-  const [requests, setRequests] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
- const [fromDate, setFromDate] = useState("");
-const [toDate, setToDate] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [loading, setLoading] = useState(true);
+  const { showToast } = useToast();
+  const { confirm, dialog } = useConfirm();
 
-  const load = async () => {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [limit, setLimit] = useState(PAGE);
+  const seq = useRef(0);
+
+  const load = useCallback(async () => {
+    const mine = ++seq.current;
     try {
       const res = await api.get("/requests");
-      setRequests(res.data);
-      if (res.data.length > 0) setSelectedId(res.data[0]._id);
+      if (mine !== seq.current) return;
+      setRequests(res.data || []);
+      setError("");
     } catch (err) {
-      toast.error("Failed to load requests");
+      if (mine !== seq.current) return;
+      const message = errMsg(err, "Failed to load requests");
+      setError(message);
+      showToast(message, "error");
     } finally {
-      setLoading(false);
+      if (mine === seq.current) setLoading(false);
     }
-  };
+  }, [showToast]);
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const processedRows = useMemo(() => {
-    let data = [...requests];
-    data = data.filter(r => {
-  const reqDate = new Date(r.createdAt)
-    .toISOString()
-    .split("T")[0];
+  const rows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return requests
+      .filter((r) => inDateRange(r.createdAt, fromDate, toDate))
+      .filter(
+        (r) =>
+          !q ||
+          r.requestedBy?.toLowerCase().includes(q) ||
+          r.userId?.name?.toLowerCase().includes(q) ||
+          r.godownId?.name?.toLowerCase().includes(q) ||
+          r.reason?.toLowerCase().includes(q)
+      )
+      .sort((a, b) => {
+        if ((a.status === "pending") !== (b.status === "pending")) return a.status === "pending" ? -1 : 1;
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      });
+  }, [requests, fromDate, toDate, searchQuery]);
 
-  if (fromDate && reqDate < fromDate) return false;
-  if (toDate && reqDate > toDate) return false;
+  const active = rows.find((r) => r._id === selectedId) || rows[0] || null;
+  const activeId = active?._id;
+  useEffect(() => { setNote(""); }, [activeId]);
 
-  return true;
-});
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      data = data.filter(r => 
-        r.requestedBy?.toLowerCase().includes(query) || 
-        r.godownId?.name?.toLowerCase().includes(query) ||
-        r.reason?.toLowerCase().includes(query)
-      );
-    }
-    return data.sort((a, b) => {
-      if (a.status === "pending" && b.status !== "pending") return -1;
-      if (a.status !== "pending" && b.status === "pending") return 1;
-      return new Date(b.createdAt) - new Date(a.createdAt);
+  const decide = async (action) => {
+    const approve = action === "approve";
+    const ok = await confirm({
+      title: approve ? "Approve this request?" : "Reject this request?",
+      message: approve
+        ? `The requested quantities will be deducted from ${active.godownId?.name || "the kitchen"}'s stock and recorded as consumption. This cannot be undone.`
+        : "The kitchen will be told this request was rejected. This cannot be undone.",
+      confirmLabel: approve ? "Approve" : "Reject",
+      variant: approve ? "primary" : "danger"
     });
-}, [requests, fromDate, toDate, searchQuery]);
-  const activeRecord = useMemo(() => 
-    processedRows.find(r => r._id === selectedId) || processedRows[0], 
-  [selectedId, processedRows]);
-
-  const handleAction = async (id, action) => {
-    const note = window.prompt(`Enter a note for this ${action}:`, `Request ${action}ed by admin`);
-    if (note === null) return;
-
+    if (!ok) return;
+    setBusy(true);
     try {
-      await api.post(`/requests/${id}/${action}`, { note });
-      toast.success(`Request ${action}ed successfully`);
-      load();
+      await api.post(`/requests/${active._id}/${action}`, { note: note.trim() || undefined });
+      showToast(approve ? "Request approved" : "Request rejected", "success");
+      setNote("");
+      await load();
     } catch (err) {
-      toast.error(err.response?.data?.error || "Action failed");
+      showToast(errMsg(err, "Action failed"), "error"); // note stays for a retry
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleDownloadExcel = () => {
-    if (!activeRecord) return;
-    const excelData = activeRecord.items.map((item) => ({
-  "Stock Item": item.stockItemId?.name,
-  "Quantity": item.qtyBaseUnit || item.quantity,
-  "Unit": item.stockItemId?.unitId?.symbol || item.unit || "Units",
-  "Status": activeRecord.status,
-  "Reason": activeRecord.reason,
-  "Authorised By": activeRecord.userId?.name || "Admin",
-  "Date": new Date(activeRecord.createdAt).toLocaleDateString(),
-  "Target Date": activeRecord.targetDate
-    ? new Date(activeRecord.targetDate).toLocaleDateString()
-    : "Immediate"
-}));
-
-    const worksheet = XLSX.utils.json_to_sheet(excelData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory Request");
-    XLSX.writeFile(workbook, `Request_${activeRecord.requestedBy || 'Admin'}_${Date.now()}.xlsx`);
+  const exportAll = () => {
+    if (!rows.length) return showToast("No requests to export", "error");
+    exportMany(rows, fromDate, toDate);
+    showToast("Excel exported", "success");
   };
-const handleDownloadAllRequestsExcel = () => {
-  if (!processedRows.length) {
-    return toast.error("No requests found");
-  }
 
- const rows = [
-  [
-    "Date",
-    "Target Date",
-    "Godown",
-    "Requested By",
-    "Reason",
-    "Status",
-    "Item",
-    "Quantity",
-    "Unit",
-  ],
-];
+  const filtered = Boolean(searchQuery.trim() || fromDate || toDate);
+  const pending = active?.status === "pending";
 
-processedRows.forEach((req) => {
-  req.items.forEach((item, index) => {
-    rows.push([
-  index === 0 ? new Date(req.createdAt).toLocaleDateString() : "",
-  index === 0
-    ? (req.targetDate
-        ? new Date(req.targetDate).toLocaleDateString()
-        : "Immediate")
-    : "",
-  index === 0 ? req.godownId?.name || "" : "",
-  index === 0 ? req.userId?.name || "" : "",
-  index === 0 ? req.reason || "" : "",
-  index === 0 ? req.status || "" : "",
-  item.stockItemId?.name || "",
-  item.qtyBaseUnit || item.quantity || 0,
-  item.stockItemId?.unitId?.symbol || item.unit || "",
-]);
-  });
-
-});
-
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-let excelRow = 2;
-
-processedRows.forEach((req, reqIndex) => {
-  const bgColor =
-    reqIndex % 2 === 0
-      ? "E0F2FE"
-      : "ECFDF5";
-
-  req.items.forEach(() => {
-   ["A","B","C","D","E","F","G","H","I"].forEach(col => {
-      const cell = ws[`${col}${excelRow}`];
-
-      if (cell) {
-        cell.s = {
-          fill: {
-            patternType: "solid",
-            fgColor: { rgb: bgColor }
-          }
-        };
+  const rail = (
+    <RailList
+      title={filtered ? "Search results" : "Recent records"}
+      count={rows.length}
+      loading={loading}
+      empty={
+        error ? (
+          <ErrorState message={error} onRetry={load} />
+        ) : (
+          <EmptyState title={filtered ? "No matching requests" : "No requests yet"}>
+            {filtered ? "Adjust the search or date range." : "Consumption requests from kitchens will appear here."}
+          </EmptyState>
+        )
       }
-    });
-
-    excelRow++;
-  });
-});
-["A1","B1","C1","D1","E1","F1","G1","H1","I1"].forEach(cellRef => {
-  if (ws[cellRef]) {
-    ws[cellRef].s = {
-      font: {
-        bold: true,
-        color: { rgb: "FFFFFF" }
-      },
-      fill: {
-        patternType: "solid",
-        fgColor: { rgb: "1E40AF" }
-      }
-    };
-  }
-});
-  const wb = XLSX.utils.book_new();
-
-  XLSX.utils.book_append_sheet(
-    wb,
-    ws,
-    "Requests"
+    >
+      {rows.slice(0, limit).map((r) => (
+        <RailItem key={r._id} active={active?._id === r._id} onClick={() => setSelectedId(r._id)}>
+          <div style={rowStyle}>
+            <strong>{r.godownId?.name || "Main hub"}</strong>
+            <span style={mutedStyle}>{fmtTime(r.createdAt)}</span>
+          </div>
+          <div style={{ ...rowStyle, marginTop: 6 }}>
+            <span style={mutedStyle}>{fmtDate(r.createdAt)} · {r.items?.length || 0} items · {r.userId?.name || "Admin"}</span>
+            <StatusBadge status={r.status} />
+          </div>
+        </RailItem>
+      ))}
+      {rows.length > limit && (
+        <Button variant="ghost" size="sm" onClick={() => setLimit((n) => n + PAGE)}>
+          Show more ({rows.length - limit} left)
+        </Button>
+      )}
+    </RailList>
   );
 
-  XLSX.writeFile(
-    wb,
-    fromDate || toDate
-      ? `Requests_${fromDate || "start"}_to_${toDate || "end"}.xlsx`
-      : "All_Requests.xlsx"
-  );
-
-  toast.success("Excel exported successfully");
-};
-  return (
-    <div style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif" }}>
-      
-      {/* Header Area */}
-      <div style={{ padding: '20px 32px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>
-          <span style={{ color: '#6366f1', fontWeight: '500' }}>Requests</span>
-        </h1>
-        
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', color: '#94a3b8' }} />
-            <input 
-              type="text" placeholder="Search requests..." value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px 10px 36px', fontSize: '13px', fontWeight: '600', width: '220px', outline: 'none' }}
-            />
-          </div>
-<div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-
-  <input
-    type="date"
-    value={fromDate}
-    onChange={(e) => setFromDate(e.target.value)}
-    style={{
-      padding: "10px 12px",
-      borderRadius: "10px",
-      border: "1px solid #e2e8f0",
-      fontSize: "13px"
-    }}
-  />
-
-  <span style={{ fontSize: "12px", color: "#64748b" }}>
-    to
-  </span>
-
-  <input
-    type="date"
-    value={toDate}
-    onChange={(e) => setToDate(e.target.value)}
-    style={{
-      padding: "10px 12px",
-      borderRadius: "10px",
-      border: "1px solid #e2e8f0",
-      fontSize: "13px"
-    }}
-  />
-
-  {(fromDate || toDate) && (
-    <button
-      onClick={() => {
-        setFromDate("");
-        setToDate("");
-      }}
-      style={{
-        padding: "10px 12px",
-        border: "1px solid #e2e8f0",
-        borderRadius: "8px",
-        cursor: "pointer",
-        background: "#fff"
-      }}
-    >
-      Clear
-    </button>
-  )}
-</div>
-<button
-  onClick={handleDownloadAllRequestsExcel}
-  style={{
-    background: "#10b981",
-    border: "none",
-    color: "#fff",
-    padding: "10px 20px",
-    borderRadius: "10px",
-    fontWeight: "700",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    fontSize: "13px"
-  }}
->
-  <FileSpreadsheet size={16} />
-  Export All Requests
-</button>
-          {/* <div style={{ background: '#f8fafc', padding: '0 12px', borderRadius: '10px', border: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Calendar size={18} color="#6366f1" />
-            <DatePicker
-              selected={filterDate}
-              onChange={(date) => setFilterDate(date)}
-              dateFormat="dd MMM yyyy"
-              customInput={<input style={{ border: 'none', background: 'transparent', fontWeight: '700', fontSize: '13px', width: '90px', cursor: 'pointer' }} />}
-            />
-          </div> */}
-        </div>
-      </div>
-
-      {/* Content Body */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '24px', gap: '24px' }}>
-        
-        {/* Sidebar List */}
-        <div style={{ width: '380px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ fontSize: '11px', fontWeight: '900', color: '#64748b', paddingLeft: '8px', letterSpacing: '0.5px' }}>
-            {searchQuery ? 'SEARCH RESULTS' : 'RECENT RECORDS'} ({processedRows.length})
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {processedRows.map(r => (
-              <div 
-                key={r._id} onClick={() => setSelectedId(r._id)}
-                style={{
-                  padding: '16px', borderRadius: '16px', cursor: 'pointer',
-                  background: selectedId === r._id ? '#fff' : 'transparent',
-                  border: selectedId === r._id ? '1px solid #6366f1' : '1px solid transparent',
-                  boxShadow: selectedId === r._id ? '0 10px 15px -3px rgba(99, 102, 241, 0.1)' : 'none',
-                  transition: 'all 0.2s'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ fontWeight: '700', color: selectedId === r._id ? '#6366f1' : '#1e293b', fontSize: '14px' }}>
-                    {r.godownId?.name || 'Main Hub'}
-                  </div>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: r.status === 'pending' ? '#f59e0b' : '#94a3b8' }}>
-                    {new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-                <div
-  style={{
-    fontSize: '12px',
-    color: '#64748b',
-    marginTop: '4px',
-    display: 'flex',
-    justifyContent: 'space-between'
-  }}
->
-  <div>
-    <div
-      style={{
-        marginTop: '2px',
-        fontSize: '11px',
-        color: '#94a3b8'
-      }}
-    >
-      {new Date(r.createdAt).toLocaleDateString()}
-    </div>
-    <div>{r.items?.length} items • {r.userId?.name || 'Admin'}</div>
-
-    
-  </div>
-
-  <span
-    style={{
-      fontWeight: '800',
-      textTransform: 'uppercase',
-      fontSize: '10px'
-    }}
-  >
-    {r.status}
-  </span>
-</div>
-                {/* <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{r.items?.length} items • {r.userId?.name || 'Admin'}</span>
-                  <span style={{ fontWeight: '800', textTransform: 'uppercase', fontSize: '10px' }}>{r.status}</span>
-                </div> */}
-              </div>
+  let detail;
+  if (loading) detail = <LoadingState label="Loading requests…" />;
+  else if (!active) detail = <EmptyState title={error ? "Requests could not be loaded" : "No matching requests found"} />;
+  else {
+    detail = (
+      <DetailPanel
+        head={
+          <>
+            <Meta label="Status"><StatusBadge status={active.status} /></Meta>
+            <Meta label="Target date">{targetOf(active)}</Meta>
+            <Meta label="Raised">{fmtDateTime(active.createdAt)}</Meta>
+            <Meta label="Requested by" align="end">
+              {active.userId?.name || "Admin"}
+              {active.godownId?.name && <span style={{ ...mutedStyle, display: "block", fontWeight: 400 }}>{active.godownId.name}</span>}
+            </Meta>
+          </>
+        }
+        foot={
+          <>
+            <Button variant="success" onClick={() => exportOne(active)} style={{ marginRight: "auto" }}>
+              <FileSpreadsheet size={16} /> Export to Excel
+            </Button>
+            {pending ? (
+              <>
+                <Button variant="danger" disabled={busy} onClick={() => decide("reject")}>
+                  <XCircle size={16} /> Reject
+                </Button>
+                <Button disabled={busy} onClick={() => decide("approve")}>
+                  <CheckCircle size={16} /> {busy ? "Saving…" : "Approve Request"}
+                </Button>
+              </>
+            ) : (
+              <span style={mutedStyle}>Admin note: {active.adminDecision || "No note provided"}</span>
+            )}
+          </>
+        }
+      >
+        {active.reason && <Banner variant="info">Reason: {active.reason}</Banner>}
+        {pending && (
+          <Field label="Decision note (optional)">
+            <input type="text" value={note} maxLength={200} placeholder="Shown to the kitchen with your decision" onChange={(e) => setNote(e.target.value)} />
+          </Field>
+        )}
+        <DataTable>
+          <thead>
+            <tr>
+              <th scope="col">Stock item</th>
+              <th scope="col" style={{ textAlign: "right" }}>Quantity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(active.items || []).map((item, idx) => (
+              <tr key={idx}>
+                <td><strong>{item.stockItemId?.name || "Unknown item"}</strong></td>
+                <td style={{ textAlign: "right" }}>{formatQty(qtyOf(item))} {unitOf(item)}</td>
+              </tr>
             ))}
-          </div>
-        </div>
+          </tbody>
+        </DataTable>
+      </DetailPanel>
+    );
+  }
 
-        {/* Detail Canvas */}
-        <div style={{ flex: 1, background: '#fff', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-          {activeRecord ? (
-            <>
-              <div style={{ padding: '40px', borderBottom: '1px solid #f1f5f9' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
-                  <div>
-                    <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>TARGET DATE</div>
-                    <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>{activeRecord.targetDate ? new Date(activeRecord.targetDate).toLocaleDateString() : 'Immediate'}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>STATUS</div>
-                    <div style={{ fontSize: '15px', fontWeight: '800', color: activeRecord.status === 'pending' ? '#f59e0b' : activeRecord.status === 'approved' ? '#10b981' : '#ef4444', textTransform: 'uppercase' }}>{activeRecord.status}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>REQUESTED BY</div>
-                    <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>{activeRecord.userId?.name || 'Admin'}</div>
-                    <div style={{ fontSize: '12px', color: '#64748b' }}>{activeRecord.godownId?.name}</div>
-                  </div>
-                </div>
-
-                {activeRecord.reason && (
-                  <div style={{ marginTop: '24px', padding: '12px 16px', background: '#f8fafc', borderRadius: '12px', borderLeft: '4px solid #6366f1' }}>
-                    <div style={{ fontSize: '10px', fontWeight: '900', color: '#64748b', marginBottom: '4px' }}>REASON</div>
-                    <div style={{ fontSize: '13px', color: '#1e293b', fontStyle: 'italic' }}>"{activeRecord.reason}"</div>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ flex: 1, padding: '0 40px', overflowY: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ textAlign: 'left' }}>
-                      <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#0f172a', borderBottom: '1px solid #e2e8f0' }}>STOCK ITEM</th>
-                      <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#0f172a', borderBottom: '1px solid #e2e8f0', textAlign: 'right' }}>QUANTITY</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeRecord.items.map((item, idx) => (
-                      <tr key={idx}>
-                        <td style={{ padding: '20px 0', borderBottom: '1px solid #f8fafc' }}>
-                          <div style={{ fontWeight: '700', color: '#1e293b' }}>{item.stockItemId?.name}</div>
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>ID: {item.stockItemId?._id?.slice(-6).toUpperCase()}</div>
-                        </td>
-                        <td style={{ padding: '20px 0', textAlign: 'right', borderBottom: '1px solid #f8fafc' }}>
-                          <span style={{ fontWeight: '800', color: '#0f172a' }}>{item.qtyBaseUnit || item.quantity}</span>
-                          <span style={{ marginLeft: '4px', fontSize: '12px', color: '#64748b' }}>
-                            {item.stockItemId?.unitId?.symbol || item.unit || ""}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Action Footer */}
-              <div style={{ padding: '32px 40px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {/* UPDATED EXCEL BUTTON COLOR */}
-                <button 
-                  onClick={handleDownloadExcel}
-                  style={{ 
-                    background: '#10b981', 
-                    border: 'none', 
-                    color: '#fff', 
-                    padding: '12px 20px', 
-                    borderRadius: '12px', 
-                    fontWeight: '700', 
-                    fontSize: '13px', 
-                    cursor: 'pointer', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '8px',
-                    boxShadow: '0 4px 6px -1px rgba(16, 185, 129, 0.2)' 
-                  }}
-                >
-                  <FileSpreadsheet size={16} /> Export to Excel
-                </button>
-
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  {activeRecord.status === 'pending' ? (
-                    <>
-                      <button 
-                        onClick={() => handleAction(activeRecord._id, 'reject')}
-                        style={{ background: '#fee2e2', border: 'none', color: '#ef4444', padding: '12px 24px', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-                      >
-                        <XCircle size={16} /> Reject
-                      </button>
-                      <button 
-                        onClick={() => handleAction(activeRecord._id, 'approve')}
-                        style={{ background: '#6366f1', border: 'none', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 6px -1px rgba(99, 102, 241, 0.2)' }}
-                      >
-                        <CheckCircle size={16} /> Approve Request
-                      </button>
-                    </>
-                  ) : (
-                    <div style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic', background: '#fff', padding: '10px 16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                      Admin Note: {activeRecord.adminDecision || 'No note provided'}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-              <div style={{ textAlign: 'center' }}>
-                <Search size={40} style={{ marginBottom: '16px', opacity: 0.5 }} />
-                <div style={{ fontWeight: '600' }}>No matching requests found</div>
-              </div>
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      <PageHeader
+        title="Requests"
+        actions={
+          <>
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <Search size={16} aria-hidden="true" style={{ position: "absolute", left: 12, color: "var(--muted-soft)" }} />
+              <input
+                type="search" aria-label="Search requests" placeholder="Search requests…" value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setLimit(PAGE); }} style={{ paddingLeft: 36, width: 200 }}
+              />
             </div>
-          )}
-        </div>
-      </div>
+            <DateField  aria-label="From date" value={fromDate} max={toDate || undefined} onChange={(e) => { setFromDate(e.target.value); setLimit(PAGE); }} />
+            <span style={mutedStyle}>to</span>
+            <DateField  aria-label="To date" value={toDate} min={fromDate || undefined} onChange={(e) => { setToDate(e.target.value); setLimit(PAGE); }} />
+            {(fromDate || toDate) && (
+              <Button variant="ghost" size="sm" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</Button>
+            )}
+            <Button variant="success" onClick={exportAll}>
+              <FileSpreadsheet size={16} /> Export All
+            </Button>
+          </>
+        }
+      />
+      <SplitView rail={rail}>{detail}</SplitView>
+      {dialog}
     </div>
   );
 };

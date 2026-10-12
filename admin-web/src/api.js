@@ -1,31 +1,73 @@
 import axios from "axios";
 
-// Use the variable from Vercel/Env, or fallback to localhost for development
-// Note: VITE_API_URL should be added to your Vercel Environment Variables
+// VITE_API_URL is set per environment (Vercel / .env); localhost is the dev fallback.
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-export const api = axios.create({
-  baseURL: API_BASE,
-});
+export const api = axios.create({ baseURL: API_BASE });
 
-/**
- * Sets the Authorization header for all axios requests and manages localStorage.
- * @param {string|null} token - The JWT token or null to clear it.
- */
-export const setAuthToken = (token) => {
-  if (token) {
-    api.defaults.headers.common.Authorization = `Bearer ${token}`;
-    localStorage.setItem("accessToken", token);
-  } else {
-    delete api.defaults.headers.common.Authorization;
-    localStorage.removeItem("accessToken");
-  }
+const KEYS = { access: "accessToken", refresh: "refreshToken", role: "userRole" };
+
+/** Fired on window when the session can no longer be renewed. */
+export const SESSION_EXPIRED_EVENT = "mkm:session-expired";
+
+const applyToken = (token) => {
+  if (token) api.defaults.headers.common.Authorization = `Bearer ${token}`;
+  else delete api.defaults.headers.common.Authorization;
 };
 
-// Automatically set the token on initial load if it exists in storage
-const storedToken = localStorage.getItem("accessToken");
-if (storedToken) {
-  setAuthToken(storedToken);
-}
+export const setSession = ({ accessToken, refreshToken, role }) => {
+  applyToken(accessToken);
+  localStorage.setItem(KEYS.access, accessToken);
+  if (refreshToken) localStorage.setItem(KEYS.refresh, refreshToken);
+  if (role) localStorage.setItem(KEYS.role, role);
+};
+
+export const clearSession = () => {
+  applyToken(null);
+  Object.values(KEYS).forEach((key) => localStorage.removeItem(key));
+};
+
+// Kept for callers that only set or clear the access token.
+export const setAuthToken = (token) => (token ? setSession({ accessToken: token }) : clearSession());
+
+const stored = localStorage.getItem(KEYS.access);
+if (stored) applyToken(stored);
+
+// One refresh at a time: concurrent 401s wait on the same request.
+let refreshing = null;
+const refreshAccessToken = () => {
+  const refreshToken = localStorage.getItem(KEYS.refresh);
+  if (!refreshToken) return Promise.reject(new Error("No refresh token"));
+  refreshing ??= axios
+    .post(`${API_BASE}/auth/refresh`, { refreshToken })
+    .then(({ data }) => {
+      setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+      return data.accessToken;
+    })
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
+};
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const { config, response } = error;
+    const isAuthCall = config?.url?.startsWith("/auth/");
+    if (response?.status !== 401 || !config || config._retried || isAuthCall) throw error;
+
+    config._retried = true;
+    try {
+      const token = await refreshAccessToken();
+      config.headers.Authorization = `Bearer ${token}`;
+      return api(config);
+    } catch {
+      clearSession();
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+      throw error;
+    }
+  }
+);
 
 export default api;

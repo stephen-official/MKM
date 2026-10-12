@@ -1,359 +1,382 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { api } from "../api.js";
-import { toast } from "react-hot-toast";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { 
-  Search, 
-  ChevronRight, 
-  AlertTriangle, 
-  Download,
-  CheckCircle2,
-  Package,
-  Trash2,
-  Tag,
-  FileSpreadsheet // Added icon for Master Excel
-} from "lucide-react";
+import { Search, Download, Trash2, Check, FileSpreadsheet } from "lucide-react";
+import { api } from "../api.js";
+import { useToast } from "../useToast.js";
+import {
+  PageHeader, Button, Badge, Banner, EmptyState, ErrorState, LoadingState,
+  DataTable, Tabs, SplitView, RailList, RailItem, DetailPanel, Meta
+} from "../components/ui/index.jsx";
+import { useConfirm } from "../components/ui/useConfirm.jsx";
+
+const ROW_LIMIT = 100;
+
+const errorMessage = (error, fallback) => error?.response?.data?.message || fallback;
+const fmtQty = (value) => Number(value || 0).toLocaleString("en-IN");
+const isoToday = () => new Date().toISOString().split("T")[0];
+const idOf = (ref) => ref?._id || ref;
+const isLow = (stock) => Number(stock.qtyBaseUnit) <= Number(stock.thresholdBaseUnit || 0);
 
 export const GodownsPage = () => {
+  const { showToast } = useToast();
+  const { confirm, dialog } = useConfirm();
+
   const [godowns, setGodowns] = useState([]);
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [viewMode, setViewMode] = useState("all");
   const [selectedGodownId, setSelectedGodownId] = useState(null);
+  const [lowGodownId, setLowGodownId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState("all"); // "all" or "low-stock"
-  const [localThresholds, setLocalThresholds] = useState({});
+  const [thresholds, setThresholds] = useState({});
+  const [busyRow, setBusyRow] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const requestRef = useRef(0);
 
   const loadData = useCallback(async () => {
+    const requestId = ++requestRef.current;
     setLoading(true);
+    setLoadError("");
     try {
       const [godRes, stockRes] = await Promise.all([
         api.get("/inventory/godowns"),
         api.get("/godown-stocks")
       ]);
-      setGodowns(godRes.data || []);
-      setStocks(stockRes.data || []);
-      
-      if (godRes.data?.length > 0 && !selectedGodownId) {
-        setSelectedGodownId(godRes.data[0]._id);
-      }
+      if (requestId !== requestRef.current) return;
+      const godownList = Array.isArray(godRes.data) ? godRes.data : [];
+      setGodowns(godownList);
+      setStocks(Array.isArray(stockRes.data) ? stockRes.data : []);
+      setSelectedGodownId((current) =>
+        godownList.some((g) => g._id === current) ? current : godownList[0]?._id || null
+      );
     } catch (error) {
-      toast.error("Failed to sync inventory data");
+      if (requestId !== requestRef.current) return;
+      const message = errorMessage(error, "Failed to load godown stock");
+      setLoadError(message);
+      showToast(message, "error");
     } finally {
-      setLoading(false);
+      if (requestId === requestRef.current) setLoading(false);
     }
-  }, [selectedGodownId]);
+  }, [showToast]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // --- ACTIONS ---
-  const deleteStockItem = async (e, rowId) => {
-    e.stopPropagation();
-    if (!window.confirm("Are you sure you want to remove this item from stock records?")) return;
-    
-    try {
-     await api.delete(`/procurement/godown-stocks/${rowId}`);
-      toast.success("Item removed from stock");
-      setStocks(prev => prev.filter(item => item._id !== rowId));
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to delete item.");
-    }
-  };
+  useEffect(() => { setShowAll(false); }, [viewMode, selectedGodownId, lowGodownId, searchQuery]);
 
-  const updateThreshold = async (rowId) => {
-    const value = localThresholds[rowId];
-    if (value === undefined || value === "") {
-      toast.error("Please enter a value first");
-      return;
+  const lowStocks = useMemo(() => stocks.filter(isLow), [stocks]);
+
+  const countsByGodown = useMemo(() => {
+    const total = {};
+    const low = {};
+    stocks.forEach((s) => {
+      const id = idOf(s.godownId);
+      total[id] = (total[id] || 0) + 1;
+      if (isLow(s)) low[id] = (low[id] || 0) + 1;
+    });
+    return { total, low };
+  }, [stocks]);
+
+  const activeStocks = useMemo(() => {
+    let list = viewMode === "low-stock"
+      ? lowStocks.filter((s) => !lowGodownId || idOf(s.godownId) === lowGodownId)
+      : stocks.filter((s) => idOf(s.godownId) === selectedGodownId);
+
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((s) =>
+        (s.stockItemId?.name || "").toLowerCase().includes(q) ||
+        (s.stockItemId?.stockGroupId?.name || "").toLowerCase().includes(q)
+      );
     }
+    return list;
+  }, [stocks, lowStocks, selectedGodownId, lowGodownId, viewMode, searchQuery]);
+
+  const visibleStocks = showAll ? activeStocks : activeStocks.slice(0, ROW_LIMIT);
+
+  const currentGodown = godowns.find((g) => g._id === (viewMode === "low-stock" ? lowGodownId : selectedGodownId));
+  const detailTitle = viewMode === "low-stock"
+    ? (currentGodown ? `Low stock: ${currentGodown.name}` : "Low stock alerts")
+    : currentGodown?.name || "Select a godown";
+
+  const saveThreshold = async (event, stock) => {
+    event.preventDefault();
+    const rowId = stock._id;
+    const raw = thresholds[rowId];
+    if (raw === undefined || raw === "") return showToast("Enter a threshold first", "error");
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) return showToast("Threshold must be zero or a positive number", "error");
+
+    setBusyRow(rowId);
     try {
-      await api.post(`/procurement/godown-stocks/${rowId}/threshold`,{ thresholdBaseUnit: Number(value) });
-      toast.success("Threshold updated");
-      setLocalThresholds(prev => {
+      await api.post(`/procurement/godown-stocks/${rowId}/threshold`, { thresholdBaseUnit: value });
+      showToast("Threshold updated", "success");
+      setThresholds((prev) => {
         const next = { ...prev };
         delete next[rowId];
         return next;
       });
-      loadData(); 
+      await loadData();
     } catch (error) {
-      toast.error("Update failed");
+      showToast(errorMessage(error, "Threshold update failed"), "error");
+    } finally {
+      setBusyRow("");
     }
   };
 
-  // --- FILTERED EXCEL (Current View) ---
-  const downloadExcel = () => {
-    const data = activeStocks.map(it => ({
-      "Godown": it.godownId?.name || "N/A",
-      "Item": it.stockItemId?.name || "N/A",
-      "Stock Group": it.stockItemId?.stockGroupId?.name || "General",
-      "Current Qty": it.qtyBaseUnit,
-      "Unit": it.stockItemId?.unitId?.symbol || "",
-      "Threshold": it.thresholdBaseUnit || 0,
-      "Status": it.qtyBaseUnit <= (it.thresholdBaseUnit || 0) ? "LOW" : "OK"
-    }));
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Stock_Report");
-    XLSX.writeFile(workbook, `Stock_Report_${new Date().toISOString().split('T')[0]}.xlsx`);
+  const deleteStockItem = async (stock) => {
+    const name = stock.stockItemId?.name || "this item";
+    const ok = await confirm({
+      title: "Remove stock record",
+      message: `Remove ${name} from ${stock.godownId?.name || "this godown"}? Its current quantity (${fmtQty(stock.qtyBaseUnit)}) will be lost from stock records.`,
+      confirmLabel: "Remove",
+      variant: "danger"
+    });
+    if (!ok) return;
+
+    setBusyRow(stock._id);
+    try {
+      await api.delete(`/procurement/godown-stocks/${stock._id}`);
+      showToast("Item removed from stock", "success");
+      setStocks((prev) => prev.filter((s) => s._id !== stock._id));
+    } catch (error) {
+      showToast(errorMessage(error, "Failed to remove item"), "error");
+    } finally {
+      setBusyRow("");
+    }
   };
 
-  // --- MASTER EXCEL DOWNLOAD (Pivoted by Godown Columns) ---
+  const writeSheet = (rows, sheetName, fileName) => {
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    XLSX.writeFile(workbook, fileName);
+    return worksheet;
+  };
+
+  const downloadExcel = () => {
+    if (activeStocks.length === 0) return showToast("No data to export", "error");
+    writeSheet(
+      activeStocks.map((it) => ({
+        Godown: it.godownId?.name || "N/A",
+        Item: it.stockItemId?.name || "N/A",
+        "Stock Group": it.stockItemId?.stockGroupId?.name || "General",
+        "Current Qty": it.qtyBaseUnit,
+        Unit: it.stockItemId?.unitId?.symbol || "",
+        Threshold: it.thresholdBaseUnit || 0,
+        Status: isLow(it) ? "LOW" : "OK"
+      })),
+      "Stock_Report",
+      `Stock_Report_${isoToday()}.xlsx`
+    );
+  };
+
   const downloadMasterExcel = () => {
-    if (stocks.length === 0) return toast.error("No data to export");
+    if (stocks.length === 0) return showToast("No data to export", "error");
 
-    // 1. Get unique Godown names for columns
-    const godownNames = [...new Set(godowns.map(g => g.name))].sort();
-
-    // 2. Group stocks by Item ID (so one row per unique item)
+    const godownNames = [...new Set(godowns.map((g) => g.name))].sort();
     const itemMap = {};
-
-    stocks.forEach(it => {
-      const itemId = it.stockItemId?._id || it.stockItemId;
-      const itemName = it.stockItemId?.name || "Unknown Item";
-      
+    stocks.forEach((it) => {
+      const itemId = idOf(it.stockItemId);
       if (!itemMap[itemId]) {
         itemMap[itemId] = {
-          "Stock Item": itemName,
+          "Stock Item": it.stockItemId?.name || "Unknown Item",
           "Stock Group": it.stockItemId?.stockGroupId?.name || "General",
-          "Units": it.stockItemId?.unitId?.symbol || "",
-          // Initialize all godown columns with 0
-          ...Object.fromEntries(godownNames.map(name => [name, 0]))
+          Units: it.stockItemId?.unitId?.symbol || "",
+          ...Object.fromEntries(godownNames.map((name) => [name, 0]))
         };
       }
-      
-      // Assign the quantity to the specific godown column
       const gName = it.godownId?.name || "N/A";
-      if (itemMap[itemId].hasOwnProperty(gName)) {
-        itemMap[itemId][gName] = it.qtyBaseUnit;
-      }
+      if (gName in itemMap[itemId]) itemMap[itemId][gName] = it.qtyBaseUnit;
     });
 
-    // 3. Convert Map to Array and add S.No
-    const finalData = Object.values(itemMap).map((row, index) => ({
-      "S.No": index + 1,
-      ...row
-    }));
-
-    // 4. Generate Excel
-    const worksheet = XLSX.utils.json_to_sheet(finalData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Master_Stock");
-
-    // Set column widths (S.No, Item, Group, Units, then the Godowns)
-    const cols = [
-      { wch: 5 }, { wch: 25 }, { wch: 15 }, { wch: 10 }, 
-      ...godownNames.map(() => ({ wch: 15 }))
-    ];
-    worksheet["!cols"] = cols;
-
-    XLSX.writeFile(workbook, `Master_Inventory_Pivoted_${new Date().toLocaleDateString()}.xlsx`);
+    const rows = Object.values(itemMap).map((row, index) => ({ "S.No": index + 1, ...row }));
+    const worksheet = writeSheet(rows, "Master_Stock", `Master_Inventory_Pivoted_${isoToday()}.xlsx`);
+    worksheet["!cols"] = [{ wch: 5 }, { wch: 25 }, { wch: 15 }, { wch: 10 }, ...godownNames.map(() => ({ wch: 15 })) ];
   };
 
-  const activeStocks = useMemo(() => {
-    let filtered = stocks;
-    if (viewMode === "low-stock") {
-      filtered = stocks.filter(s => s.qtyBaseUnit <= (s.thresholdBaseUnit || 0));
-    } else {
-      filtered = stocks.filter(s => (s.godownId?._id || s.godownId) === selectedGodownId);
-    }
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(it => {
-        const itemName = it.stockItemId?.name?.toLowerCase() || "";
-        const groupName = it.stockItemId?.stockGroupId?.name?.toLowerCase() || ""; 
-        return itemName.includes(q) || groupName.includes(q);
-      });
-    }
-    return filtered;
-  }, [stocks, selectedGodownId, viewMode, searchQuery]);
-
-  const styles = {
-    container: { height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif" },
-    header: { padding: '20px 32px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-    sidebar: { width: '380px', display: 'flex', flexDirection: 'column', gap: '12px', padding: '24px' },
-    canvas: { flex: 1, background: '#fff', borderRadius: '24px', margin: '24px 24px 24px 0', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e8f0' },
-    tabBtn: (active) => ({
-        padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer',
-        background: active ? '#6366f1' : 'transparent', color: active ? '#fff' : '#64748b', border: 'none', transition: '0.2s'
-    }),
-    card: (selected) => ({
-        padding: '16px', borderRadius: '16px', cursor: 'pointer', background: selected ? '#fff' : 'transparent',
-        border: selected ? '1px solid #6366f1' : '1px solid transparent', boxShadow: selected ? '0 10px 15px -3px rgba(99, 102, 241, 0.1)' : 'none', transition: 'all 0.2s'
-    }),
-    actionBtn: { border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: '0.2s' },
-    groupBadge: { fontSize: '10px', fontWeight: '700', color: '#6366f1', background: '#eef2ff', padding: '4px 8px', borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'inline-flex', alignItems: 'center' },
-    masterBtn: { display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }
+  const switchMode = (mode) => {
+    setViewMode(mode);
+    setSearchQuery("");
   };
+
+  const rail = viewMode === "low-stock" ? (
+    <RailList
+      title="Critical stock"
+      count={lowStocks.length}
+      loading={loading && godowns.length === 0}
+      empty={<EmptyState title="Nothing is running low" />}
+    >
+      {lowStocks.length > 0 && (
+        <RailItem active={!lowGodownId} onClick={() => setLowGodownId("")}>
+          <strong>All godowns</strong>
+          <div className="page-subtitle">{lowStocks.length} items low</div>
+        </RailItem>
+      )}
+      {lowStocks.length > 0 && godowns.filter((g) => countsByGodown.low[g._id]).map((g) => (
+        <RailItem key={g._id} active={lowGodownId === g._id} onClick={() => setLowGodownId(g._id)}>
+          <strong>{g.name}</strong>
+          <div className="page-subtitle">{countsByGodown.low[g._id]} items low</div>
+        </RailItem>
+      ))}
+    </RailList>
+  ) : (
+    <RailList
+      title="Godowns"
+      count={godowns.length}
+      loading={loading && godowns.length === 0}
+      empty={<EmptyState title="No godowns yet">Add godowns in Inventory Info.</EmptyState>}
+    >
+      {godowns.map((g) => (
+        <RailItem key={g._id} active={selectedGodownId === g._id} onClick={() => setSelectedGodownId(g._id)}>
+          <strong>{g.name}</strong>
+          <div className="page-subtitle">Monitoring {countsByGodown.total[g._id] || 0} items</div>
+        </RailItem>
+      ))}
+    </RailList>
+  );
+
+  let body;
+  if (loading && stocks.length === 0) {
+    body = <LoadingState label="Loading stock…" />;
+  } else if (loadError && stocks.length === 0) {
+    body = <ErrorState message={loadError} onRetry={loadData} />;
+  } else if (activeStocks.length === 0) {
+    body = (
+      <EmptyState title={searchQuery.trim() ? "No items match your search" : "No stock items in this view"}>
+        {viewMode === "low-stock" ? "Everything is above its threshold." : "Stock appears here once it is distributed to this godown."}
+      </EmptyState>
+    );
+  } else {
+    body = (
+      <>
+        <DataTable className="table--compact">
+          <thead>
+            <tr>
+              <th scope="col">Stock item</th>
+              <th scope="col">Stock group</th>
+              <th scope="col">Current qty</th>
+              <th scope="col">Threshold</th>
+              <th scope="col">Set threshold</th>
+              <th scope="col">Remove</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleStocks.map((it) => {
+              const rowId = it._id;
+              const low = isLow(it);
+              const unit = it.stockItemId?.unitId?.symbol || "";
+              const busy = busyRow === rowId;
+              const draft = thresholds[rowId] ?? "";
+              const itemName = it.stockItemId?.name || "Unknown item";
+              return (
+                <tr key={rowId}>
+                  <td>
+                    <strong>{itemName}</strong>
+                    {viewMode === "low-stock" && <div className="page-subtitle">{it.godownId?.name}</div>}
+                  </td>
+                  <td><Badge variant="info">{it.stockItemId?.stockGroupId?.name || "General"}</Badge></td>
+                  <td>
+                    <Badge variant={low ? "alert" : "success"}>{fmtQty(it.qtyBaseUnit)} {unit}</Badge>
+                  </td>
+                  <td>{fmtQty(it.thresholdBaseUnit)} {unit}</td>
+                  <td>
+                    <form onSubmit={(event) => saveThreshold(event, it)} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input
+                        type="number" min="0" step="any" inputMode="decimal"
+                        aria-label={`New threshold for ${itemName}`}
+                        placeholder="Set"
+                        value={draft}
+                        disabled={busy}
+                        onChange={(e) => setThresholds((prev) => ({ ...prev, [rowId]: e.target.value }))}
+                        style={{ width: 72 }}
+                      />
+                      <Button
+                        type="submit" size="sm" variant={draft !== "" ? "dark" : "ghost"}
+                        disabled={busy || draft === ""}
+                        aria-label={`Save threshold for ${itemName}`} title="Save threshold"
+                      >
+                        <Check size={16} /> Save
+                      </Button>
+                    </form>
+                  </td>
+                  <td>
+                    <Button
+                      size="sm" variant="danger" disabled={busy}
+                      onClick={() => deleteStockItem(it)}
+                      aria-label={`Remove ${itemName} stock record`} title="Remove stock record"
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </DataTable>
+        {!showAll && activeStocks.length > ROW_LIMIT && (
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: 12 }}>
+            <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>Show all {activeStocks.length} items</Button>
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>
-          Stock <span style={{ color: '#6366f1', fontWeight: '500' }}>Control</span>
-        </h1>
-        
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <div style={{ display: 'flex', background: '#f8fafc', padding: '4px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-            <button onClick={() => setViewMode("all")} style={styles.tabBtn(viewMode === "all")}>All Godowns</button>
-            <button onClick={() => setViewMode("low-stock")} style={styles.tabBtn(viewMode === "low-stock")}>
-              Low Stock {stocks.filter(s => s.qtyBaseUnit <= (s.thresholdBaseUnit || 0)).length > 0 && "!"}
-            </button>
-          </div>
-          
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', color: '#94a3b8' }} />
-            <input 
-              type="text" placeholder="Search item or group..." value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px 10px 36px', fontSize: '13px', width: '220px', outline: 'none' }}
-            />
-          </div>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+      <PageHeader
+        title="Godowns"
+        actions={
+          <>
+            <Button variant="dark" size="sm" onClick={downloadMasterExcel} disabled={loading}>
+              <FileSpreadsheet size={14} /> Master Excel
+            </Button>
+            <Button variant="success" size="sm" onClick={downloadExcel} disabled={loading}>
+              <Download size={14} /> Export view
+            </Button>
+          </>
+        }
+      >
+        <Tabs
+          label="Stock view"
+          value={viewMode}
+          onChange={switchMode}
+          items={[
+            { value: "all", label: "All godowns" },
+            { value: "low-stock", label: "Low stock", count: lowStocks.length }
+          ]}
+        />
+        <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+          <Search size={14} aria-hidden="true" style={{ position: "absolute", left: 10, color: "var(--muted-soft)" }} />
+          <input
+            type="search" aria-label="Search item or group" placeholder="Search item or group..."
+            value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ paddingLeft: 30, width: 220 }}
+          />
         </div>
-      </div>
+      </PageHeader>
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <div style={styles.sidebar}>
-          <div style={{ fontSize: '11px', fontWeight: '900', color: '#64748b', paddingLeft: '8px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-            {viewMode === "all" ? "Warehouse List" : "Critical Stock"}
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {viewMode === "all" ? (
-              godowns.map(g => (
-                <div key={g._id} onClick={() => setSelectedGodownId(g._id)} style={styles.card(selectedGodownId === g._id)}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontWeight: '700', color: selectedGodownId === g._id ? '#6366f1' : '#1e293b', fontSize: '14px' }}>{g.name}</div>
-                    <ChevronRight size={14} color={selectedGodownId === g._id ? '#6366f1' : '#cbd5e1'} />
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>Monitoring {stocks.filter(s => (s.godownId?._id || s.godownId) === g._id).length} items</div>
-                </div>
-              ))
-            ) : (
-              <div style={{ padding: '20px', textAlign: 'center', background: '#fff', borderRadius: '16px', border: '1px solid #fee2e2' }}>
-                <AlertTriangle size={24} color="#ef4444" style={{ margin: '0 auto 8px' }} />
-                <div style={{ fontSize: '13px', fontWeight: '800', color: '#991b1b' }}>{activeStocks.length} Items Low</div>
-              </div>
+      <SplitView rail={rail}>
+        <DetailPanel
+          head={
+            <>
+              <Meta label={viewMode === "low-stock" ? "Alerts" : "Current monitoring"}>{detailTitle}</Meta>
+              <Meta label="Items" align="end">{fmtQty(activeStocks.length)}</Meta>
+            </>
+          }
+        >
+          <div style={{ paddingTop: 16 }}>
+            {loadError && stocks.length > 0 && (
+              <Banner variant="warn" style={{ marginBottom: 12 }}>
+                Could not refresh: {loadError} <Button variant="ghost" size="sm" onClick={loadData}>Retry</Button>
+              </Banner>
             )}
+            {body}
           </div>
-        </div>
-
-        <div style={styles.canvas}>
-          <div style={{ padding: '32px 40px', borderBottom: '1px solid #f1f5f9', background: '#fcfcfe', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '4px', textTransform: 'uppercase' }}>Current Monitoring</div>
-              <h2 style={{ fontSize: '24px', fontWeight: '800', margin: 0, color: '#0f172a' }}>
-                {viewMode === "low-stock" ? "Low Stock Alerts" : (godowns.find(g => g._id === selectedGodownId)?.name || "Select Godown")}
-              </h2>
-            </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              {/* MASTER EXCEL BUTTON */}
-              <button onClick={downloadMasterExcel} style={styles.masterBtn}>
-                <FileSpreadsheet size={16} /> Master Excel
-              </button>
-              {/* FILTERED EXCEL BUTTON */}
-              <button onClick={downloadExcel} style={{ ...styles.masterBtn, background: '#10b981' }}>
-                <Download size={16} /> Export View
-              </button>
-            </div>
-          </div>
-
-          <div style={{ flex: 1, padding: '40px', overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ textAlign: 'left', borderBottom: '2px solid #f1f5f9' }}>
-                  <th style={{ padding: '12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase' }}>Stock Item</th>
-                  <th style={{ padding: '12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase' }}>Stock Group</th>
-                  <th style={{ padding: '12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', textAlign: 'center' }}>Current Qty</th>
-                  <th style={{ padding: '12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', textAlign: 'center' }}>Threshold</th>
-                  <th style={{ padding: '12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', textTransform: 'uppercase', textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeStocks.map((it) => {
-                  const isLow = it.qtyBaseUnit <= (it.thresholdBaseUnit || 0);
-                  const unitSymbol = it.stockItemId?.unitId?.symbol || "";
-                  const groupName = it.stockItemId?.stockGroupId?.name || "General";
-                  const rowId = it._id;
-                  
-                  return (
-                    <tr key={rowId} style={{ borderBottom: '1px solid #f8fafc' }}>
-                      <td style={{ padding: '20px 12px' }}>
-                        <div style={{ fontWeight: '700', color: '#1e293b', fontSize: '14px' }}>{it.stockItemId?.name || "Standard Item"}</div>
-                        {viewMode === "low-stock" && <div style={{ fontSize: '11px', color: '#94a3b8' }}>Location: {it.godownId?.name}</div>}
-                      </td>
-
-                      <td style={{ padding: '20px 12px' }}>
-                        <div style={styles.groupBadge}>
-                          <Tag size={10} style={{ marginRight: '4px' }} />
-                          {groupName}
-                        </div>
-                      </td>
-                      
-                      <td style={{ padding: '20px 12px', textAlign: 'center' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                          <span style={{ 
-                            padding: '6px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: '800',
-                            background: isLow ? '#fee2e2' : '#e0f2fe', color: isLow ? '#ef4444' : '#0284c7'
-                          }}>
-                            {it.qtyBaseUnit}
-                          </span>
-                          <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '600' }}>{unitSymbol}</span>
-                        </div>
-                      </td>
-
-                      <td style={{ padding: '20px 12px', textAlign: 'center', color: '#64748b', fontWeight: '600', fontSize: '13px' }}>
-                        {it.thresholdBaseUnit || 0} <span style={{ fontSize: '11px', color: '#cbd5e1' }}>{unitSymbol}</span>
-                      </td>
-
-                      <td style={{ padding: '20px 12px', textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
-                          <div style={{ position: 'relative' }}>
-                            <input 
-                              type="number" placeholder="Set"
-                              value={localThresholds[rowId] ?? ""}
-                              onChange={(e) => setLocalThresholds(prev => ({...prev, [rowId]: e.target.value}))}
-                              style={{ width: '80px', padding: '6px 24px 6px 8px', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'center', fontSize: '12px', fontWeight: '700' }}
-                            />
-                            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '9px', color: '#94a3b8' }}>{unitSymbol}</span>
-                          </div>
-
-                          <button 
-                            onClick={() => updateThreshold(rowId)}
-                            style={{ 
-                              ...styles.actionBtn,
-                              background: localThresholds[rowId] ? '#0f172a' : '#f1f5f9', 
-                              color: localThresholds[rowId] ? '#fff' : '#cbd5e1',
-                            }}>
-                            <CheckCircle2 size={16} />
-                          </button>
-
-                          <button 
-                            onClick={(e) => deleteStockItem(e, rowId)}
-                            title="Delete Stock Record"
-                            style={{ 
-                              ...styles.actionBtn,
-                              background: '#fee2e2', 
-                              color: '#ef4444'
-                            }}>
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            {activeStocks.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '80px', color: '#94a3b8' }}>
-                <Package size={48} style={{ margin: '0 auto 16px', opacity: 0.2 }} />
-                <div style={{ fontWeight: '700' }}>No stock items found in this view</div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+        </DetailPanel>
+      </SplitView>
+      {dialog}
     </div>
   );
 };

@@ -11,6 +11,7 @@ import {
   Utensils,
 } from "lucide-react";
 import { createElement } from "react";
+import { toLocalDateKey } from "../../utils/date";
 import "./KitchenHome.css";
 
 const OPEN_REQUEST_STATUSES = new Set([
@@ -37,15 +38,6 @@ const asNumber = (value) => {
 };
 
 const statusOf = (record) => String(record?.status || "").toLowerCase();
-
-const dateKey = (value) => {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate(),
-  ).padStart(2, "0")}`;
-};
 
 const remainingToReceive = (line) => {
   const approved = asNumber(
@@ -93,7 +85,7 @@ export default function KitchenHome({
   onReceiveDelivery,
   onOpenActivity,
 }) {
-  const today = dateKey(new Date());
+  const today = toLocalDateKey();
   void userInfo;
 
   const outOfStock = items.filter((item) => asNumber(item.currentQty ?? item.quantity ?? item.kitchenQty) <= 0);
@@ -109,7 +101,7 @@ export default function KitchenHome({
   const pendingRequests = [...requests, ...indents].filter((record) => OPEN_REQUEST_STATUSES.has(statusOf(record)));
   const deliveries = indents.filter(isReceivable);
   const todaysEntries = [...dailyUsageHistory, ...orders].filter(
-    (entry) => dateKey(entry?.date || entry?.usageDate || entry?.createdAt) === today,
+    (entry) => toLocalDateKey(entry?.date || entry?.usageDate || entry?.createdAt) === today,
   );
   const usageComplete = todaysEntries.length > 0;
 

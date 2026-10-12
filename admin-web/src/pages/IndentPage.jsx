@@ -1,1587 +1,283 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ClipboardList, FileSpreadsheet, Inbox, PlusCircle, Search } from "lucide-react";
 import { api } from "../api.js";
-import { useToast } from "../toast.jsx";
-import XLSX from "xlsx-js-style";
-import { 
-  Search, FileSpreadsheet, CheckCircle2, Inbox, 
-  ClipboardList, PlusCircle, RefreshCw, X, Save 
-} from "lucide-react";
+import { useToast } from "../useToast.js";
+import {
+  Button, ErrorState, LoadingState, PageHeader, Tabs, DateField } from "../components/ui/index.jsx";
+import { useConfirm } from "../components/ui/useConfirm.jsx";
+import { IndentLogsView } from "./indent/IndentLogsView.jsx";
+import { IndentRequestsView } from "./indent/IndentRequestsView.jsx";
+import { IndentCreateView } from "./indent/IndentCreateView.jsx";
+import { exportIndent, exportRequests } from "./indent/exports.js";
+import { errMsg, inDateRange, makeResolvers } from "./indent/helpers.js";
+
+const TABS = [
+  { value: "history", label: "Logs", icon: <ClipboardList size={14} aria-hidden="true" /> },
+  { value: "requests", label: "Requests", icon: <Inbox size={14} aria-hidden="true" /> },
+  { value: "create", label: "Create New", icon: <PlusCircle size={14} aria-hidden="true" /> }
+];
+
+const byNewest = (a, b) => new Date(b.createdAt) - new Date(a.createdAt);
 
 export const IndentPage = () => {
   const { showToast } = useToast();
-  const [fromDate, setFromDate] = useState("");
-const [toDate, setToDate] = useState("");
-  // View State
-  const [view, setView] = useState("history"); 
-  const [tab, setTab] = useState("stock-items");
+  const { confirm, dialog } = useConfirm();
+
+  const [view, setView] = useState("history");
   const [searchTerm, setSearchTerm] = useState("");
-  
-  // Data State
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
   const [stockItems, setStockItems] = useState([]);
   const [indents, setIndents] = useState([]);
-  const [indentRequests, setIndentRequests] = useState([]);
-  const [selectedItems, setSelectedItems] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
 
-  // --- Editing State for Requests ---
-  const [editingRequest, setEditingRequest] = useState(null);
-  const [approvedItems, setApprovedItems] = useState({});
-  const [rejectedItems, setRejectedItems] = useState({});
-  const [selectAll, setSelectAll] = useState(false);
+  const [requests, setRequests] = useState([]);
+  const [reqLoading, setReqLoading] = useState(false);
+  const [reqError, setReqError] = useState("");
+  const [reqId, setReqId] = useState(null);
+  const [decisions, setDecisions] = useState({});
 
-  // --- Data Loading ---
+  const [draft, setDraft] = useState({});
+  const [busy, setBusy] = useState(false);
+
+  const loadSeq = useRef(0);
+  const reqSeq = useRef(0);
+
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     try {
       const [itemsRes, indentRes] = await Promise.all([
         api.get("/inventory/stock-items"),
         api.get("/procurement/indents")
       ]);
+      if (seq !== loadSeq.current) return;
       setStockItems(itemsRes.data || []);
-      const sorted = (indentRes.data || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      setIndents(sorted);
-      if (sorted.length > 0 && !selectedId) setSelectedId(sorted[0]._id);
+      setIndents([...(indentRes.data || [])].sort(byNewest));
+      setLoadError("");
     } catch (error) {
-      showToast("Failed to load data", "error");
-    }
-  }, [showToast, selectedId]);
-
-  const fetchIndentRequests = useCallback(async () => {
-    try {
-      const res = await api.get("/indent-requests");
-      setIndentRequests(res.data || []);
-    } catch (error) {
-      showToast("Failed to fetch requests", "error");
+      if (seq !== loadSeq.current) return;
+      const message = errMsg(error, "Failed to load indents");
+      setLoadError(message);
+      showToast(message, "error");
+    } finally {
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [showToast]);
 
-  useEffect(() => { 
-    load(); 
-    if (view === "requests") fetchIndentRequests();
-  }, [load, fetchIndentRequests, view]);
-
-  // --- Helper Functions ---
-  const getUnitSymbol = (item) => {
-    if (item.stockItemId?.unitId?.symbol) return item.stockItemId.unitId.symbol;
-    if (item.unitId?.symbol) return item.unitId.symbol;
-    const id = item.stockItemId?._id || item.stockItemId;
-    const found = stockItems.find(s => s._id === id);
-    return found?.unitId?.symbol || "";
-  };
-
-  const formatQty = (value) => {
-  const num = Number(value || 0);
-  return Number(num.toFixed(3)).toString();
-};
-  const getItemName = (item) => {
-    if (item.stockItemId?.name) return item.stockItemId.name;
-    const id = item.stockItemId?._id || item.stockItemId;
-    const found = stockItems.find(s => s._id === id);
-    return found ? found.name : "Unknown Product";
-  };
-
-
-  const getGroupName = (item) => {
-    if (item.stockItemId?.stockGroupId?.name) return item.stockItemId.stockGroupId.name;
-    if (item.stockGroupId?.name) return item.stockGroupId.name;
-    const id = item.stockItemId?._id || item.stockItemId;
-    const found = stockItems.find(s => s._id === id);
-    return found?.stockGroupId?.name || "General";
-  };
-const handleDownloadAllConsumptionsExcel = () => {
-  if (!processedRows.length) {
-    return;
-  }
-
-  const groupedByDate = {};
-
-  processedRows.forEach(cons => {
-    const date = new Date(cons.createdAt)
-      .toISOString()
-      .split("T")[0];
-
-    if (!groupedByDate[date]) {
-      groupedByDate[date] = [];
-    }
-
-    groupedByDate[date].push(cons);
-  });
-
-  const aoa = [];
-
-  aoa.push(["MONTESSORI CONSUMPTION REPORT"]);
-  aoa.push([]);
-
-  Object.keys(groupedByDate)
-    .sort((a, b) => new Date(b) - new Date(a))
-    .forEach(date => {
-
-      const consumptions = groupedByDate[date];
-
-      const godowns = [
-        ...new Set(
-          consumptions.map(
-            c => c.godownId?.name || "General"
-          )
-        )
-      ];
-
-      const itemMap = {};
-
-      consumptions.forEach(cons => {
-        const godown =
-          cons.godownId?.name || "General";
-
-        cons.items.forEach(item => {
-
-          const id =
-            item.stockItemId?._id ||
-            item.stockItemId;
-
-          if (!itemMap[id]) {
-            itemMap[id] = {
-              name:
-                item.stockItemId?.name ||
-                "Unknown",
-              group: getGroupName(item),
-              unit:
-                item.stockItemId?.unitId?.symbol ||
-                "",
-              total: 0,
-              godowns: {}
-            };
-          }
-
-          const qty =
-            Number(item.qtyBaseUnit || 0);
-
-          itemMap[id].total += qty;
-
-          if (!itemMap[id].godowns[godown]) {
-            itemMap[id].godowns[godown] = 0;
-          }
-
-          itemMap[id].godowns[godown] += qty;
-        });
-      });
-
-      aoa.push([`DATE: ${date}`]);
-
-      const header = [
-        "S.No",
-        "Stock Item",
-        "Stock Group",
-        "Unit",
-        "Total Consumed"
-      ];
-
-      godowns.forEach(g => {
-        header.push(g);
-      });
-
-      aoa.push(header);
-
-      Object.values(itemMap).forEach(
-        (item, index) => {
-
-          const row = [
-            index + 1,
-            item.name,
-            item.group,
-            item.unit,
-            item.total
-          ];
-
-          godowns.forEach(g => {
-            row.push(
-              item.godowns[g] || 0
-            );
-          });
-
-          aoa.push(row);
-        }
-      );
-
-      aoa.push([]);
-    });
-
-  const ws =
-    XLSX.utils.aoa_to_sheet(aoa);
-
-  const maxCols =
-    Math.max(...aoa.map(r => r.length));
-
-  ws["!merges"] = [
-    {
-      s: { r: 0, c: 0 },
-      e: { r: 0, c: maxCols - 1 }
-    }
-  ];
-
-  // Main title style
-  if (ws["A1"]) {
-    ws["A1"].s = {
-      font: {
-        bold: true,
-        sz: 16,
-        color: { rgb: "FFFFFF" }
-      },
-      fill: {
-        fgColor: {
-          rgb: "4F46E5"
-        }
-      }
-    };
-  }
-
-  Object.keys(ws).forEach(cell => {
-
-    if (
-      ws[cell]?.v &&
-      String(ws[cell].v).startsWith("DATE:")
-    ) {
-      ws[cell].s = {
-        font: {
-          bold: true,
-          color: { rgb: "FFFFFF" }
-        },
-        fill: {
-          fgColor: {
-            rgb: "2563EB"
-          }
-        }
-      };
-    }
-
-    if (ws[cell]?.v === "S.No") {
-
-      const rowNo =
-        cell.match(/\d+/)[0];
-
-      for (
-        let i = 0;
-        i < maxCols;
-        i++
-      ) {
-
-        const col =
-          XLSX.utils.encode_col(i);
-
-        const ref =
-          `${col}${rowNo}`;
-
-        if (ws[ref]) {
-          ws[ref].s = {
-            font: {
-              bold: true,
-              color: {
-                rgb: "FFFFFF"
-              }
-            },
-            fill: {
-              fgColor: {
-                rgb: "16A34A"
-              }
-            }
-          };
-        }
-      }
-    }
-  });
-
-  const wb = XLSX.utils.book_new();
-
-  XLSX.utils.book_append_sheet(
-    wb,
-    ws,
-    "Consumption"
-  );
-
-  XLSX.writeFile(
-    wb,
-    fromDate || toDate
-      ? `Consumption_${fromDate || "start"}_to_${toDate || "end"}.xlsx`
-      : "Consumption_Report.xlsx"
-  );
-};
-const handleDownloadAllRequestsExcel = () => {
-  if (!indentRequests.length) {
-    return showToast("No requests available", "info");
-  }
-
-  let filtered = [...indentRequests];
-
-  filtered = filtered.filter(r => {
-    const d = new Date(r.createdAt).toISOString().split("T")[0];
-    if (fromDate && d < fromDate) return false;
-    if (toDate && d > toDate) return false;
-    return true;
-  });
-
-  if (!filtered.length) {
-    return showToast("No requests found", "info");
-  }
-
-filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const groupedByDate = {};
-
-  filtered.forEach(req => {
-    const date = new Date(req.createdAt).toISOString().split("T")[0];
-    if (!groupedByDate[date]) groupedByDate[date] = [];
-    groupedByDate[date].push(req);
-  });
-
-  const aoa = [];
-
-  aoa.push(["MONTESSORI DAILY INDENT REQUEST REPORT"]);
-  aoa.push([]);
-
-// =========================================
-// CONSOLIDATED RECEIVED REPORT
-// =========================================
-
-const allBranches = [
-  ...new Set(
-    filtered.map(r => r.godownId?.name || "General")
-  )
-].sort();
-
-const consolidatedMap = {};
-
-filtered.forEach(req => {
-
-  const branch = req.godownId?.name || "General";
-
-  req.items.forEach(it => {
-
-    const id =
-      it.stockItemId?._id ||
-      it.stockItemId;
-
-    if (!consolidatedMap[id]) {
-
-      consolidatedMap[id] = {
-        name: getItemName(it),
-        group: getGroupName(it),
-        unit: getUnitSymbol(it),
-        totalReceived: 0,
-        branches: {}
-      };
-
-    }
-
-    const received =
-      Number(it.receivedQty || 0);
-
-    consolidatedMap[id].totalReceived += received;
-
-    consolidatedMap[id].branches[branch] =
-      (consolidatedMap[id].branches[branch] || 0)
-      + received;
-
-  });
-
-});
-
-aoa.push(["CONSOLIDATED RECEIVED REPORT"]);
-
-
-const consolidatedHeader = [
-  "S.No",
-  "Stock Item",
-  "Stock Group",
-  "Unit",
-  "Total Received"
-];
-
-allBranches.forEach(branch => {
-  consolidatedHeader.push(branch);
-});
-
-aoa.push(consolidatedHeader);
-
-
-Object.values(consolidatedMap).forEach((item, index) => {
-
-  const row = [
-
-    index + 1,
-
-    item.name,
-
-    item.group,
-
-    item.unit,
-
-    item.totalReceived
-
-  ];
-
-  allBranches.forEach(branch => {
-
-    row.push(
-      item.branches[branch] || 0
-    );
-
-  });
-
-  aoa.push(row);
-
-});
-
-aoa.push([]);
-aoa.push([]);
-
-
-    Object.keys(groupedByDate)
-  .sort((a, b) => new Date(b) - new Date(a))
-  .forEach(date => {
-      const requests = groupedByDate[date];
-
-      const branches = [...new Set(requests.map(r => r.godownId?.name || "General"))];
-
-      const itemMap = {};
-
-      requests.forEach(req => {
-        const branch = req.godownId?.name || "General";
-
-        req.items.forEach(it => {
-          const id = it.stockItemId?._id || it.stockItemId;
-
-          if (!itemMap[id]) {
-            itemMap[id] = {
-              name: getItemName(it),
-              group: getGroupName(it),
-              unit: getUnitSymbol(it),
-              requestedTotal: 0,
-              receivedTotal: 0,
-              branches: {}
-            };
-          }
-
-          const reqQty = Number(it.qtyBaseUnit || 0);
-          const recQty = Number(it.receivedQty || 0);
-
-          itemMap[id].requestedTotal += reqQty;
-          itemMap[id].receivedTotal += recQty;
-
-          if (!itemMap[id].branches[branch]) {
-            itemMap[id].branches[branch] = { requested: 0, received: 0 };
-          }
-
-          itemMap[id].branches[branch].requested += reqQty;
-          itemMap[id].branches[branch].received += recQty;
-        });
-      });
-
-      const items = Object.values(itemMap);
-
-      aoa.push([`DATE: ${date}`]);
-
-      const header = [
-        "S.No",
-        "Stock Item",
-        "Stock Group",
-        "Unit",
-        "Requested (Total)",
-        "Received (Total)"
-      ];
-
-      branches.forEach(b => {
-        header.push(`${b} - Requested`);
-        header.push(`${b} - Received`);
-      });
-
-      aoa.push(header);
-
-      items.forEach((it, index) => {
-        const row = [
-          index + 1,
-          it.name,
-          it.group,
-          it.unit,
-          it.requestedTotal,
-          it.receivedTotal
-        ];
-
-        branches.forEach(b => {
-          row.push(it.branches[b]?.requested || 0);
-          row.push(it.branches[b]?.received || 0);
-        });
-
-        aoa.push(row);
-      });
-
-      aoa.push([]);
-    });
-
-const maxCols = Math.max(...aoa.map(r => r.length));
-
-const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-// Merge title row
-ws["!merges"] = [
-  {
-    s: { r: 0, c: 0 },
-    e: { r: 0, c: maxCols - 1 }
-  }
-];
-
-// TITLE STYLE
-if (ws["A1"]) {
-  ws["A1"].s = {
-    font: {
-      bold: true,
-      sz: 16,
-      color: { rgb: "FFFFFF" }
-    },
-    alignment: {
-      horizontal: "center"
-    },
-    fill: {
-      fgColor: { rgb: "1E3A8A" } // Dark Blue
-    }
-  };
-}
-
-// DATE ROW + HEADER ROW STYLING
-Object.keys(ws).forEach(cell => {
-
-  // DATE ROWS
-  if (
-    ws[cell]?.v &&
-    String(ws[cell].v).startsWith("DATE:")
-  ) {
-    const rowNo = cell.match(/\d+/)[0];
-
-    for (let i = 0; i < maxCols; i++) {
-
-      const col = XLSX.utils.encode_col(i);
-      const ref = `${col}${rowNo}`;
-
-      if (ws[ref]) {
-        ws[ref].s = {
-          font: {
-            bold: true,
-            color: { rgb: "FFFFFF" }
-          },
-          fill: {
-            fgColor: { rgb: "16A34A" } // Green
-          }
-        };
-      }
-    }
-  }
-
-  // HEADER ROWS
-  if (ws[cell]?.v === "S.No") {
-
-    const rowNo = cell.match(/\d+/)[0];
-
-    for (let i = 0; i < maxCols; i++) {
-
-      const col = XLSX.utils.encode_col(i);
-      const ref = `${col}${rowNo}`;
-
-      if (ws[ref]) {
-        ws[ref].s = {
-          font: {
-            bold: true,
-            color: { rgb: "FFFFFF" }
-          },
-          alignment: {
-            horizontal: "center"
-          },
-          fill: {
-            fgColor: { rgb: "2563EB" } // Blue
-          }
-        };
-      }
-    }
-  }
-});
-
-const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Indent Report");
-
-  const fileName =
-    fromDate || toDate
-      ? `Montessori_Indent_${fromDate || "start"}_to_${toDate || "end"}.xlsx`
-      : "Montessori_Indent_All.xlsx";
-
-  XLSX.writeFile(wb, fileName);
-
-  showToast("Excel exported successfully", "success");
-};
-
-
-const handleDownloadExcel = () => {
-  if (!activeIndent) return;
-
-  const aoa = [];
-
-  aoa.push(["INDENT REPORT"]);
-  aoa.push([
-    `DATE: ${new Date(activeIndent.createdAt).toLocaleDateString()}`
-  ]);
-  aoa.push([]);
-
-  aoa.push([
-    "Product",
-    "Group",
-    "Quantity",
-    "Unit",
-    "Price",
-    "Subtotal"
-  ]);
-
-  activeIndent.items.forEach(item => {
-    aoa.push([
-      getItemName(item),
-      getGroupName(item),
-      item.orderedQty,
-      getUnitSymbol(item),
-      item.unitPrice,
-      item.orderedQty * item.unitPrice
-    ]);
-  });
-
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-// Main title
-if (ws["A1"]) {
-  ws["A1"].s = {
-    font: {
-      bold: true,
-      sz: 16,
-      color: { rgb: "FFFFFF" }
-    },
-    fill: {
-      fgColor: { rgb: "4F46E5" }
-    }
-  };
-}
-Object.keys(ws).forEach(cell => {
-  if (
-    cell[0] === "A" &&
-    ws[cell]?.v &&
-    String(ws[cell].v).startsWith("DATE:")
-  ) {
-    ws[cell].s = {
-      font: {
-        bold: true,
-        color: { rgb: "FFFFFF" }
-      },
-      fill: {
-        fgColor: { rgb: "2563EB" }
-      }
-    };
-  }
-});
-Object.keys(ws).forEach(cell => {
-  if (
-    ws[cell]?.v === "S.No"
-  ) {
-    const row = cell.match(/\d+/)[0];
-
-    ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O"]
-      .forEach(col => {
-        const headerCell = `${col}${row}`;
-
-        if (ws[headerCell]) {
-          ws[headerCell].s = {
-            font: {
-              bold: true,
-              color: { rgb: "FFFFFF" }
-            },
-            fill: {
-              fgColor: { rgb: "16A34A" }
-            }
-          };
-        }
-      });
-  }
-});  
-  ws["!cols"] = [
-    { wch: 25 },
-    { wch: 20 },
-    { wch: 12 },
-    { wch: 10 },
-    { wch: 12 },
-    { wch: 15 }
-  ];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Indent");
-
-  XLSX.writeFile(
-    wb,
-    `Indent_${activeIndent.indentNo || "Export"}.xlsx`
-  );
-
-  showToast("Excel exported successfully", "success");
-};
-
-  const handleStatusUpdate = async (id, newStatus) => {
+  const loadRequests = useCallback(async () => {
+    const seq = ++reqSeq.current;
+    setReqLoading(true);
     try {
-      if (newStatus === 'purchased') {
-        await api.post(`/procurement/indents/${id}/mark-purchased`);
-      } else {
-        await api.patch(`/indents/${id}`, { status: newStatus });
-      }
-      showToast(`Indent marked as ${newStatus}`, "success");
-      load();
+      const res = await api.get("/indent-requests");
+      if (seq !== reqSeq.current) return;
+      setRequests([...(res.data || [])].sort(byNewest));
+      setReqError("");
     } catch (error) {
-      showToast("Failed to update status", "error");
+      if (seq !== reqSeq.current) return;
+      const message = errMsg(error, "Failed to load supply requests");
+      setReqError(message);
+      showToast(message, "error");
+    } finally {
+      if (seq === reqSeq.current) setReqLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (view === "requests") loadRequests(); }, [view, loadRequests]);
+
+  const r = useMemo(() => makeResolvers(stockItems), [stockItems]);
+  const term = searchTerm.trim().toLowerCase();
+
+  const filteredIndents = useMemo(
+    () => indents.filter((i) => !term || (i.indentNo || "").toLowerCase().includes(term) || String(i._id).includes(term)),
+    [indents, term]
+  );
+  const filteredStock = useMemo(
+    () => stockItems.filter((s) => !term || s.name?.toLowerCase().includes(term) || s.stockGroupId?.name?.toLowerCase().includes(term)),
+    [stockItems, term]
+  );
+  const filteredRequests = useMemo(
+    () => requests.filter((q) => inDateRange(q.createdAt, fromDate, toDate)),
+    [requests, fromDate, toDate]
+  );
+
+  const activeIndent = filteredIndents.find((i) => i._id === selectedId) || filteredIndents[0] || null;
+  const activeRequest = filteredRequests.find((q) => q._id === reqId) || null;
+
+  const switchView = (next) => {
+    setView(next);
+    setSearchTerm("");
+    setReqId(null);
+    setDecisions({});
+  };
+
+  const selectRequest = (id) => {
+    setReqId(id);
+    setDecisions({});
+  };
+
+  const markPurchased = async (indent) => {
+    const ok = await confirm({
+      title: "Mark as purchased?",
+      message: `Indent ${indent.indentNo || ""} will be marked purchased and become available for purchase orders. This cannot be undone.`,
+      confirmLabel: "Mark Purchased"
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.post(`/procurement/indents/${indent._id}/mark-purchased`);
+      showToast("Indent marked as purchased", "success");
+      await load();
+    } catch (error) {
+      showToast(errMsg(error, "Failed to update status"), "error");
+    } finally {
+      setBusy(false);
     }
   };
- const rejectEntireRequest = async () => {
-  try {
-    await api.patch(
-      `/indent-requests/${editingRequest._id}/reject`
-    );
 
-    showToast(
-      "Request rejected successfully",
-      "success"
-    );
-
-    setEditingRequest(null);
-
-    fetchIndentRequests();
-
-  } catch (err) {
-    showToast(
-      "Reject failed",
-      "error"
-    );
-  }
-};
   const confirmRequest = async () => {
-   
-  try {
-    const selectedItems = editingRequest.items
-      .filter(it => {
-        const id = it.stockItemId?._id || it.stockItemId;
-        return approvedItems[id];
-      })
-      .map(it => ({
-        stockItemId: it.stockItemId?._id || it.stockItemId,
-        qtyBaseUnit: it.qtyBaseUnit
-      }));
-
-    if (selectedItems.length === 0) {
-      return showToast("Select at least one item", "info");
-    }
-
-    await api.patch(`/indent-requests/${editingRequest._id}/confirm`, {
-      items: selectedItems
+    const approved = (activeRequest?.items || []).filter((it) => decisions[r.id(it)] === "approved");
+    if (approved.length === 0) return showToast("Tick at least one item, or use Reject Entire Request", "error");
+    const rejectedCount = activeRequest.items.length - approved.length;
+    const ok = await confirm({
+      title: "Confirm request?",
+      message: `${approved.length} item(s) will be approved${rejectedCount ? ` and ${rejectedCount} rejected` : ""}. The kitchen is notified and this cannot be changed afterwards.`,
+      confirmLabel: "Confirm Request"
     });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.patch(`/indent-requests/${activeRequest._id}/confirm`, {
+        items: approved.map((it) => ({ stockItemId: r.id(it), qtyBaseUnit: it.qtyBaseUnit }))
+      });
+      showToast("Selected items approved", "success");
+      setReqId(null);
+      setDecisions({});
+      await loadRequests();
+    } catch (error) {
+      showToast(errMsg(error, "Confirmation failed"), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
 
-    showToast("Selected items approved!", "success");
-
-    setEditingRequest(null);
-    setApprovedItems({});
-    fetchIndentRequests();
-  } catch (err) {
-    showToast("Confirmation failed", "error");
-  }
-};
+  const rejectEntireRequest = async () => {
+    const ok = await confirm({
+      title: "Reject entire request?",
+      message: "Every item on this request will be rejected. This cannot be undone.",
+      confirmLabel: "Reject Request",
+      variant: "danger"
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.patch(`/indent-requests/${activeRequest._id}/reject`);
+      showToast("Request rejected", "success");
+      setReqId(null);
+      setDecisions({});
+      await loadRequests();
+    } catch (error) {
+      showToast(errMsg(error, "Reject failed"), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const submitIndent = async () => {
-    const itemsToSubmit = Object.keys(selectedItems)
-      .filter(id => selectedItems[id].checked && Number(selectedItems[id].qty) > 0)
-      .map(id => ({
-        stockItemId: id,
-        orderedQty: Number(selectedItems[id].qty),
-        unitPrice: Number(selectedItems[id].price || 0),
-        amount: Number(selectedItems[id].qty) * Number(selectedItems[id].price || 0)
-      }));
-
-    if (itemsToSubmit.length === 0) return showToast("Select items with quantity", "info");
-
+    const checked = Object.entries(draft).filter(([, s]) => s.checked);
+    const nameOf = (id) => stockItems.find((s) => s._id === id)?.name || "item";
+    if (checked.length === 0) return showToast("Select at least one item", "error");
+    for (const [id, s] of checked) {
+      if (!(Number(s.qty) > 0)) return showToast(`Enter a quantity above 0 for ${nameOf(id)}`, "error");
+      if (s.price !== "" && !(Number(s.price) >= 0)) return showToast(`Enter a valid price for ${nameOf(id)}`, "error");
+    }
+    const items = checked.map(([id, s]) => ({
+      stockItemId: id,
+      orderedQty: Number(s.qty),
+      unitPrice: Number(s.price || 0),
+      amount: Number(s.qty) * Number(s.price || 0)
+    }));
+    setBusy(true);
     try {
-      await api.post("/procurement/indents", { items: itemsToSubmit });
+      await api.post("/procurement/indents", { items });
       showToast("Indent submitted", "success");
-      setSelectedItems({});
-      setView("history");
-      load();
+      setDraft({});
+      switchView("history");
+      await load();
     } catch (error) {
-      showToast("Submission failed", "error");
+      showToast(errMsg(error, "Submission failed"), "error"); // draft is kept for a retry
+    } finally {
+      setBusy(false);
     }
   };
 
-  // --- Memoized Filters ---
-  const filteredIndents = useMemo(() => {
-    return indents.filter(i =>
-      (i.indentNo?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
-      (i._id.includes(searchTerm))
+  const exportAll = () => {
+    if (filteredRequests.length === 0) return showToast("No requests found for this range", "error");
+    exportRequests(filteredRequests, r, fromDate, toDate);
+    showToast("Excel exported", "success");
+  };
+
+  const searchBox = (
+    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+      <Search size={16} aria-hidden="true" style={{ position: "absolute", left: 12, color: "var(--muted-soft)" }} />
+      <input
+        type="search" aria-label="Search" placeholder={view === "create" ? "Search stock items…" : "Search indents…"}
+        value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ paddingLeft: 36, width: 240 }}
+      />
+    </div>
+  );
+
+  const dateFilter = (
+    <>
+      <DateField  aria-label="From date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} />
+      <span style={{ color: "var(--muted)", fontSize: 12 }}>to</span>
+      <DateField  aria-label="To date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} />
+      {(fromDate || toDate) && (
+        <Button variant="ghost" size="sm" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</Button>
+      )}
+      <Button variant="success" onClick={exportAll}>
+        <FileSpreadsheet size={16} /> Export All Requests
+      </Button>
+    </>
+  );
+
+  let body;
+  if (loading) body = <LoadingState label="Loading indents…" />;
+  else if (loadError && indents.length === 0 && stockItems.length === 0) body = <ErrorState message={loadError} onRetry={load} />;
+  else if (view === "history") {
+    body = (
+      <IndentLogsView
+        indents={filteredIndents} selected={activeIndent} onSelect={setSelectedId} r={r} busy={busy}
+        searching={Boolean(term)} onMarkPurchased={markPurchased} onExport={() => exportIndent(activeIndent, r)}
+      />
     );
-  }, [indents, searchTerm]);
-
-  const filteredStock = useMemo(() => {
-    return stockItems.filter(s =>
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.stockGroupId?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+  } else if (view === "requests") {
+    body = (
+      <IndentRequestsView
+        requests={filteredRequests} selected={activeRequest} loading={reqLoading} error={reqError} onRetry={loadRequests}
+        onSelect={selectRequest} onClose={() => selectRequest(null)} r={r} decisions={decisions} setDecisions={setDecisions}
+        busy={busy} onConfirm={confirmRequest} onRejectAll={rejectEntireRequest} hasFilter={Boolean(fromDate || toDate)}
+      />
     );
-  }, [stockItems, searchTerm]);
-const filteredRequests = useMemo(() => {
-  return indentRequests
-    .filter((r) => {
-      const reqDate = new Date(r.createdAt).toISOString().split("T")[0];
-
-      if (fromDate && reqDate < fromDate) return false;
-      if (toDate && reqDate > toDate) return false;
-
-      return true;
-    })
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-}, [indentRequests, fromDate, toDate]);
-  const activeIndent = useMemo(() =>
-    indents.find(i => i._id === selectedId) || indents[0],
-    [selectedId, indents]);
-
-  const isConfirmed = editingRequest?.status === "confirmed";
+  } else {
+    body = (
+      <IndentCreateView
+        stock={filteredStock} selected={draft} setSelected={setDraft} submitting={busy}
+        onSubmit={submitIndent} searching={Boolean(term)}
+      />
+    );
+  }
 
   return (
-    <div style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif" }}>
-      
-      {/* Header Area */}
-      <div style={{ padding: '20px 32px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>
-            <span style={{ color: '#6366f1' }}>Indents</span>
-          </h1>
-          
-          <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px' }}>
-            {[
-              { id: 'history', label: 'Logs', icon: <ClipboardList size={14}/> },
-              { id: 'requests', label: 'Requests', icon: <Inbox size={14}/> },
-              { id: 'create', label: 'Create New', icon: <PlusCircle size={14}/> }
-            ].map((btn) => (
-              <button 
-                key={btn.id}
-                onClick={() => { setView(btn.id); setSearchTerm(""); setEditingRequest(null); }}
-                style={{ 
-                  display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '10px', border: 'none', fontSize: '12px', fontWeight: '700', cursor: 'pointer',
-                  background: view === btn.id ? '#fff' : 'transparent', 
-                  color: view === btn.id ? '#6366f1' : '#64748b', 
-                  boxShadow: view === btn.id ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none' 
-                }}>
-                {btn.icon} {btn.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-          <Search size={16} style={{ position: 'absolute', left: '12px', color: '#94a3b8' }} />
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px 10px 36px', fontSize: '13px', width: '240px', outline: 'none' }}
-          />
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '24px', gap: '24px' }}>
-        
-        {/* VIEW: HISTORY/LOGS */}
-        {view === "history" && (
-          <>
-            <div style={{ width: '380px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ fontSize: '11px', fontWeight: '900', color: '#64748b', paddingLeft: '8px', letterSpacing: '0.5px' }}>RESULTS ({filteredIndents.length})</div>
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {filteredIndents.map(r => (
-                  <div key={r._id} onClick={() => setSelectedId(r._id)}
-                    style={{ padding: '16px', borderRadius: '16px', cursor: 'pointer', background: selectedId === r._id ? '#fff' : 'transparent', border: selectedId === r._id ? '1px solid #6366f1' : '1px solid transparent', boxShadow: selectedId === r._id ? '0 10px 15px -3px rgba(99, 102, 241, 0.1)' : 'none', transition: 'all 0.2s' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: '700', color: selectedId === r._id ? '#6366f1' : '#1e293b' }}>{r.indentNo || `REF-${r._id.slice(-4)}`}</div>
-                      <div style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8' }}>{new Date(r.createdAt).toLocaleDateString()}</div>
-                    </div>
-                    <div
-  style={{
-    fontSize: "12px",
-    marginTop: "4px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center"
-  }}
->
-  <span style={{ color: "#64748b" }}>
-    ₹{r.totalAmount?.toLocaleString()}
-  </span>
-
-  <span
-    style={{
-      background:
-        r.status === "pending"
-          ? "#fee2e2"
-          : r.status === "purchased"
-          ? "#f3e8ff"
-          : r.status === "stock_received"
-          ? "#dcfce7"
-          : "#f1f5f9",
-
-      color:
-        r.status === "pending"
-          ? "#dc2626"
-          : r.status === "purchased"
-          ? "#9333ea"
-          : r.status === "stock_received"
-          ? "#16a34a"
-          : "#64748b",
-
-      padding: "2px 8px",
-      borderRadius: "6px",
-      fontSize: "10px",
-      fontWeight: "700"
-    }}
-  >
-    {r.status?.replaceAll("_", " ").toUpperCase()}
-  </span>
-</div>
-                    {/* <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>₹{r.totalAmount?.toLocaleString()} • {r.status.toUpperCase()}</div> */}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ flex: 1, background: '#fff', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-              {activeIndent ? (
-                <>
-                  <div style={{ padding: '40px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>
-                    <div>
-                      <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>INDENT STATUS</div>
-                      <div
-  style={{
-    padding: "4px 12px",
-    borderRadius: "6px",
-    fontSize: "12px",
-    fontWeight: "800",
-    display: "inline-block",
-
-    background:
-      activeIndent.status === "pending"
-        ? "#fee2e2"
-        : activeIndent.status === "purchased"
-        ? "#f3e8ff"
-        : activeIndent.status === "stock_received"
-        ? "#dcfce7"
-        : "#f1f5f9",
-
-    color:
-      activeIndent.status === "pending"
-        ? "#dc2626"
-        : activeIndent.status === "purchased"
-        ? "#9333ea"
-        : activeIndent.status === "stock_received"
-        ? "#16a34a"
-        : "#64748b"
-  }}
->
-  {activeIndent.status?.replaceAll("_", " ").toUpperCase()}
-</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>TOTAL VALUATION</div>
-                      <div style={{ fontSize: '24px', fontWeight: '900', color: '#0f172a' }}>₹{activeIndent.totalAmount?.toLocaleString()}</div>
-                    </div>
-                  </div>
-                  <div style={{ flex: 1, padding: '0 40px', overflowY: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ textAlign: 'left' }}>
-                          <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>ITEM</th>
-                          <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>GROUP</th>
-                          <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>QTY</th>
-                          <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0', textAlign: 'right' }}>SUBTOTAL</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {activeIndent.items.map((item, idx) => (
-                          <tr key={idx}>
-                            <td style={{ padding: '20px 0', borderBottom: '1px solid #f8fafc' }}>
-                              <div style={{ fontWeight: '700', color: '#1e293b' }}>{getItemName(item)}</div>
-                              {item.status === "rejected" && (
-  <div
-    style={{
-      display: "inline-block",
-      marginTop: "4px",
-      background: "#fee2e2",
-      color: "#dc2626",
-      padding: "2px 8px",
-      borderRadius: "6px",
-      fontSize: "10px",
-      fontWeight: "700"
-    }}
-  >
-    REJECTED
-  </div>
-)}
-                              <div style={{ fontSize: '11px', color: '#94a3b8' }}>Unit Price: ₹{item.unitPrice}</div>
-                            </td>
-                            <td style={{ padding: '20px 0', borderBottom: '1px solid #f8fafc' }}>
-                              <span style={{ background: '#eff6ff', color: '#3b82f6', padding: '4px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase' }}>
-                                {getGroupName(item)}
-                              </span>
-                            </td>
-                            <td style={{ padding: '20px 0', textAlign: 'center', fontWeight: '700', borderBottom: '1px solid #f8fafc' }}>
-                               {formatQty(item.orderedQty)} <span style={{fontSize: '11px', color: '#94a3b8', fontWeight: '400'}}>{getUnitSymbol(item)}</span>
-                            </td>
-                            <td style={{ padding: '20px 0', textAlign: 'right', fontWeight: '800', color: '#6366f1', borderBottom: '1px solid #f8fafc' }}>₹{(item.orderedQty * item.unitPrice).toLocaleString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div style={{ padding: '32px 40px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                    <button onClick={handleDownloadExcel} style={{ background: '#10b981', border: 'none', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <FileSpreadsheet size={16} /> Export Excel
-                    </button>
-                    {activeIndent.status.toLowerCase() === 'pending' && (
-                      <button onClick={() => handleStatusUpdate(activeIndent._id, 'purchased')} style={{ background: '#6366f1', border: 'none', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <CheckCircle2 size={16} /> Mark Purchased
-                      </button>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>Select an indent to view details</div>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* VIEW: INDENT REQUESTS (INCOMING) */}
-        {view === "requests" && (
-          <>
-            <div style={{ width: '380px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ fontSize: '11px', fontWeight: '900', color: '#64748b', paddingLeft: '8px', letterSpacing: '0.5px' }}>
-                ALL REQUESTS ({filteredRequests.length})
-              </div>
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-               {filteredRequests.map(r => (
-                  <div 
-                    key={r._id} 
-                    onClick={() => {
-  setEditingRequest(JSON.parse(JSON.stringify(r)));
-  setApprovedItems({});
-  setSelectAll(false);
-}}
-                    style={{ 
-                      padding: '16px', 
-                      borderRadius: '16px', 
-                      cursor: 'pointer', 
-                      background: editingRequest?._id === r._id ? '#fff' : 'transparent', 
-                      border: editingRequest?._id === r._id ? '1px solid #6366f1' : '1px solid transparent', 
-                      boxShadow: editingRequest?._id === r._id ? '0 10px 15px -3px rgba(99, 102, 241, 0.1)' : 'none', 
-                      transition: 'all 0.2s' 
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: '700', color: editingRequest?._id === r._id ? '#6366f1' : '#1e293b' }}>
-                        {r.userId?.name || 'Unknown User'}
-                      </div>
-                      <div style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8' }}>
-                        {new Date(r.createdAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>{r.godownId?.name || "Main Godown"} • {r.items?.length} Items</span>
-                      <span
-  style={{
-    background:
-  r.status === "pending"
-    ? "#fee2e2"
-    : r.status === "confirmed"
-    ? "#dbeafe"
-    : r.status === "received"
-    ? "#dcfce7"
-    : r.status === "partially_received"
-    ? "#f3e8ff"
-    : r.status === "rejected"
-    ? "#fee2e2"
-    : "#f1f5f9",
-
-    color:
-      r.status === "pending"
-        ? "#dc2626"
-        : r.status === "confirmed"
-        ? "#2563eb"
-        : r.status === "received"
-        ? "#16a34a"
-        : r.status === "partially_received"
-        ? "#9333ea"          // purple text
-        : "#64748b",
-
-    padding: "2px 8px",
-    borderRadius: "6px",
-    fontSize: "10px",
-    fontWeight: "700"
-  }}
->
-  {r.status?.replaceAll("_", " ").toUpperCase()}
-</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ flex: 1, background: '#fff', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-              <div style={{ padding: '40px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                {editingRequest ? (
-                  <>
-                    <div>
-                      <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>SOURCE GODOWN</div>
-                      <div style={{ fontWeight: '800', fontSize: '18px', color: '#0f172a' }}>
-                        {editingRequest.godownId?.name || "General"}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                      <button
-                        onClick={handleDownloadAllRequestsExcel}
-                        style={{ background: '#10b981', border: 'none', color: '#fff', padding: '10px 20px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}
-                      >
-                        <FileSpreadsheet size={16} /> Export All Requests
-                      </button>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>ESTIMATED VALUATION</div>
-                        <div style={{ fontSize: '24px', fontWeight: '900', color: '#0f172a' }}>
-                          ₹{editingRequest.items.reduce((sum, i) => sum + (Number(i.qtyBaseUnit || 0) * Number(i.price || 0)), 0).toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
-                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-  <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-  
-  <input
-    type="date"
-    value={fromDate}
-    onChange={(e) => setFromDate(e.target.value)}
-    style={{
-      padding: "8px 12px",
-      borderRadius: "10px",
-      border: "1px solid #e2e8f0",
-      fontSize: "13px"
-    }}
-  />
-
-  <span style={{ fontSize: "12px", color: "#64748b" }}>to</span>
-
-  <input
-    type="date"
-    value={toDate}
-    onChange={(e) => setToDate(e.target.value)}
-    style={{
-      padding: "8px 12px",
-      borderRadius: "10px",
-      border: "1px solid #e2e8f0",
-      fontSize: "13px"
-    }}
-  />
-
-  {(fromDate || toDate) && (
-    <button
-      onClick={() => {
-        setFromDate("");
-        setToDate("");
-      }}
-      style={{
-        padding: "8px 12px",
-        border: "1px solid #e2e8f0",
-        borderRadius: "8px",
-        cursor: "pointer"
-      }}
-    >
-      Clear
-    </button>
-  )}
-</div>
-
-</div>
-
-                     <button
-                        onClick={handleDownloadAllRequestsExcel}
-                        style={{ background: '#10b981', border: 'none', color: '#fff', padding: '10px 20px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}
-                      >
-                        <FileSpreadsheet size={16} /> Export All Requests
-                      </button>
-                  </div>
-                )}
-              </div>
-
-              {editingRequest ? (
-                <>
-                  <div style={{ flex: 1, padding: '0 40px', overflowY: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ textAlign: 'left' }}>
-                          <th style={{ width: "40px" }}>
-  <input
-    type="checkbox"
-    checked={selectAll}
-    disabled={editingRequest?.status !== "pending"}
-    onChange={(e) => {
-      const checked = e.target.checked;
-      setSelectAll(checked);
-
-      const newApproved = {};
-
-      if (checked) {
-  editingRequest.items.forEach(it => {
-    const id = it.stockItemId?._id || it.stockItemId;
-
-    // skip rejected items
-    if (!rejectedItems[id]) {
-      newApproved[id] = true;
-    }
-  });
-}
-
-      setApprovedItems(newApproved);
-    }}
-  />
-</th>
-<th>ITEM</th>
-                          {/* <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>ITEM</th> */}
-                          <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>GROUP</th>
-                          {/* <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0', width: '140px' }}>QTY</th> */}
-                         <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>
-  REQUESTED
-</th>
-
-<th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>
-  RECEIVED
-</th>
-<th
-  style={{
-    padding: '24px 0 12px',
-    fontSize: '11px',
-    fontWeight: '900',
-    color: '#94a3b8',
-    borderBottom: '1px solid #e2e8f0',
-    textAlign: 'right'
-  }}
->
-  ACTION
-</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {editingRequest.items.map((it, idx) => (
-                          <tr
-  key={idx}
-  style={{
-    background:
-      it.status === "rejected"
-        ? "#fef2f2"
-        : "transparent"
-  }}
->
-  <td>
-    <input
-  type="checkbox"
-  disabled={editingRequest.status !== "pending"}
-  checked={!!approvedItems[it.stockItemId?._id || it.stockItemId]}
-      
-  onChange={(e) => {
-  const id = it.stockItemId?._id || it.stockItemId;
-  const checked = e.target.checked;
-
-  setApprovedItems(prev => ({
-    ...prev,
-    [id]: checked
-  }));
-
-  if (checked) {
-    // remove rejected badge when selected again
-    setRejectedItems(prev => {
-      const copy = { ...prev };
-      delete copy[id];
-      return copy;
-    });
-  } else {
-    // show rejected badge when unchecked
-    setRejectedItems(prev => ({
-      ...prev,
-      [id]: true
-    }));
-  }
-
-  setSelectAll(false);
-}}
-    />
-  </td>
-                            <td style={{ padding: '20px 0', borderBottom: '1px solid #f8fafc' }}>
-                              <div style={{ fontWeight: '700', color: '#1e293b' }}>{getItemName(it)}</div>
-                            </td>
-                            <td style={{ padding: '20px 0', borderBottom: '1px solid #f8fafc' }}>
-                              <span style={{ background: '#eff6ff', color: '#3b82f6', padding: '4px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase' }}>
-                                {getGroupName(it)}
-                              </span>
-                            </td>
-                           {/* REQUESTED COLUMN */}
-<td style={{ padding: '20px 0', borderBottom: '1px solid #f8fafc', fontWeight: '700' }}>
-  {formatQty(it.qtyBaseUnit)}{" "}
-  <span style={{ fontSize: '12px', color: '#64748b' }}>
-    {getUnitSymbol(it)}
-  </span>
-</td>
-
-{/* RECEIVED COLUMN */}
-<td style={{ padding: '20px 0', borderBottom: '1px solid #f8fafc', fontWeight: '700', color: '#16a34a' }}>
-  {formatQty(it.receivedQty)}{" "}
-  <span style={{ fontSize: '12px', color: '#64748b' }}>
-    {getUnitSymbol(it)}
-  </span>
-
-  {(it.receivedQty || 0) >= (it.qtyBaseUnit || 0) && (
-    <div style={{ fontSize: "10px", color: "#16a34a" }}>
-      ✔ Fully Received
-    </div>
-  )}
-</td>
-
-
-<td
-  style={{
-    padding: '20px 0',
-    borderBottom: '1px solid #f8fafc',
-    textAlign: 'right'
-  }}
->
- 
-  {it.status === "rejected" ||
-rejectedItems[it.stockItemId?._id || it.stockItemId] ? (
-  <span
-    style={{
-      background: "#fee2e2",
-      color: "#dc2626",
-      padding: "6px 12px",
-      borderRadius: "8px",
-      fontSize: "12px",
-      fontWeight: "700"
-    }}
-  >
-    REJECTED
-  </span>
-) : (
-  editingRequest.status === "pending" && (
-    <button
-      onClick={() => {
-        const id = it.stockItemId?._id || it.stockItemId;
-
-        setRejectedItems(prev => ({
-          ...prev,
-          [id]: true
-        }));
-
-        setApprovedItems(prev => {
-          const copy = { ...prev };
-          delete copy[id];
-          return copy;
-        });
-
-        setSelectAll(false);
-      }}
-      style={{
-        background: "#fff",
-        color: "#dc2626",
-        border: "1px solid #fecaca",
-        padding: "6px 12px",
-        borderRadius: "8px",
-        cursor: "pointer",
-        fontWeight: "700",
-        fontSize: "12px"
-      }}
-    >
-      Reject
-    </button>
-  )
-)}
-</td>                            
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div style={{ padding: '32px 40px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                    <button 
-                      onClick={() => setEditingRequest(null)} 
-                      style={{ background: '#fff', border: '1px solid #e2e8f0', color: '#64748b', padding: '12px 24px', borderRadius: '12px', fontWeight: '700', cursor: 'pointer' }}
-                    >
-                      Cancel
-                    </button>
-{editingRequest.status === "pending" && (
-  <>
-    <button
-      onClick={rejectEntireRequest}
-      style={{
-        background: "#dc2626",
-        border: "none",
-        color: "#fff",
-        padding: "12px 24px",
-        borderRadius: "12px",
-        fontWeight: "700",
-        cursor: "pointer"
-      }}
-    >
-      Reject Entire Request
-    </button>
-
-    <button
-      onClick={confirmRequest}
-      style={{
-        background: "#6366f1",
-        border: "none",
-        color: "#fff",
-        padding: "12px 24px",
-        borderRadius: "12px",
-        fontWeight: "700",
-        fontSize: "13px",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "8px"
-      }}
-    >
-      Confirm Request
-    </button>
-  </>
-)}
-                    {/* {!["confirmed", "received", "partially_received"].includes(editingRequest.status) && (
-  <button onClick={confirmRequest}
-                        style={{ background: '#6366f1', border: 'none', color: '#fff', padding: '12px 24px', borderRadius: '12px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
-                      >
-                        Confirm Request
-                      </button>
-                    )} */}
-                  </div>
-                </>
-              ) : (
-                <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-                  Select a request from the sidebar to review and convert
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* VIEW: CREATE NEW (MANUAL) */}
-        {view === "create" && (
-          <div style={{ flex: 1, background: '#fff', borderRadius: '24px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: '32px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>Create Requisition</h2>
-                <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                    <span onClick={() => setTab("stock-items")} style={{ cursor: 'pointer', fontSize: '12px', fontWeight: '700', color: tab === 'stock-items' ? '#6366f1' : '#64748b' }}>Stock Items</span>
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1' }}>ESTIMATED TOTAL</div>
-                <div style={{ fontSize: '24px', fontWeight: '900' }}>₹{Object.values(selectedItems).reduce((sum, i) => i.checked ? sum + (Number(i.qty || 0) * Number(i.price || 0)) : sum, 0).toLocaleString()}</div>
-              </div>
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 10 }}>
-                  <tr style={{ textAlign: 'left', borderBottom: '2px solid #f1f5f9' }}>
-                    <th style={{ padding: '20px 32px', width: '50px' }}>
-                        <input type="checkbox" onChange={(e) => {
-                           const isChecked = e.target.checked;
-                           const newSelection = { ...selectedItems };
-                           filteredStock.forEach(item => {
-                             newSelection[item._id] = { ...(newSelection[item._id] || { qty: 0, price: 0 }), checked: isChecked };
-                           });
-                           setSelectedItems(newSelection);
-                        }} style={{ width: '18px', height: '18px' }} />
-                    </th>
-                    <th style={{ padding: '20px 0', fontSize: '11px', fontWeight: '900', color: '#94a3b8' }}>NAME</th>
-                    <th style={{ padding: '20px 0', fontSize: '11px', fontWeight: '900', color: '#94a3b8' }}>STOCK GROUP</th>
-                    <th style={{ padding: '20px 0', fontSize: '11px', color: '#94a3b8', width: '140px' }}>QTY</th>
-                    <th style={{ padding: '20px 0', fontSize: '11px', color: '#94a3b8', width: '100px' }}>PRICE</th>
-                    <th style={{ padding: '20px 32px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', textAlign: 'right' }}>ITEM TOTAL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStock.map((row) => {
-                    const state = selectedItems[row._id] || { checked: false, qty: 0, price: 0 };
-                    const itemTotal = Number(state.qty || 0) * Number(state.price || 0);
-                    return (
-                      <tr key={row._id} style={{ borderBottom: '1px solid #f8fafc', background: state.checked ? '#fcfdff' : 'transparent' }}>
-                        <td style={{ padding: '16px 32px' }}>
-                          <input type="checkbox" checked={state.checked} onChange={(e) => setSelectedItems(prev => ({ ...prev, [row._id]: { ...state, checked: e.target.checked } }))} style={{ width: '18px', height: '18px' }} />
-                        </td>
-                        <td style={{ padding: '16px 0' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <span style={{ fontWeight: '700', color: '#1e293b' }}>{row.name}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: '16px 0' }}>
-                          <span style={{ background: '#eff6ff', color: '#3b82f6', padding: '4px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>
-                            {row.stockGroupId?.name || 'Unassigned'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '16px 0' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <input type="number"
-step="0.001" disabled={!state.checked} value={state.qty} placeholder="0" onChange={(e) => {
-  const value = e.target.value;
-
-  if (!/^\d*\.?\d{0,3}$/.test(value) && value !== "") {
-    return;
-  }
-
-  setSelectedItems(prev => ({
-    ...prev,
-    [row._id]: {
-      ...state,
-      qty: value
-    }
-  }));
-}} style={{ width: '60px', padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
-                            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}>{row.unitId?.symbol}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: '16px 0' }}>
-                            <input type="number" disabled={!state.checked} value={state.price} placeholder="₹" onChange={(e) => setSelectedItems(prev => ({ ...prev, [row._id]: { ...state, price: e.target.value } }))} style={{ width: '80px', padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0' }} />
-                        </td>
-                        <td style={{ padding: '16px 32px', textAlign: 'right', fontWeight: '800', color: state.checked ? '#6366f1' : '#94a3b8' }}>
-                          ₹{itemTotal.toLocaleString()}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div style={{ padding: '24px 32px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={submitIndent} style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '14px 32px', borderRadius: '12px', fontWeight: '800', fontSize: '14px', cursor: 'pointer' }}>
-                Submit Requisition
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      <PageHeader title="Indent" actions={view === "requests" ? dateFilter : searchBox}>
+        <Tabs items={TABS} value={view} onChange={switchView} label="Indent views" />
+      </PageHeader>
+      {body}
+      {dialog}
     </div>
   );
 };
-
-
-
-
-
-
-
-
-
-
-
-

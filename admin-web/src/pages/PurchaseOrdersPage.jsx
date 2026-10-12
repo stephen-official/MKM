@@ -1,396 +1,394 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
-import { useToast } from "../toast.jsx";
+import { useToast } from "../useToast.js";
 import { Search, CheckCircle2, PackageCheck, History, Download } from "lucide-react";
 import * as XLSX from "xlsx";
+import {
+  PageHeader, Button, Badge, EmptyState, Field, Tabs, StatusBadge, SplitView,
+  RailList, RailItem, DetailPanel, Meta, LoadingState, ErrorState
+} from "../components/ui/index.jsx";
+import { useConfirm } from "../components/ui/useConfirm.jsx";
+
+const VIEW_TABS = [
+  { value: "history", label: "History", icon: <History size={14} /> },
+  { value: "create", label: "Intake", icon: <PackageCheck size={14} /> }
+];
+
+const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
+const fmtDate = (value) => (value ? new Date(value).toLocaleDateString("en-GB") : "—");
+const errorMessage = (error, fallback) => error?.response?.data?.message || error?.response?.data?.error || fallback;
+const idOf = (ref) => ref?._id || ref;
 
 export const PurchaseOrdersPage = () => {
   const { showToast } = useToast();
-  const [view, setView] = useState("history"); // 'history' or 'create'
+  const { confirm, dialog } = useConfirm();
+  const [view, setView] = useState("history");
   const [searchTerm, setSearchTerm] = useState("");
-  
+
   const [indents, setIndents] = useState([]);
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [stockItems, setStockItems] = useState([]);
   const [selectedIndentId, setSelectedIndentId] = useState("");
   const [editableItems, setEditableItems] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [selectedPoId, setSelectedPoId] = useState(null);
+  const requestId = useRef(0);
 
   const load = useCallback(async () => {
+    const current = ++requestId.current;
     setLoading(true);
+    setLoadError("");
     try {
       const [indRes, poRes, stockRes] = await Promise.all([
-  api.get("/procurement/purchase-orders/purchased-indents"),
-  api.get("/procurement/purchase-orders"),
-  api.get("/inventory/stock-items"),
-]);
-
-      const sortedPOs = (poRes.data || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        api.get("/procurement/purchase-orders/purchased-indents"),
+        api.get("/procurement/purchase-orders"),
+        api.get("/inventory/stock-items")
+      ]);
+      if (current !== requestId.current) return;
+      const sortedPOs = [...(poRes.data || [])].sort(
+        (a, b) => new Date(b.receivedAt || b.createdAt) - new Date(a.receivedAt || a.createdAt)
+      );
       setIndents(indRes.data || []);
       setStockItems(stockRes.data || []);
       setPurchaseOrders(sortedPOs);
-      
-      if (sortedPOs.length > 0 && !selectedPoId) {
-        setSelectedPoId(sortedPOs[0]._id);
-      }
+      setSelectedPoId((prev) => (sortedPOs.some((po) => po._id === prev) ? prev : sortedPOs[0]?._id ?? null));
     } catch (error) {
-      showToast("Failed to load records", "error");
+      if (current !== requestId.current) return;
+      const message = errorMessage(error, "Failed to load purchase orders");
+      setLoadError(message);
+      showToast(message, "error");
     } finally {
-      setLoading(false);
+      if (current === requestId.current) setLoading(false);
     }
-  }, [showToast, selectedPoId]);
+  }, [showToast]);
 
   useEffect(() => { load(); }, [load]);
 
   const getStockDetails = useCallback((id) => {
-    const item = stockItems.find(s => s._id === id);
+    const item = stockItems.find((s) => s._id === id);
     if (!item) return { name: "Unknown Item", unit: "units", group: "General" };
-
-    const unitSymbol = item.unitId?.symbol || item.unit || "units";
-    const groupName = item.stockGroupId?.name || "General";
-    
     return {
       name: item.name,
-      unit: unitSymbol,
-      group: groupName
+      unit: item.unitId?.symbol || item.unit || "units",
+      group: item.stockGroupId?.name || "General"
     };
   }, [stockItems]);
 
   const filteredPOs = useMemo(() => {
-    return purchaseOrders.filter(po => 
-      (po.indentId?.indentNo || "").toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const term = searchTerm.trim().toLowerCase();
+    return purchaseOrders.filter((po) => (po.indentId?.indentNo || "").toLowerCase().includes(term));
   }, [purchaseOrders, searchTerm]);
 
-  const activePO = useMemo(() => 
-    purchaseOrders.find(p => p._id === selectedPoId), 
-  [selectedPoId, purchaseOrders]);
+  const activePO = useMemo(
+    () => purchaseOrders.find((p) => p._id === selectedPoId),
+    [selectedPoId, purchaseOrders]
+  );
+
+  const poLabel = (po) => po.indentId?.indentNo || `PO-${po._id.slice(-4).toUpperCase()}`;
 
   const downloadExcel = () => {
     if (!activePO) return;
-
-    const excelData = activePO.items.map((item) => {
-      const details = getStockDetails(item.stockItemId?._id || item.stockItemId);
+    const excelData = (activePO.items || []).map((item) => {
+      const details = getStockDetails(idOf(item.stockItemId));
       return {
-        "Order Date": new Date(activePO.receivedAt).toLocaleDateString(),
+        "Order Date": fmtDate(activePO.receivedAt),
         "Indent No": activePO.indentId?.indentNo || "N/A",
         "Product Name": details.name,
         "Stock Group": details.group,
         "Unit": details.unit,
         "Unit Price": item.unitPrice,
         "Received Qty": item.receivedQty,
-        "Subtotal": item.amount,
+        "Subtotal": item.amount
       };
     });
-
     const worksheet = XLSX.utils.json_to_sheet(excelData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Purchase Order");
     XLSX.writeFile(workbook, `PO_${activePO.indentId?.indentNo || activePO._id}.xlsx`);
   };
 
-  // Logic to initialize editable items with prices from the Indent
+  // Seed the editable intake rows (prices come from the indent) when an indent is chosen.
   useEffect(() => {
-    if (selectedIndentId) {
-      const indent = indents.find((i) => i._id === selectedIndentId);
-      if (indent?.items) {
-        setEditableItems(indent.items.map((it) => {
-          const sId = it.stockItemId?._id || it.stockItemId;
-          const details = getStockDetails(sId);
-          return {
-            stockItemId: sId,
-            name: details.name,
-            unit: details.unit,
-            group: details.group,
-            orderedQty: Number(it.orderedQty || 0),
-            receivedQty: Number(it.orderedQty || 0),
-            unitPrice: Number(it.unitPrice || 0), 
-          };
-        }));
-      }
-    } else {
+    const indent = selectedIndentId ? indents.find((i) => i._id === selectedIndentId) : null;
+    if (!indent?.items) {
       setEditableItems([]);
+      return;
     }
+    setEditableItems(indent.items.map((it) => {
+      const stockItemId = idOf(it.stockItemId);
+      const details = getStockDetails(stockItemId);
+      return {
+        stockItemId,
+        name: details.name,
+        unit: details.unit,
+        group: details.group,
+        orderedQty: Number(it.orderedQty || 0),
+        receivedQty: String(Number(it.orderedQty || 0)),
+        unitPrice: String(Number(it.unitPrice || 0))
+      };
+    }));
   }, [selectedIndentId, indents, getStockDetails]);
 
-  const createPO = async () => {
-    if (!selectedIndentId) return showToast("Select an indent", "info");
+  const updateItem = (idx, field, value) =>
+    setEditableItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
+
+  const rowErrors = useMemo(
+    () => editableItems.map((it) => ({
+      qty: it.receivedQty === "" || !(Number(it.receivedQty) >= 0),
+      price: it.unitPrice === "" || !(Number(it.unitPrice) >= 0)
+    })),
+    [editableItems]
+  );
+
+  const intakeTotal = editableItems.reduce((sum, it) => sum + (Number(it.receivedQty) || 0) * (Number(it.unitPrice) || 0), 0);
+
+  const createPO = async (event) => {
+    event.preventDefault();
+    if (submitting) return;
+    if (!selectedIndentId) return showToast("Select an indent to receive", "error");
+    if (rowErrors.some((e) => e.qty || e.price)) {
+      return showToast("Quantities and unit prices must be numbers of 0 or more", "error");
+    }
+    if (!editableItems.some((it) => Number(it.receivedQty) > 0)) {
+      return showToast("Enter a received quantity for at least one item", "error");
+    }
+    const indentNo = indents.find((i) => i._id === selectedIndentId)?.indentNo;
+    const ok = await confirm({
+      title: "Confirm intake",
+      message: `Receive ${indentNo || "this indent"} worth ${money(intakeTotal)} and update stock? This cannot be undone.`,
+      confirmLabel: "Confirm intake"
+    });
+    if (!ok) return;
+
+    setSubmitting(true);
     try {
-      setLoading(true);
-      const totalAmount = editableItems.reduce((sum, it) => sum + it.receivedQty * it.unitPrice, 0);
-      const payload = {
+      const items = editableItems.map((it) => {
+        const receivedQty = Number(it.receivedQty);
+        const unitPrice = Number(it.unitPrice);
+        return { ...it, receivedQty, unitPrice, amount: receivedQty * unitPrice };
+      });
+      await api.post("/procurement/purchase-orders", {
         indentId: selectedIndentId,
-        items: editableItems.map((it) => ({ 
-          ...it, 
-          amount: it.receivedQty * it.unitPrice 
-        })),
-        totalAmount,
-        receivedAt: new Date().toISOString(),
-      };
-      await api.post("/procurement/purchase-orders", payload);
-      showToast("Inventory intake confirmed!", "success");
+        items,
+        totalAmount: intakeTotal,
+        receivedAt: new Date().toISOString()
+      });
+      showToast("Inventory intake confirmed", "success");
       setSelectedIndentId("");
       setView("history");
-      load();
-    } catch (e) {
-      showToast("Error creating PO", "error");
+      await load();
+    } catch (error) {
+      showToast(errorMessage(error, "Could not create the purchase order"), "error");
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  return (
-    <div style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column', fontFamily: "'Inter', sans-serif" }}>
-      
-      {/* Header */}
-      <div style={{ padding: '20px 32px', background: '#fff', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <h1 style={{ margin: 0, fontSize: '20px', fontWeight: '800', color: '#0f172a' }}>
-            Purchase <span style={{ color: '#6366f1' }}>Orders</span>
-          </h1>
-          <div style={{ display: 'flex', background: '#f1f5f9', padding: '4px', borderRadius: '12px' }}>
-            <button
-              onClick={() => setView("history")}
-              style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', fontSize: '12px', fontWeight: '700', cursor: 'pointer', background: view === 'history' ? '#fff' : 'transparent', color: view === 'history' ? '#6366f1' : '#64748b', boxShadow: view === 'history' ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><History size={14}/> History</div>
-            </button>
-            <button
-              onClick={() => setView("create")}
-              style={{ padding: '8px 16px', borderRadius: '10px', border: 'none', fontSize: '12px', fontWeight: '700', cursor: 'pointer', background: view === 'create' ? '#fff' : 'transparent', color: view === 'create' ? '#6366f1' : '#64748b', boxShadow: view === 'create' ? '0 4px 6px -1px rgba(0,0,0,0.1)' : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><PackageCheck size={14}/> Intake</div>
-            </button>
-          </div>
-        </div>
-
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-          <Search size={16} style={{ position: 'absolute', left: '12px', color: '#94a3b8' }} />
-          <input
-            type="text"
-            placeholder="Search POs..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 12px 10px 36px', fontSize: '13px', width: '240px', outline: 'none' }}
-          />
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', padding: '24px', gap: '24px' }}>
-        
-        {view === "history" ? (
-          <>
-            <div style={{ width: '380px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ fontSize: '11px', fontWeight: '900', color: '#64748b', paddingLeft: '8px' }}>COMPLETED ORDERS ({filteredPOs.length})</div>
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {filteredPOs.map(po => (
-                  <div
-                    key={po._id}
-                    onClick={() => setSelectedPoId(po._id)}
-                    style={{
-                      padding: '16px', borderRadius: '16px', cursor: 'pointer',
-                      background: selectedPoId === po._id ? '#fff' : 'transparent',
-                      border: selectedPoId === po._id ? '1px solid #6366f1' : '1px solid transparent',
-                      boxShadow: selectedPoId === po._id ? '0 10px 15px -3px rgba(99, 102, 241, 0.1)' : 'none',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontWeight: '700', color: selectedPoId === po._id ? '#6366f1' : '#1e293b' }}>
-                        {po.indentId?.indentNo || `PO-${po._id.slice(-4).toUpperCase()}`}
-                      </div>
-                      <div style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8' }}>
-                        {new Date(po.receivedAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                      ₹{po.totalAmount?.toLocaleString()} • {po.items?.length || 0} Items
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ flex: 1, background: '#fff', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-              {activePO ? (
-                <>
-                  <div style={{ padding: '40px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>ORDER RECEIVED</div>
-                      <div style={{ fontSize: '18px', fontWeight: '800' }}>{new Date(activePO.receivedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', marginBottom: '6px' }}>TOTAL VALUATION</div>
-                      <div style={{ fontSize: '24px', fontWeight: '900', color: '#0f172a' }}>₹{activePO.totalAmount?.toLocaleString()}</div>
-                    </div>
-                  </div>
-
-                  <div style={{ flex: 1, padding: '0 40px', overflowY: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr style={{ textAlign: 'left' }}>
-                          <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>PRODUCT</th>
-                          <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0' }}>GROUP</th>
-                          <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0', textAlign: 'center' }}>QTY</th>
-                          <th style={{ padding: '24px 0 12px', fontSize: '11px', fontWeight: '900', color: '#94a3b8', borderBottom: '1px solid #e2e8f0', textAlign: 'right' }}>SUBTOTAL</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {activePO.items.map((item, idx) => {
-                          const details = getStockDetails(item.stockItemId?._id || item.stockItemId);
-                          return (
-                            <tr key={idx}>
-                              <td style={{ padding: '20px 0', borderBottom: '1px solid #f8fafc' }}>
-                                <div style={{ fontWeight: '700', color: '#1e293b' }}>{details.name}</div>
-                                <div style={{ fontSize: '11px', color: '#94a3b8' }}>Rate: ₹{item.unitPrice} / {details.unit}</div>
-                              </td>
-                              <td style={{ padding: '20px 0', borderBottom: '1px solid #f8fafc' }}>
-                                <span style={{ background: '#eff6ff', color: '#3b82f6', padding: '4px 8px', borderRadius: '6px', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase' }}>
-                                  {details.group}
-                                </span>
-                              </td>
-                              <td style={{ padding: '20px 0', textAlign: 'center', fontWeight: '700', borderBottom: '1px solid #f8fafc' }}>
-                                {item.receivedQty} <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '400' }}>{details.unit}</span>
-                              </td>
-                              <td style={{ padding: '20px 0', textAlign: 'right', fontWeight: '800', color: '#6366f1', borderBottom: '1px solid #f8fafc' }}>₹{item.amount?.toLocaleString()}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div style={{ padding: '24px 40px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end' }}>
-                    <button 
-                      onClick={downloadExcel}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '12px', fontWeight: '800', cursor: 'pointer', fontSize: '13px', boxShadow: '0 10px 15px -3px rgba(16, 185, 129, 0.2)' }}
-                    >
-                      <Download size={18}/> Export Excel (.xlsx)
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>No records selected</div>
-              )}
-            </div>
-          </>
-        ) : (
-          /* Intake Creation Area */
-          <div style={{ flex: 1, background: '#fff', borderRadius: '24px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '32px', borderBottom: '1px solid #f1f5f9', display: 'flex', gap: '24px', alignItems: 'center' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1', display: 'block', marginBottom: '8px' }}>SELECT PENDING INDENT</label>
-                <select 
-                  value={selectedIndentId} 
-                  onChange={(e) => setSelectedIndentId(e.target.value)}
-                  style={{ width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid #e2e8f0', background: '#f8fafc', fontWeight: '700', outline: 'none' }}>
-                  <option value="">Choose an indent to process...</option>
-                  {indents.map(i => (
-                    <option key={i._id} value={i._id}>{i.indentNo} — ₹{i.totalAmount?.toLocaleString()}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '10px', fontWeight: '900', color: '#6366f1' }}>INTAKE TOTAL</div>
-                <div style={{ fontSize: '24px', fontWeight: '900' }}>₹{editableItems.reduce((sum, it) => sum + it.receivedQty * it.unitPrice, 0).toLocaleString()}</div>
-              </div>
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 32px' }}>
-              {editableItems.length > 0 ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead style={{ position: 'sticky', top: 0, background: '#fff', zIndex: 10 }}>
-                    <tr style={{ textAlign: 'left', borderBottom: '2px solid #f1f5f9' }}>
-                      <th style={{ padding: '20px 0', fontSize: '11px', color: '#94a3b8' }}>ITEM DESCRIPTION</th>
-                      <th style={{ padding: '20px 0', fontSize: '11px', color: '#94a3b8', textAlign: 'center' }}>REQ. QTY</th>
-                      <th style={{ padding: '20px 0', fontSize: '11px', color: '#94a3b8', textAlign: 'center', width: '150px' }}>UNIT PRICE</th>
-                      <th style={{ padding: '20px 0', fontSize: '11px', color: '#94a3b8', textAlign: 'center', width: '150px' }}>REC. QTY</th>
-                      <th style={{ padding: '20px 0', fontSize: '11px', color: '#94a3b8', textAlign: 'right' }}>VALUATION</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {editableItems.map((item, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #f8fafc' }}>
-                        <td style={{ padding: '20px 0' }}>
-                          <div style={{ fontWeight: '700', color: '#1e293b' }}>{item.name}</div>
-                          <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginTop: '4px' }}>
-                            <span style={{ background: '#f1f5f9', color: '#64748b', padding: '2px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: '700', textTransform: 'uppercase' }}>
-                              {item.group}
-                            </span>
-                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>• Per {item.unit}</span>
-                          </div>
-                        </td>
-                        <td style={{ textAlign: 'center', color: '#64748b', fontWeight: '600' }}>
-                          {item.orderedQty} <span style={{ fontSize: '10px', fontWeight: '400' }}>{item.unit}</span>
-                        </td>
-                        
-                        {/* EDITABLE UNIT PRICE */}
-                        <td style={{ textAlign: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                            <span style={{ color: '#94a3b8', fontWeight: '700' }}>₹</span>
-                            <input 
-                              type="number"
-                              value={item.unitPrice}
-                              onChange={(e) => {
-                                const newItems = [...editableItems];
-                                newItems[idx].unitPrice = Number(e.target.value);
-                                setEditableItems(newItems);
-                              }}
-                              style={{ 
-                                width: '90px', 
-                                padding: '8px', 
-                                borderRadius: '8px', 
-                                border: '2px solid #f1f5f9', 
-                                textAlign: 'center', 
-                                fontWeight: '800', 
-                                color: '#10b981' 
-                              }}
-                            />
-                          </div>
-                        </td>
-
-                        {/* EDITABLE RECEIVED QTY */}
-                        <td style={{ textAlign: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                            <input 
-                              type="number"
-                              value={item.receivedQty}
-                              onChange={(e) => {
-                                const newItems = [...editableItems];
-                                newItems[idx].receivedQty = Number(e.target.value);
-                                setEditableItems(newItems);
-                              }}
-                              style={{ width: '80px', padding: '8px', borderRadius: '8px', border: '2px solid #f1f5f9', textAlign: 'center', fontWeight: '800', color: '#6366f1' }}
-                            />
-                            <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600', width: '30px', textAlign: 'left' }}>{item.unit}</span>
-                          </div>
-                        </td>
-
-                        <td style={{ textAlign: 'right', fontWeight: '800' }}>₹{(item.receivedQty * item.unitPrice).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '14px' }}>
-                  Please select a pending indent from the dropdown above
+  const renderHistory = () => {
+    if (loadError && !purchaseOrders.length) return <ErrorState message={loadError} onRetry={load} />;
+    return (
+      <SplitView
+        rail={
+          <RailList
+            title="Completed orders"
+            count={filteredPOs.length}
+            loading={loading && !purchaseOrders.length}
+            empty={
+              <EmptyState title={purchaseOrders.length ? "No matching orders" : "No purchase orders yet"}>
+                {purchaseOrders.length ? "Try a different indent number." : "Orders appear here once an indent is received on the Intake tab."}
+              </EmptyState>
+            }
+          >
+            {filteredPOs.map((po) => (
+              <RailItem key={po._id} active={selectedPoId === po._id} onClick={() => setSelectedPoId(po._id)}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <strong>{poLabel(po)}</strong>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>{fmtDate(po.receivedAt)}</span>
                 </div>
-              )}
-            </div>
-
-            {editableItems.length > 0 && (
-              <div style={{ padding: '24px 32px', background: '#f8fafc', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={createPO}
-                  disabled={loading}
-                  style={{ background: '#6366f1', color: '#fff', border: 'none', padding: '14px 32px', borderRadius: '14px', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 10px 15px -3px rgba(99, 102, 241, 0.3)' }}>
-                  <CheckCircle2 size={18}/> {loading ? "Updating Stock..." : "Confirm Intake & Update Stock"}
-                </button>
-              </div>
-            )}
-          </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 6 }}>
+                  <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                    {money(po.totalAmount)} • {po.items?.length || 0} items
+                  </span>
+                  {po.status && <StatusBadge status={po.status} />}
+                </div>
+              </RailItem>
+            ))}
+          </RailList>
+        }
+      >
+        {activePO ? (
+          <DetailPanel
+            head={
+              <>
+                <Meta label="Order received">{fmtDate(activePO.receivedAt)}</Meta>
+                <Meta label="Indent">{poLabel(activePO)}</Meta>
+                {activePO.status && <Meta label="Status"><StatusBadge status={activePO.status} /></Meta>}
+                <Meta label="Total valuation" align="end">{money(activePO.totalAmount)}</Meta>
+              </>
+            }
+            foot={
+              <Button variant="success" onClick={downloadExcel}>
+                <Download size={18} /> Export Excel (.xlsx)
+              </Button>
+            }
+          >
+            <table className="table">
+              <thead>
+                <tr>
+                  <th scope="col">Product</th>
+                  <th scope="col">Group</th>
+                  <th scope="col" style={{ textAlign: "center" }}>Qty</th>
+                  <th scope="col" style={{ textAlign: "right" }}>Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(activePO.items || []).map((item, idx) => {
+                  const details = getStockDetails(idOf(item.stockItemId));
+                  return (
+                    <tr key={idx}>
+                      <td>
+                        <div style={{ fontWeight: 650 }}>{details.name}</div>
+                        <div style={{ fontSize: 12, color: "var(--muted)" }}>Rate: {money(item.unitPrice)} / {details.unit}</div>
+                      </td>
+                      <td><Badge variant="info">{details.group}</Badge></td>
+                      <td style={{ textAlign: "center" }}>{item.receivedQty} {details.unit}</td>
+                      <td style={{ textAlign: "right", fontWeight: 650 }}>{money(item.amount)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </DetailPanel>
+        ) : (
+          <EmptyState title="No order selected">Choose an order from the list to see its items.</EmptyState>
         )}
-      </div>
+      </SplitView>
+    );
+  };
+
+  const renderIntake = () => (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "20px 32px 28px" }}>
+      {loading && !indents.length ? (
+        <LoadingState label="Loading pending indents…" />
+      ) : loadError && !indents.length ? (
+        <ErrorState message={loadError} onRetry={load} />
+      ) : (
+        <form onSubmit={createPO} noValidate style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          <DetailPanel
+            head={
+              <>
+                <div style={{ flex: 1, minWidth: 260 }}>
+                  <Field label="Pending indent">
+                    <select value={selectedIndentId} onChange={(e) => setSelectedIndentId(e.target.value)} disabled={submitting}>
+                      <option value="">Choose an indent to process…</option>
+                      {indents.map((i) => (
+                        <option key={i._id} value={i._id}>{i.indentNo} — {money(i.totalAmount)}</option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <Meta label="Intake total" align="end">{money(intakeTotal)}</Meta>
+              </>
+            }
+            foot={
+              editableItems.length > 0 && (
+                <Button type="submit" disabled={submitting}>
+                  <CheckCircle2 size={18} /> {submitting ? "Updating stock…" : "Confirm intake & update stock"}
+                </Button>
+              )
+            }
+          >
+            {editableItems.length > 0 ? (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th scope="col">Item</th>
+                    <th scope="col" style={{ textAlign: "center" }}>Requested</th>
+                    <th scope="col" style={{ textAlign: "center", width: 160 }}>Unit price</th>
+                    <th scope="col" style={{ textAlign: "center", width: 160 }}>Received qty</th>
+                    <th scope="col" style={{ textAlign: "right" }}>Valuation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {editableItems.map((item, idx) => (
+                    <tr key={item.stockItemId || idx}>
+                      <td>
+                        <div style={{ fontWeight: 650 }}>{item.name}</div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+                          <Badge>{item.group}</Badge>
+                          <span style={{ fontSize: 12, color: "var(--muted)" }}>per {item.unit}</span>
+                        </div>
+                      </td>
+                      <td style={{ textAlign: "center" }}>{item.orderedQty} {item.unit}</td>
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="number" min="0" step="any" inputMode="decimal"
+                          aria-label={`Unit price for ${item.name}`}
+                          aria-invalid={rowErrors[idx].price}
+                          value={item.unitPrice}
+                          disabled={submitting}
+                          onChange={(e) => updateItem(idx, "unitPrice", e.target.value)}
+                          style={{ width: 110, textAlign: "center" }}
+                        />
+                      </td>
+                      <td style={{ textAlign: "center" }}>
+                        <input
+                          type="number" min="0" step="any" inputMode="decimal"
+                          aria-label={`Received quantity for ${item.name}`}
+                          aria-invalid={rowErrors[idx].qty}
+                          value={item.receivedQty}
+                          disabled={submitting}
+                          onChange={(e) => updateItem(idx, "receivedQty", e.target.value)}
+                          style={{ width: 100, textAlign: "center" }}
+                        />
+                      </td>
+                      <td style={{ textAlign: "right", fontWeight: 650 }}>
+                        {money((Number(item.receivedQty) || 0) * (Number(item.unitPrice) || 0))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <EmptyState title={indents.length ? "Select a pending indent" : "No indents awaiting intake"}>
+                {indents.length
+                  ? "Choose an indent above to review quantities and prices before receiving it."
+                  : "Indents marked as purchased will show up here."}
+              </EmptyState>
+            )}
+          </DetailPanel>
+        </form>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ height: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+      <PageHeader
+        title="Purchase Orders"
+        actions={
+          view === "history" && (
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+              <Search size={16} aria-hidden="true" style={{ position: "absolute", left: 12, color: "var(--muted-soft)" }} />
+              <input
+                type="search"
+                aria-label="Search purchase orders by indent number"
+                placeholder="Search POs…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ paddingLeft: 36, width: 220 }}
+              />
+            </div>
+          )
+        }
+      >
+        <Tabs items={VIEW_TABS} value={view} onChange={setView} label="Purchase order views" />
+      </PageHeader>
+
+      {view === "history" ? renderHistory() : renderIntake()}
+      {dialog}
     </div>
   );
 };
-
-

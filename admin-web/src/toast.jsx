@@ -1,6 +1,5 @@
-import { createContext, useContext, useMemo, useState } from "react";
-
-const ToastContext = createContext({ showToast: () => {} });
+import { useMemo, useState } from "react";
+import { ToastContext } from "./useToast.js";
 
 export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
@@ -8,9 +7,10 @@ export const ToastProvider = ({ children }) => {
   const showToast = (message, type = "info") => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setToasts((prev) => [...prev, { id, message, type }]);
+    // Errors stay longer: they usually need reading, not just noticing.
     window.setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 2600);
+    }, type === "error" ? 6000 : 3000);
   };
 
   const value = useMemo(() => ({ showToast }), []);
@@ -18,9 +18,9 @@ export const ToastProvider = ({ children }) => {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div className="toast-wrap">
+      <div className="toast-wrap" aria-live="polite">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast toast-${t.type}`}>
+          <div key={t.id} role={t.type === "error" ? "alert" : "status"} className={`toast toast-${t.type}`}>
             {t.message}
           </div>
         ))}
@@ -28,5 +28,3 @@ export const ToastProvider = ({ children }) => {
     </ToastContext.Provider>
   );
 };
-
-export const useToast = () => useContext(ToastContext);
