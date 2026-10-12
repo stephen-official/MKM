@@ -25,6 +25,16 @@ test("normalizePath folds the operations alias, query strings and trailing slash
   assert.equal(normalizePath("/api/requests?x=1"), "/api/requests");
 });
 
+test("matching is case-insensitive like Express routing", () => {
+  assert.equal(normalizePath("/API/Operations/Requests/"), "/api/requests");
+  for (const path of ["/API/Requests/x/approve", "/api/Operations/requests/x/approve"]) {
+    const rule = classifyRoute("POST", path);
+    assert.ok(rule, `${path} is unclassified`);
+    assert.equal(rule.type, "feature");
+    assert.deepEqual(rule.features, ["requests"]);
+  }
+});
+
 const cases = [
   ["GET", "/api/inventory/stock-items", "lookup"],
   ["GET", "/api/inventory/godowns", "lookup"],

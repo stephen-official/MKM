@@ -126,7 +126,8 @@ export const ROUTE_RULES = Object.freeze([
 ]);
 
 export const normalizePath = (raw) => {
-  let path = String(raw || "").split("?")[0];
+  // Express routing is case-insensitive, so match case-insensitively (rule paths are lower-case).
+  let path = String(raw || "").split("?")[0].toLowerCase();
   if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
   if (path === "/api/operations") return "/api";
   if (path.startsWith("/api/operations/")) return `/api/${path.slice("/api/operations/".length)}`;
