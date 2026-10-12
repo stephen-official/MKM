@@ -17,6 +17,7 @@ import { reportRoutes } from "./routes/reportRoutes.js";
 import { indentRequestRoutes } from "./routes/indentRequestRoutes.js";
 import { dailyUsageRoutes } from "./routes/dailyUsageRoutes.js";
 import { productLedgerRoutes } from "./routes/productLedgerRoutes.js";
+import { executiveRoutes } from "./routes/executiveRoutes.js";
 
 const app = express();
 
@@ -73,7 +74,8 @@ app.use(cors({
         }
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    exposedHeaders: ["Content-Disposition"]
 }));
 
 
@@ -127,7 +129,8 @@ export const PROTECTED_MOUNTS = [
   ["/api/indent-requests", indentRequestRoutes],
   ["/api/daily-usage", dailyUsageRoutes],
   ["/api/product-ledger", productLedgerRoutes],
-  ["/api/features", featureRoutes]
+  ["/api/features", featureRoutes],
+  ["/api/executive", executiveRoutes]
 ];
 
 app.use("/api/auth", authLimiter, authRoutes);
