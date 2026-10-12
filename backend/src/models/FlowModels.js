@@ -101,7 +101,9 @@ const consumptionSchema = new mongoose.Schema(
         stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: "StockItem" }, 
         qtyBaseUnit: Number, 
         unitDisplay: String, 
-        amountAtIssue: Number 
+        // Captured when the line is recorded (README Decision 5); null = no valid price then.
+        unitPriceAtIssue: { type: Number, default: null },
+        amountAtIssue: { type: Number, default: null }
       }
     ]
   },

@@ -7,6 +7,9 @@ import { io } from "../realtime.js";
 import { StockItem, StockGroup, Unit } from "../models/InventoryModels.js";
 import { DailyUsage } from "../models/DailyUsageModel.js";
 import { isAdminRole, isKitchenRole } from "../utils/roles.js";
+import { pricesForKitchen } from "../executive/valuation.js";
+import { normalizeBusinessDate } from "../executive/params.js";
+import { round2 } from "../utils/money.js";
 
 export const operationsRoutes = express.Router();
 
@@ -69,6 +72,21 @@ select: "name stockGroupId unitId imageUrl itemType"
 });
 
 // --- 2. ORDERS & CONSUMPTIONS LOGIC (DIRECT PROCESSING) ---
+/** Adds unitPriceAtIssue/amountAtIssue to lines; `keep` maps stockItemId → an already-captured price. */
+const priceLines = async (godownId, lines, keep = new Map()) => {
+  const prices = await pricesForKitchen(godownId, lines.filter((l) => !keep.has(String(l.stockItemId))).map((l) => l.stockItemId));
+  return lines.map((line) => {
+    const id = String(line.stockItemId);
+    const unitPrice = keep.has(id) ? keep.get(id) : prices.get(id)?.price ?? null;
+    const qty = Number(line.qtyBaseUnit);
+    return {
+      ...line,
+      unitPriceAtIssue: unitPrice,
+      amountAtIssue: unitPrice === null || !Number.isFinite(qty) ? null : round2(qty * unitPrice)
+    };
+  });
+};
+
 const handleStockProcessing = async (req, res) => {
   const session = await mongoose.startSession();
   try {
@@ -124,7 +142,7 @@ const handleStockProcessing = async (req, res) => {
         godownId,
         userId: req.user.sub, 
         date: req.body.date,
-        items: orderItems
+        items: await priceLines(godownId, orderItems)
       }], { session });
 
       return consumption[0];
@@ -353,13 +371,18 @@ operationsRoutes.patch(
         // ----------------------------------------------------
         // Save new consumption items
         // ----------------------------------------------------
-        consumption.items = items
-          .filter(item => Number(item.qtyBaseUnit) > 0)
-          .map(item => ({
-            stockItemId: item.stockItemId,
-            qtyBaseUnit: Number(item.qtyBaseUnit),
-            stockRecordId: item.stockRecordId || undefined
-          }));
+        const keptPrices = new Map(
+          oldItems
+            .filter((old) => old.unitPriceAtIssue !== undefined && old.unitPriceAtIssue !== null)
+            .map((old) => [String(old.stockItemId), old.unitPriceAtIssue])
+        );
+        consumption.items = await priceLines(
+          godownId,
+          items
+            .filter((item) => Number(item.qtyBaseUnit) > 0)
+            .map((item) => ({ stockItemId: item.stockItemId, qtyBaseUnit: Number(item.qtyBaseUnit), stockRecordId: item.stockRecordId || undefined })),
+          keptPrices
+        );
 
         await consumption.save({ session });
       });
@@ -880,11 +903,13 @@ operationsRoutes.post("/requests/:id/approve", authorize(["admin"]), async (req,
         if (!stock) throw new Error("Insufficient kitchen stock for one or more items");
       }
 
+      const date = normalizeBusinessDate(request.targetDate, new Date());
+      const baseLines = request.items.map((item) => ({ stockItemId: item.stockItemId, qtyBaseUnit: item.qtyBaseUnit }));
       const record = {
         godownId: request.godownId,
         userId: request.userId,
-        date: request.targetDate || new Date(),
-        items: request.items,
+        date,
+        items: request.requestType === "daily_usage" ? baseLines : await priceLines(request.godownId, baseLines),
       };
       if (request.requestType === "daily_usage") {
         await DailyUsage.create([{ ...record, reason: request.reason }], { session });
