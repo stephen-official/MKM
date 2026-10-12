@@ -6,6 +6,7 @@ import { env } from "../config/env.js";
 import { createResetToken, hashResetToken, signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/tokens.js";
 import { authenticate } from "../middleware/auth.js";
 import { sendResetEmail } from "../utils/mailer.js";
+import { PRIVILEGED_ROLES } from "../utils/roles.js";
 
 export const authRoutes = express.Router();
 const MIN_PASSWORD_LENGTH = 8;
@@ -17,7 +18,7 @@ export const isValidPassword = (password) =>
 authRoutes.post("/register", async (req, res) => {
   const { name, email, password, role = "user", godownId } = req.body;
   if (!name || !email || !password) return res.status(400).json({ message: "name, email and password are required" });
-  if (role === "admin") return res.status(403).json({ message: "Admin accounts cannot be created through public registration" });
+  if (PRIVILEGED_ROLES.includes(role)) return res.status(403).json({ message: "Privileged accounts cannot be created through public registration" });
   if (role !== "user") return res.status(400).json({ message: "Invalid role" });
   if (!isValidPassword(password)) return res.status(400).json({ message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
   if (!godownId) return res.status(400).json({ message: "godownId is required for user" });
@@ -79,6 +80,12 @@ authRoutes.post("/refresh", async (req, res) => {
   } catch (error) {
     return res.status(401).json({ message: "Invalid refresh token" });
   }
+});
+
+// --- Logout: revoke the refresh token so it cannot mint new access tokens ---
+authRoutes.post("/logout", authenticate, async (req, res) => {
+  await User.updateOne({ _id: req.user.sub }, { $set: { refreshToken: null } });
+  return res.status(204).end();
 });
 
 // --- Password Reset Flow ---
