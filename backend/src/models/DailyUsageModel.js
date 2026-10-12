@@ -37,5 +37,8 @@ const dailyUsageSchema = new mongoose.Schema(
 { timestamps: true }
 );
 
+dailyUsageSchema.index({ godownId: 1, date: 1 });
+dailyUsageSchema.index({ createdAt: 1 });
+
 export const DailyUsage =
 mongoose.model("DailyUsage", dailyUsageSchema);

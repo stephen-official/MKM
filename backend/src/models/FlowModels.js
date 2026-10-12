@@ -263,6 +263,28 @@ const notificationSchema = new mongoose.Schema(
   timestamps: true
 });
 
+// --- Executive report indexes (README Decision 8) ---
+consumptionSchema.index({ godownId: 1, date: 1 });
+consumptionSchema.index({ date: 1 });
+consumptionSchema.index({ godownId: 1, createdAt: 1 });
+consumptionSchema.index({ createdAt: 1 });
+distributionSchema.index({ "allocations.godownId": 1, "allocations.stockItemId": 1, createdAt: -1 });
+distributionSchema.index({ createdAt: 1 });
+purchaseOrderSchema.index({ status: 1 });
+purchaseOrderSchema.index({ receivedAt: 1 });
+purchaseOrderSchema.index({ "items.stockItemId": 1, receivedAt: -1 });
+requestSchema.index({ status: 1, godownId: 1, createdAt: 1 });
+requestSchema.index({ godownId: 1, createdAt: 1 });
+requestSchema.index({ createdAt: 1 });
+transferSchema.index({ status: 1, createdAt: 1 });
+transferSchema.index({ fromGodownId: 1, status: 1 });
+transferSchema.index({ toGodownId: 1, status: 1 });
+transferSchema.index({ createdAt: 1 });
+indentSchema.index({ createdAt: 1 });
+indentSchema.index({ status: 1 });
+indentRequestSchema.index({ status: 1, godownId: 1, createdAt: 1 });
+indentRequestSchema.index({ godownId: 1, createdAt: 1 });
+
 export const IndentRequest = mongoose.model("IndentRequest", indentRequestSchema);
 
 
