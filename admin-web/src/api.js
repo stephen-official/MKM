@@ -10,6 +10,9 @@ const KEYS = { access: "accessToken", refresh: "refreshToken", role: "userRole" 
 /** Fired on window when the session can no longer be renewed. */
 export const SESSION_EXPIRED_EVENT = "mkm:session-expired";
 
+/** Fired on window (detail = server payload) when a request hits a disabled feature. */
+export const FEATURE_DISABLED_EVENT = "mkm:feature-disabled";
+
 const applyToken = (token) => {
   if (token) api.defaults.headers.common.Authorization = `Bearer ${token}`;
   else delete api.defaults.headers.common.Authorization;
@@ -65,6 +68,9 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const { config, response } = error;
+    if (response?.status === 403 && response.data?.code === "FEATURE_DISABLED") {
+      window.dispatchEvent(new CustomEvent(FEATURE_DISABLED_EVENT, { detail: response.data }));
+    }
     const isAuthCall = config?.url?.startsWith("/auth/");
     if (response?.status !== 401 || !config || config._retried || isAuthCall) throw error;
 
