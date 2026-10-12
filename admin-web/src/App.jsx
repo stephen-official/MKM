@@ -13,10 +13,41 @@ import { ReportsPage } from "./pages/ReportsPage.jsx";
 import { RequestsPage } from "./pages/RequestsPage.jsx";
 import { StockDistributionPage } from "./pages/StockDistributionPage.jsx";
 import { TransferStockPage } from "./pages/TransferStockPage.jsx";
-import { Button } from "./components/ui/index.jsx";
+import { Banner, Button } from "./components/ui/index.jsx";
 import ProductLedger from "./pages/ProductLedger.jsx";
 import { Layout } from "./components/Layout.jsx";
-import { NAV } from "./components/navItems.js";
+import { NAV, SUPER_NAV } from "./components/navItems.js";
+import { FeatureFlagsProvider } from "./features/FeatureFlagsProvider.jsx";
+import { useFeatureFlags } from "./features/FeatureFlagsContext.js";
+import { FeatureDisabledPage } from "./features/FeatureDisabledPage.jsx";
+import { NO_ACCESS_PATH, buildSections, disabledFeatureForPath, firstAllowedPath, isPathAllowed } from "./features/featureNav.js";
+import { FeatureVisibilityPage } from "./pages/FeatureVisibilityPage.jsx";
+import { ExecutiveReportPage } from "./pages/ExecutiveReportPage.jsx";
+
+function AdminShell({ onLogout, routeMap }) {
+  const { flags, role, status } = useFeatureFlags();
+  const sections = buildSections({ flags, role });
+  const home = firstAllowedPath({ flags, role });
+  const guard = (path, label, element) => {
+    if (disabledFeatureForPath(path, { flags, role })) return <FeatureDisabledPage label={label} homePath={home === NO_ACCESS_PATH ? null : home} />;
+    if (!isPathAllowed(path, { flags, role })) return <Navigate to={home} replace />;
+    return element;
+  };
+  return (
+    <Layout onLogout={onLogout} sections={sections}>
+      {status === "error" && (
+        <Banner variant="warn">Feature settings could not be loaded. Some pages may be unavailable.</Banner>
+      )}
+      <Routes>
+        {[...NAV, ...SUPER_NAV].map(({ label, path }) => (
+          <Route key={path} path={path} element={guard(path, label, routeMap[path] || <ModulePage title={label} />)} />
+        ))}
+        <Route path={NO_ACCESS_PATH} element={<FeatureDisabledPage label="No pages available" homePath={null} />} />
+        <Route path="*" element={<Navigate to={home} replace />} />
+      </Routes>
+    </Layout>
+  );
+}
 
 export const App = () => {
   const [session, setSession] = useState(() => {
@@ -36,7 +67,9 @@ export const App = () => {
       "/requests": <RequestsPage />,
       "/consumption": <ConsumptionPage />,
       "/reports": <ReportsPage />,
-      "/product-ledger": <ProductLedger />
+      "/product-ledger": <ProductLedger />,
+      "/executive-report": <ExecutiveReportPage />,
+      "/feature-visibility": <FeatureVisibilityPage />
     }),
     []
   );
@@ -87,15 +120,9 @@ export const App = () => {
               <Button onClick={handleLogout}>Back to sign in</Button>
             </div>
           ) : (
-            <Layout onLogout={handleLogout}>
-              <Routes>
-                {NAV.map(({ label, path }) => (
-                  <Route key={path} path={path} element={routeMap[path] || <ModulePage title={label} />} />
-                ))}
-                {/* Default redirect for logged-in admins */}
-                <Route path="*" element={<Navigate to="/inventory-info" replace />} />
-              </Routes>
-            </Layout>
+            <FeatureFlagsProvider key={session.role} role={session.role}>
+              <AdminShell onLogout={handleLogout} routeMap={routeMap} />
+            </FeatureFlagsProvider>
           )
         }
       />

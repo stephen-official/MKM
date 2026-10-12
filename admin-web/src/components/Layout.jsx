@@ -16,12 +16,6 @@ import {
   ArrowLeftRight
 } from "lucide-react";
 import logo from "../mkmLogo.png";
-import { NAV } from "./navItems.js";
-
-const SECTIONS = [
-  { title: "Stock", items: NAV.slice(0, 6) },
-  { title: "Insights", items: NAV.slice(6) }
-];
 
 // A pointer that can hover gets the hover-driven rail; touch screens keep the
 // menu button. Read live so a tablet docked to a mouse switches over.
@@ -40,7 +34,7 @@ const useCanHover = () => {
 
 const stagger = (index) => ({ "--i": index });
 
-export const Layout = ({ onLogout, children }) => {
+export const Layout = ({ onLogout, sections, children }) => {
   const location = useLocation();
   const canHover = useCanHover();
   const [hovering, setHovering] = useState(false);
@@ -99,7 +93,7 @@ export const Layout = ({ onLogout, children }) => {
         >
           <div className="sidenav-top">
             <Link
-              to="/inventory-info"
+              to="/"
               className="sidenav-brand"
               aria-label={!canHover && !isExpanded ? "Expand menu" : "Montessori Kitchen dashboard"}
               onClick={(event) => {
@@ -128,10 +122,10 @@ export const Layout = ({ onLogout, children }) => {
           </div>
 
           <nav className="sidenav-nav" aria-label="Main navigation">
-            {SECTIONS.map((section) => (
+            {sections.map((section) => (
               <div key={section.title} style={{ display: "contents" }}>
                 <p className="sidenav-section-label"><span>{section.title}</span></p>
-                {section.items.map(({ label, path, icon: Icon }) => (
+                {section.items.map(({ label, path, icon: Icon, hiddenFromAdmins }) => (
                   <NavLink
                     key={path}
                     to={path}
@@ -141,6 +135,7 @@ export const Layout = ({ onLogout, children }) => {
                   >
                     <span className="sidenav-icon"><Icon size={19} /></span>
                     <span className="sidenav-label">{label}</span>
+                    {hiddenFromAdmins && <span className="sidenav-hidden-badge" title="Hidden from admins">Off</span>}
                   </NavLink>
                 ))}
               </div>

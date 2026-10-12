@@ -529,3 +529,17 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .react-datepicker__day--selected:hover, .react-datepicker__day--keyboard-selected:hover { background: var(--primary-hover); }
 .react-datepicker__day--disabled { color: var(--muted-soft); opacity: 0.6; }
 .react-datepicker__navigation-icon::before { border-color: var(--muted); }
+
+/* Super-admin hint: this module is switched off for admins. */
+.sidenav-hidden-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+}
+.sidenav--collapsed .sidenav-hidden-badge { display: none; }
