@@ -5,6 +5,7 @@ import { PRODUCTION_SIZE, seedProductionSized } from "./helpers/perfFixture.js";
 import { buildExecutiveReport } from "../executive/buildReport.js";
 import { parseReportParams } from "../executive/params.js";
 import { EXPORT_LIMITS } from "../executive/context.js";
+import { Consumption } from "../models/FlowModels.js";
 
 const enabled = process.env.PERF === "1";
 const NOW = new Date("2026-10-13T06:00:00Z");
@@ -33,7 +34,22 @@ const p95 = async (fn, runs = 7) => {
   return times[Math.ceil(0.95 * times.length) - 1];
 };
 
-const run = (query, limits) => buildExecutiveReport(parseReportParams(query, { now: NOW }), { now: NOW, limits });
+// Sections swallow their own errors into `failures` and return fast, so a broken section would
+// make timings look better. Every timed call therefore asserts that nothing failed.
+const run = async (query, limits) => {
+  const report = await buildExecutiveReport(parseReportParams(query, { now: NOW }), { now: NOW, limits });
+  assert.deepEqual(report.failures, [], `report sections failed: ${JSON.stringify(report.failures)}`);
+  return report;
+};
+
+test("fixture is production-sized and the report returns real data", { skip: !enabled, timeout: 120_000 }, async () => {
+  const { days, kitchens, consumptionsPerKitchenPerDay } = PRODUCTION_SIZE;
+  assert.equal(await Consumption.countDocuments(), days * kitchens * consumptionsPerKitchenPerDay);
+  const report = await run({ from: "2025-10-13", to: "2026-10-13" });
+  const consumptionValue = report.kpis.find((k) => k.id === "consumptionValue");
+  assert.ok(consumptionValue.value > 0, `consumptionValue KPI is ${consumptionValue.value}`);
+  assert.ok(report.sections.stockHealth.data.outCount > 0, "no out-of-stock rows in the report");
+});
 
 test("summary for one kitchen meets the target", { skip: !enabled, timeout: 120_000 }, async () => {
   const ms = await p95(() => run({ godownId: String(seeded.godownIds[0]), from: "2025-10-13", to: "2026-10-13" }));
