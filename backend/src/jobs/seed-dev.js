@@ -63,6 +63,7 @@ const run = async () => {
 
   const hash = (p) => bcrypt.hash(p, 10);
   const admin = await User.create({ name: "Dev Admin", email: "admin@example.com", passwordHash: await hash("Admin@123"), role: "admin" });
+  await User.create({ name: "Dev Super Admin", email: "superadmin@example.com", passwordHash: await hash("Super@123"), role: "super_admin" });
   const userFor = {};
   for (const gd of godowns) {
     userFor[gd._id] = await User.create({
@@ -117,7 +118,7 @@ const run = async () => {
   await Notification.create({ type: "low_stock", severity: "warning", payload: { godownId: g0._id, godownName: g0.name, stockItemId: low._id, itemName: low.name, qtyBaseUnit: 3, threshold: 30 } });
   await Notification.create({ type: "low_stock", severity: "critical", payload: { godownId: g1._id, godownName: g1.name, stockItemId: low._id, itemName: low.name, qtyBaseUnit: 1, threshold: 30 } });
 
-  console.log(`Dev seed complete: ${godowns.length} godowns, ${items.length} items, ${stockRows.length} stock rows.`);
+  console.log(`Dev seed complete: ${godowns.length} godowns, ${items.length} items, ${stockRows.length} stock rows. Super admin: superadmin@example.com / Super@123`);
   process.exit(0);
 };
 
