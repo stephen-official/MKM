@@ -1,0 +1,12 @@
+.exec-page { display: flex; flex-direction: column; gap: 12px; }
+.exec-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.exec-filters__kitchen select { min-width: 220px; max-width: 100%; }
+.exec-filters__range { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.exec-filters__dates { display: flex; gap: 8px; flex-wrap: wrap; }
+.exec-chip { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--ink-soft); font: inherit; font-size: 13px; cursor: pointer; }
+.exec-chip--on { background: var(--teal-600); border-color: var(--teal-600); color: var(--white); }
+.exec-chip:focus-visible { outline: 2px solid var(--teal-600); outline-offset: 2px; }
+.exec-stale { opacity: 0.6; transition: opacity 120ms; }
+.exec-debug { font-size: 12px; white-space: pre-wrap; }
+@media (max-width: 640px) { .exec-filters__kitchen, .exec-filters__kitchen select { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .exec-stale { transition: none; } }
