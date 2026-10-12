@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
 import { authenticate } from "./middleware/auth.js";
 import { featureGate } from "./features/featureGate.js";
+import { featureRoutes } from "./routes/featureRoutes.js";
 import { authRoutes } from "./routes/authRoutes.js";
 import { inventoryRoutes } from "./routes/inventoryRoutes.js";
 import { operationsRoutes } from "./routes/operationsRoutes.js";
@@ -125,7 +126,8 @@ export const PROTECTED_MOUNTS = [
   ["/api/operations", operationsRoutes],
   ["/api/indent-requests", indentRequestRoutes],
   ["/api/daily-usage", dailyUsageRoutes],
-  ["/api/product-ledger", productLedgerRoutes]
+  ["/api/product-ledger", productLedgerRoutes],
+  ["/api/features", featureRoutes]
 ];
 
 app.use("/api/auth", authLimiter, authRoutes);
