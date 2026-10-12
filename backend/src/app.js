@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
 import { authenticate } from "./middleware/auth.js";
+import { featureGate } from "./features/featureGate.js";
 import { authRoutes } from "./routes/authRoutes.js";
 import { inventoryRoutes } from "./routes/inventoryRoutes.js";
 import { operationsRoutes } from "./routes/operationsRoutes.js";
@@ -128,7 +129,7 @@ export const PROTECTED_MOUNTS = [
 ];
 
 app.use("/api/auth", authLimiter, authRoutes);
-for (const [mountPath, router] of PROTECTED_MOUNTS) app.use(mountPath, authenticate, router);
+for (const [mountPath, router] of PROTECTED_MOUNTS) app.use(mountPath, authenticate, featureGate, router);
 
 
 // --- 6. ERROR HANDLING (OPTIONAL BUT RECOMMENDED) ---
