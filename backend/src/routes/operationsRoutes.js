@@ -6,6 +6,7 @@ import { io } from "../realtime.js";
 // CRITICAL: Explicitly import these so Mongoose registers the models for population
 import { StockItem, StockGroup, Unit } from "../models/InventoryModels.js";
 import { DailyUsage } from "../models/DailyUsageModel.js";
+import { isAdminRole, isKitchenRole } from "../utils/roles.js";
 
 export const operationsRoutes = express.Router();
 
@@ -73,7 +74,7 @@ const handleStockProcessing = async (req, res) => {
   try {
     const result = await session.withTransaction(async () => {
       const { items } = req.body;
-      const godownId = req.user.role === "user" ? req.user.godownId : req.body.godownId;
+      const godownId = isKitchenRole(req.user.role) ? req.user.godownId : req.body.godownId;
 
       if (!godownId) throw new Error("No godown associated with this request.");
 
@@ -814,7 +815,7 @@ operationsRoutes.get("/consumptions/me", authorize(["user"]), async (req, res) =
 // --- 4. REQUESTS (WORKFLOW) ---
 operationsRoutes.get("/requests", authorize(["admin", "user"]), async (req, res) => {
   try {
-    const filter = req.user.role === "admin" ? {} : { userId: req.user.sub };
+    const filter = isAdminRole(req.user.role) ? {} : { userId: req.user.sub };
     const requests = await Request.find(filter)
       .populate("godownId", "name")
       .populate("userId", "name")
@@ -1051,7 +1052,7 @@ operationsRoutes.get("/transfers", authorize(["admin", "user"]), async (req, res
   try {
     let filter = {};
 
-if (req.user.role === "user") {
+if (isKitchenRole(req.user.role)) {
   filter = {
     $or: [
       { fromGodownId: req.user.godownId },
@@ -1087,7 +1088,7 @@ operationsRoutes.post(
       } = req.body;
 
       const sourceGodownId =
-  req.user.role === "admin"
+  isAdminRole(req.user.role)
     ? fromGodownId
     : req.user.godownId;
 
@@ -1165,7 +1166,7 @@ operationsRoutes.get(
     try {
      let filter = {};
 
-if (req.user.role === "user") {
+if (isKitchenRole(req.user.role)) {
   filter = { godownId: req.user.godownId };
 }
 
@@ -1205,7 +1206,7 @@ const stocks = await GodownStock.find(filter)
 // --- 6. NOTIFICATIONS ---
 operationsRoutes.get("/notifications", authorize(["admin", "user"]), async (req, res) => {
   try {
-    const filter = req.user.role === "admin" ? {} : { "payload.godownId": req.user.godownId };
+    const filter = isAdminRole(req.user.role) ? {} : { "payload.godownId": req.user.godownId };
     res.json(await Notification.find(filter).sort({ createdAt: -1 }));
   } catch (error) {
     res.status(500).json({ error: error.message });

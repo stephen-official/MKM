@@ -2,6 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { GodownStock, IndentRequest } from "../models/FlowModels.js";
+import { isKitchenRole } from "../utils/roles.js";
 
 const router = express.Router();
 
@@ -111,7 +112,7 @@ router.post("/:id/receive", authorize(["user", "admin"]), async (req, res) => {
     await session.withTransaction(async () => {
       const request = await IndentRequest.findById(req.params.id).session(session);
       if (!request) throw Object.assign(new Error("Supply request not found"), { status: 404 });
-      if (req.user.role === "user" && !userOwnsRequest(request, req.user)) {
+      if (isKitchenRole(req.user.role) && !userOwnsRequest(request, req.user)) {
         throw Object.assign(new Error("You cannot receive another kitchen's delivery"), { status: 403 });
       }
       if (!["confirmed", "partially_received"].includes(request.status)) {
@@ -191,8 +192,8 @@ router.delete("/:id", authorize(["user", "admin"]), async (req, res) => {
   try {
     const request = await IndentRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: "Supply request not found" });
-    if (req.user.role === "user" && !userOwnsRequest(request, req.user)) return res.status(403).json({ message: "Forbidden" });
-    if (req.user.role === "user" && request.status !== "pending") {
+    if (isKitchenRole(req.user.role) && !userOwnsRequest(request, req.user)) return res.status(403).json({ message: "Forbidden" });
+    if (isKitchenRole(req.user.role) && request.status !== "pending") {
       return res.status(409).json({ message: "Only pending requests can be deleted" });
     }
     await request.deleteOne();
