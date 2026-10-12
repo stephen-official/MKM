@@ -80,3 +80,27 @@ test("daily-usage approvals store an ISO date and no price", async () => {
   assert.equal(row.date, "2026-10-11");
   assert.equal(row.items[0].amountAtIssue, undefined);
 });
+
+test("editing a legacy unpriced line keeps it unvalued; lines added in the edit are priced now", async () => {
+  await distribution("2026-10-02T05:00:00Z", [[f.A, f.items.Dal, 10, 80]]);
+  // Raw insert so the line has no unitPriceAtIssue/amountAtIssue at all, like pre-existing records.
+  const { insertedId } = await Consumption.collection.insertOne({
+    godownId: f.A._id, userId: f.cook.user._id, date: "2026-09-01", createdAt: new Date("2026-09-01T05:00:00Z"), updatedAt: new Date("2026-09-01T05:00:00Z"),
+    items: [{ stockItemId: f.items.Rice._id, qtyBaseUnit: 2 }]
+  });
+  const res = await as("admin", "patch", `/api/consumptions/${insertedId}`).send({
+    items: [
+      { stockItemId: f.items.Rice._id, stockRecordId: f.rice._id, qtyBaseUnit: 3 },
+      { stockItemId: f.items.Dal._id, stockRecordId: f.dal._id, qtyBaseUnit: 2 }
+    ]
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const saved = await Consumption.findById(insertedId).lean();
+  const rice = saved.items.find((i) => String(i.stockItemId) === String(f.items.Rice._id));
+  const dal = saved.items.find((i) => String(i.stockItemId) === String(f.items.Dal._id));
+  assert.equal(rice.qtyBaseUnit, 3);
+  assert.equal(rice.unitPriceAtIssue, null);
+  assert.equal(rice.amountAtIssue, null);
+  assert.equal(dal.unitPriceAtIssue, 80);
+  assert.equal(dal.amountAtIssue, 160);
+});

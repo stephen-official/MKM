@@ -371,10 +371,9 @@ operationsRoutes.patch(
         // ----------------------------------------------------
         // Save new consumption items
         // ----------------------------------------------------
+        // Every pre-existing line keeps its stored price, including null (legacy/unpriced lines are never backfilled).
         const keptPrices = new Map(
-          oldItems
-            .filter((old) => old.unitPriceAtIssue !== undefined && old.unitPriceAtIssue !== null)
-            .map((old) => [String(old.stockItemId), old.unitPriceAtIssue])
+          oldItems.map((old) => [String(old.stockItemId), old.unitPriceAtIssue ?? null])
         );
         consumption.items = await priceLines(
           godownId,
