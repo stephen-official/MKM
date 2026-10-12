@@ -1,5 +1,6 @@
 import { verifyAccessToken } from "../utils/tokens.js";
 import { User } from "../models/User.js";
+import { expandAllowedRoles } from "../utils/roles.js";
 
 export const authenticate = async (req, res, next) => {
   const header = req.headers.authorization || "";
@@ -20,7 +21,10 @@ export const authenticate = async (req, res, next) => {
   }
 };
 
-export const authorize = (roles) => (req, res, next) => {
-  if (!req.user || !roles.includes(req.user.role)) return res.status(403).json({ message: "Forbidden" });
-  return next();
+export const authorize = (roles) => {
+  const allowed = expandAllowedRoles(roles);
+  return (req, res, next) => {
+    if (!req.user || !allowed.includes(req.user.role)) return res.status(403).json({ message: "Forbidden" });
+    return next();
+  };
 };
