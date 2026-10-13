@@ -1,37 +1,32 @@
-import nodemailer from 'nodemailer';
+import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
 
-/** Sends a password reset email using Gmail SMTP. */
-export const sendResetEmail = async (email, token) => {
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: env.emailUser, 
-      pass: env.emailPass, 
-    },
-  });
+const createTransport = () => nodemailer.createTransport({ service: "gmail", auth: { user: env.emailUser, pass: env.emailPass } });
+const from = () => `"Montessori Kitchen" <${env.emailUser}>`;
+const resetLink = (token) => `${env.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
+const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  // TODO: Use env.frontendUrl after deployment URLs are standardized.
-  const resetUrl = `http://localhost:5173/reset-password?token=${token}`;
-
-  await transporter.sendMail({
-    from: `"Inventory Support" <${env.emailUser}>`,
-    to: email,
-    subject: "Password Reset Token",
-    text: `Your reset token is: ${token}. Reset link: ${resetUrl}`,
-    html: `
-      <div style="font-family: sans-serif; line-height: 1.5;">
-        <h2>Password Reset</h2>
-        <p>You requested a password reset. Use the token below to complete the process:</p>
-        <div style="background: #f4f4f4; padding: 10px; font-size: 20px; font-weight: bold; text-align: center;">
-          ${token}
-        </div>
-        <p>Or click the button below:</p>
-        <a href="${resetUrl}" style="display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px;">Reset Password</a>
-        <p>This token will expire in 15 minutes.</p>
-        <hr />
-        <small>If you did not request this, please ignore this email.</small>
-      </div>
-    `,
-  });
+export const mailer = {
+  /** Password reset (15 minutes). */
+  async sendResetEmail(email, token) {
+    await createTransport().sendMail({
+      from: from(), to: email, subject: "Password Reset Token",
+      text: `Your reset token is: ${token}. Reset link: ${resetLink(token)}`,
+      html: `<p>Your reset token is <strong>${escapeHtml(token)}</strong>.</p><p><a href="${resetLink(token)}">Reset your password</a>. This token expires in 15 minutes.</p>`
+    });
+  },
+  /** New account invitation (24 hours). */
+  async sendInviteEmail({ email, name, token }) {
+    await createTransport().sendMail({
+      from: from(), to: email, subject: "Your Montessori Kitchen account",
+      text: `Hello ${name}, an account was created for you. Set your password with this token within 24 hours: ${token}. Link: ${resetLink(token)}`,
+      html: `<p>Hello ${escapeHtml(name)},</p><p>An account was created for you. Set your password within 24 hours using token <strong>${escapeHtml(token)}</strong> or <a href="${resetLink(token)}">this link</a>.</p>`
+    });
+  },
+  async sendReportEmail() {
+    throw new Error("sendReportEmail is implemented in Task 33");
+  }
 };
+
+/** Kept for existing imports. */
+export const sendResetEmail = (email, token) => mailer.sendResetEmail(email, token);
