@@ -50,6 +50,23 @@ test("long lists are capped with a note", () => {
   assert.match(table.note, /Showing 200 of 205/);
 });
 
+test("the top-items block says when more items tie beyond the limit", () => {
+  const base = (tiedBeyondLimit) => ({
+    meta: { kitchen: { id: "all", name: "All kitchens" }, from: "2026-10-01", to: "2026-10-02", timezone: "Asia/Kolkata", currency: "INR", generatedAt: "2026-10-13T06:00:00Z", definitions: [], notes: { historicalStock: "n", unvaluedConsumption: "n" } },
+    kpis: [],
+    sections: { topItems: { status: "ok", data: { items: [{ rank: 1, name: "Rice", value: 10, qty: 1, unit: "kg", unvaluedLines: 0 }], tiedBeyondLimit } } }
+  });
+  const table = (report) => pdfBlocks(report).find((b) => b.type === "table" && b.title === "Top consumed items");
+  assert.match(table(base(2)).note, /^2 more items tie with the last item shown and are not listed\.$/);
+  assert.equal(table(base(0)).note, null);
+});
+
+test("export.pdf is forbidden for admins and unauthenticated callers", async () => {
+  const admin = await createUser({ role: "admin" });
+  assert.equal((await request(app).get("/api/executive/export.pdf").set("Authorization", `Bearer ${admin.token}`)).status, 403);
+  assert.equal((await request(app).get("/api/executive/export.pdf")).status, 401);
+});
+
 test("renders a real PDF over HTTP", async () => {
   const res = await request(app).get("/api/executive/export.pdf").query({ from: "2026-10-01", to: "2026-10-10" })
     .set("Authorization", `Bearer ${superAdmin.token}`).buffer(true)

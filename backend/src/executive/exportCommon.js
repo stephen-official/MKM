@@ -33,10 +33,17 @@ const encodeRfc5987 = (value) => encodeURIComponent(value).replace(/['()*]/g, (c
 export const contentDisposition = (filename) =>
   `attachment; filename="${filename.replace(/[^\x20-\x7E]|["\\]/g, "_")}"; filename*=UTF-8''${encodeRfc5987(filename)}`;
 
+export const exportTimeoutError = () =>
+  Object.assign(new Error("The export took too long. Try a shorter range or a single kitchen."), { status: 504, code: "EXPORT_TIMEOUT" });
+
+/** Shown under the top-items list in every export when more items tie with the last one shown. */
+export const tiedItemsNote = (count) =>
+  `${count} more ${count === 1 ? "item ties" : "items tie"} with the last item shown and ${count === 1 ? "is" : "are"} not listed.`;
+
 export const withTimeout = (promise, ms) => {
   let timer;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(Object.assign(new Error("The export took too long. Try a shorter range or a single kitchen."), { status: 504, code: "EXPORT_TIMEOUT" })), ms);
+    timer = setTimeout(() => reject(exportTimeoutError()), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 };
@@ -47,7 +54,7 @@ export const buildExportReport = async (query, { now = new Date() } = {}) => {
   params.pages = { health: 1, unpriced: 1, comparison: 1 };
   const report = await withTimeout(buildExecutiveReport(params, { now, limits: EXPORT_LIMITS, maxTimeMS: EXPORT_MAX_TIME_MS }), EXPORT_TIMEOUT_MS);
   if (report.failures.some((f) => f.code === "TIMEOUT")) {
-    throw Object.assign(new Error("The export took too long. Try a shorter range or a single kitchen."), { status: 504, code: "EXPORT_TIMEOUT" });
+    throw exportTimeoutError();
   }
   if (report.failures.length) {
     throw Object.assign(new Error("Part of the report could not be generated, so nothing was exported."), { status: 500, code: "EXPORT_INCOMPLETE" });

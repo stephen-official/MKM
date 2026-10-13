@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { formatGeneratedAt } from "./exportCommon.js";
+import { formatGeneratedAt, tiedItemsNote } from "./exportCommon.js";
 
 export const SHEETS = Object.freeze([
   "Summary", "Definitions", "Consumption trend", "Top items", "Stock health", "Unpriced stock",
@@ -19,13 +19,14 @@ const truncationNote = (sheet, shown, total) => {
   if (total > shown) sheet.addRow([`Showing ${fmtCount(shown)} of ${fmtCount(total)} rows. Narrow the filters to see the rest.`]);
 };
 
-const table = (sheet, section, columns, rowsOf) => {
+const table = (sheet, section, columns, rowsOf, notesOf = () => []) => {
   if (!section || section.status !== "ok") {
     sheet.addRow(["This section could not be generated."]);
     return;
   }
   const rows = rowsOf(section.data);
   truncationNote(sheet, rows.length, section.data.total ?? rows.length);
+  for (const note of notesOf(section.data)) sheet.addRow([note]);
   header(sheet, columns.map((c) => c.label));
   for (const r of rows) sheet.addRow(columns.map((c) => c.value(r)));
   columns.forEach((c, i) => {
@@ -94,7 +95,7 @@ export const buildExcelWorkbook = (report, { listLimit = 5000 } = {}) => {
     { label: "Quantity", value: (r) => r.qty, numFmt: QTY },
     { label: "Unit", value: (r) => r.unit, width: 8 },
     { label: "Unvalued lines", value: (r) => r.unvaluedLines }
-  ], (d) => d.items);
+  ], (d) => d.items, (d) => (d.tiedBeyondLimit > 0 ? [tiedItemsNote(d.tiedBeyondLimit)] : []));
 
   table(sheets["Stock health"], sections.stockHealth, [
     { label: "Status", value: (r) => (r.state === "out" ? "Out of stock" : "Low"), width: 14 },

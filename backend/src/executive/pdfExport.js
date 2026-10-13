@@ -1,5 +1,5 @@
 import PDFDocument from "pdfkit";
-import { formatGeneratedAt } from "./exportCommon.js";
+import { formatGeneratedAt, tiedItemsNote } from "./exportCommon.js";
 
 export const PDF_LIST_LIMIT = 200;
 const num = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -8,13 +8,12 @@ const count = new Intl.NumberFormat("en-IN");
 export const formatInr = (n) => (typeof n === "number" ? `${n < 0 ? "-" : ""}INR ${num.format(Math.abs(n))}` : "—");
 const kpiText = (k) => (k.status !== "ok" ? "Not available" : k.format === "money" ? formatInr(k.value) : count.format(k.value));
 
-const capped = (title, columns, rows, total) => ({
-  type: "table", title, columns,
-  rows: rows.slice(0, PDF_LIST_LIMIT),
-  note: total > Math.min(rows.length, PDF_LIST_LIMIT)
+const capped = (title, columns, rows, total, extraNote = null) => {
+  const truncation = total > Math.min(rows.length, PDF_LIST_LIMIT)
     ? `Showing ${count.format(Math.min(rows.length, PDF_LIST_LIMIT))} of ${count.format(total)} — use the Excel export for the full list.`
-    : null
-});
+    : null;
+  return { type: "table", title, columns, rows: rows.slice(0, PDF_LIST_LIMIT), note: [truncation, extraNote].filter(Boolean).join(" ") || null };
+};
 
 /** Pure description of the document, so content can be tested without parsing PDF bytes. */
 export const pdfBlocks = ({ meta, kpis, sections }) => {
@@ -29,7 +28,8 @@ export const pdfBlocks = ({ meta, kpis, sections }) => {
   const s = sections;
   if (s.topItems?.status === "ok") {
     blocks.push(capped("Top consumed items", ["#", "Item", "Value", "Quantity"],
-      s.topItems.data.items.map((i) => [String(i.rank), i.name, formatInr(i.value), `${i.qty} ${i.unit}`]), s.topItems.data.items.length));
+      s.topItems.data.items.map((i) => [String(i.rank), i.name, formatInr(i.value), `${i.qty} ${i.unit}`]), s.topItems.data.items.length,
+      s.topItems.data.tiedBeyondLimit > 0 ? tiedItemsNote(s.topItems.data.tiedBeyondLimit) : null));
   }
   if (s.stockHealth?.status === "ok") {
     blocks.push(capped("Stock health", ["Status", "Kitchen", "Item", "Qty", "Threshold"],

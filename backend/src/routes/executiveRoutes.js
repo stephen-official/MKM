@@ -44,7 +44,7 @@ executiveRoutes.get("/export.xlsx", superAdminOnly, async (req, res) => {
     const buffer = await buildExcelWorkbook(report).xlsx.writeBuffer();
     const filename = exportFilename({ kitchen: report.meta.kitchen, from: report.meta.from, to: report.meta.to, generatedAt: report.meta.generatedAt, tz: report.meta.timezone, ext: "xlsx" });
     res.set({ "Content-Type": XLSX_MIME, "Content-Disposition": contentDisposition(filename), "Cache-Control": "no-store" });
-    return res.send(Buffer.from(buffer));
+    return res.send(buffer);
   } catch (error) {
     return exportError(res, error);
   }

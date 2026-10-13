@@ -6,7 +6,8 @@ import { startDb, clearDb, stopDb } from "./helpers/db.js";
 import { createUser } from "./helpers/auth.js";
 import { consumption, distribution, kitchen, seedCatalog, stockRow } from "./helpers/fixtures.js";
 import { buildExcelWorkbook, SHEETS } from "../executive/excelExport.js";
-import { contentDisposition, exportFilename, withTimeout } from "../executive/exportCommon.js";
+import { GodownStock } from "../models/FlowModels.js";
+import { buildExportReport, contentDisposition, exportFilename, exportTimeoutError, tiedItemsNote, withTimeout } from "../executive/exportCommon.js";
 
 let app;
 let f;
@@ -108,8 +109,80 @@ test("long lists are truncated with a visible note", async () => {
   assert.equal(wb.getWorksheet("Stock health").getRow(1).getCell(1).value, "Showing 1 of 7,001 rows. Narrow the filters to see the rest.");
 });
 
+const miniReport = (sections) => ({
+  meta: { kitchen: { id: "all", name: "All kitchens" }, from: "2026-10-01", to: "2026-10-10", timezone: "Asia/Kolkata", currency: "INR", generatedAt: "2026-10-13T06:00:00Z", definitions: [], notes: { historicalStock: "n", unvaluedConsumption: "n" } },
+  kpis: [],
+  sections: {
+    consumptionTrend: { status: "ok", data: { points: [] } },
+    topItems: { status: "ok", data: { items: [], tiedBeyondLimit: 0 } },
+    stockHealth: { status: "ok", data: { rows: [], total: 0 } },
+    unpricedStock: { status: "ok", data: { rows: [], total: 0 } },
+    procurement: { status: "ok", data: { scope: "kitchen", stockReceived: { value: 0 }, supplyRequests: [] } },
+    requestsTransfers: { status: "ok", data: { requests: { byStatus: [], pendingAgeing: { buckets: [] } }, transfers: { byStatus: [], openAgeing: { buckets: [] } } } },
+    kitchenComparison: null,
+    ...sections
+  }
+});
+const cells = (sheet) => { const out = []; sheet.eachRow((row) => out.push(row.values.slice(1))); return out; };
+
+test("listLimit slices the Excel lists and says how many rows were left out", () => {
+  const rows = Array.from({ length: 5 }, (_, i) => ({ kitchen: "K", item: `Item ${i}`, unit: "kg", qty: i, threshold: 9, state: "low", ratio: 0.5 }));
+  const wb = buildExcelWorkbook(miniReport({
+    stockHealth: { status: "ok", data: { rows, total: 5 } },
+    unpricedStock: { status: "ok", data: { rows: rows.map(({ kitchen, item, unit, qty }) => ({ kitchen, item, unit, qty })), total: 5 } }
+  }), { listLimit: 2 });
+  const health = cells(wb.getWorksheet("Stock health"));
+  assert.equal(health[0][0], "Showing 2 of 5 rows. Narrow the filters to see the rest.");
+  assert.equal(health.length, 1 + 1 + 2, "note, header and the two allowed rows");
+  assert.deepEqual(health.slice(2).map((r) => r[2]), ["Item 0", "Item 1"]);
+  const unpriced = cells(wb.getWorksheet("Unpriced stock"));
+  assert.equal(unpriced.length, 4);
+  const full = buildExcelWorkbook(miniReport({ stockHealth: { status: "ok", data: { rows, total: 5 } } }));
+  assert.equal(cells(full.getWorksheet("Stock health")).length, 1 + 5, "no note when nothing is cut");
+});
+
+test("an errored section renders its message instead of a table", () => {
+  const wb = buildExcelWorkbook(miniReport({
+    topItems: { status: "error", code: "SECTION_FAILED" },
+    procurement: { status: "error", code: "SECTION_FAILED" },
+    requestsTransfers: { status: "error", code: "SECTION_FAILED" }
+  }));
+  for (const name of ["Top items", "Procurement", "Requests & transfers"]) {
+    assert.deepEqual(cells(wb.getWorksheet(name)), [["This section could not be generated."]], name);
+  }
+});
+
+test("the Top items sheet notes items tied beyond the limit", () => {
+  const items = [{ rank: 1, name: "Rice", value: 10, qty: 1, unit: "kg", unvaluedLines: 0 }];
+  const tied = cells(buildExcelWorkbook(miniReport({ topItems: { status: "ok", data: { items, tiedBeyondLimit: 3 } } })).getWorksheet("Top items"));
+  assert.equal(tied[0][0], tiedItemsNote(3));
+  assert.match(tied[0][0], /^3 more items tie with the last item shown and are not listed\.$/);
+  const one = tiedItemsNote(1);
+  assert.match(one, /^1 more item ties .* is not listed\.$/);
+  const plain = cells(buildExcelWorkbook(miniReport({ topItems: { status: "ok", data: { items, tiedBeyondLimit: 0 } } })).getWorksheet("Top items"));
+  assert.equal(plain[0][0], "Rank", "no note when nothing is tied");
+});
+
 test("timeouts surface as EXPORT_TIMEOUT", async () => {
   await assert.rejects(withTimeout(new Promise(() => {}), 10), (e) => e.code === "EXPORT_TIMEOUT" && e.status === 504);
+  const error = exportTimeoutError();
+  assert.deepEqual([error.status, error.code], [504, "EXPORT_TIMEOUT"]);
+});
+
+test("buildExportReport maps a section timeout to 504 and any other section failure to 500 EXPORT_INCOMPLETE", async (t) => {
+  const errors = t.mock.method(console, "error", () => {});
+  const find = t.mock.method(GodownStock, "find", () => { throw Object.assign(new Error("operation exceeded time limit"), { code: 50, codeName: "MaxTimeMSExpired" }); });
+  await assert.rejects(buildExportReport({ from: "2026-10-01", to: "2026-10-10" }), (e) => e.status === 504 && e.code === "EXPORT_TIMEOUT");
+
+  find.mock.mockImplementation(() => { throw new Error("boom"); });
+  await assert.rejects(buildExportReport({ from: "2026-10-01", to: "2026-10-10" }),
+    (e) => e.status === 500 && e.code === "EXPORT_INCOMPLETE" && /nothing was exported/.test(e.message));
+  assert.ok(errors.mock.callCount() >= 2, "each failed section is logged");
+
+  // Over HTTP the same failure is a JSON error, not a partial file.
+  const res = await request(app).get("/api/executive/export.xlsx").query({ from: "2026-10-01", to: "2026-10-10" }).set("Authorization", `Bearer ${f.superAdmin.token}`);
+  assert.equal(res.status, 500);
+  assert.equal(res.body.code, "EXPORT_INCOMPLETE");
 });
 
 test("admins cannot export", async () => {
