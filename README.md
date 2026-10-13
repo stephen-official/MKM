@@ -47,7 +47,9 @@ The API health check is `http://localhost:5000/api/health`.
 
 ### Optional development seed
 
-`npm run seed` creates a small sample catalog and predictable development accounts. Use it only with a disposable local database; inspect `backend/src/jobs/seed.js` first. Never run it against production.
+`npm run seed` creates a small sample catalog and predictable development accounts. Use it only with a disposable local database; inspect `backend/src/jobs/seed.js` first. Never run it against production. It does not create a super-admin; use `create-super-admin` (below).
+
+For a fuller local dataset, `node backend/src/jobs/seed-dev.js` loads the catalog from `~/mkm-local/live-catalog.json` (create it with `node backend/src/jobs/export-live-catalog.js`), then generates users, stock and transactions with dev credentials, including a super-admin (`superadmin@example.com`). It refuses any `MONGODB_URI` that is not `localhost`/`127.0.0.1` and **drops that whole database** before seeding, so point it at a disposable local database only.
 
 ## Environment variables
 
@@ -64,7 +66,7 @@ The API health check is `http://localhost:5000/api/health`.
 | `ADMIN_REGISTRATION_LIMIT` | No | Legacy administrator count cap; not a security boundary. |
 | `USER_REGISTRATION_LIMIT` | No | Kitchen-user count cap. |
 | `CORS_ORIGIN` | Yes | Comma-separated browser origins allowed to call the API. |
-| `FRONTEND_URL` | Yes | Frontend URL used in password-reset and invitation links. |
+| `FRONTEND_URL` | Yes | Admin console URL used in password-reset and invitation links (default `http://localhost:5173`). Kitchen users must instead use the token from the email in the kitchen app; see below. |
 | `CLOUDINARY_CLOUD_NAME` | For uploads | Cloudinary cloud name. |
 | `CLOUDINARY_API_KEY` | For uploads | Cloudinary API key. |
 | `CLOUDINARY_API_SECRET` | For uploads | Cloudinary API secret. |
@@ -85,7 +87,10 @@ Credentials are never committed. Run once per environment (safe to re-run):
     SUPER_ADMIN_EMAIL=you@example.com SUPER_ADMIN_NAME="Your Name" SUPER_ADMIN_PASSWORD='a long password' \
       npm --prefix backend run create-super-admin
 
-Flags: `--promote` turns an existing account with that email into a super-admin; `--reset-password` replaces the password of an existing super-admin. Local dev seed (`seed-dev.js`) creates `superadmin@example.com` / `Super@123`.
+Flags: `--promote` turns an existing account with that email into a super-admin and keeps its existing password (re-run with `--reset-password` afterwards to set the new password); `--reset-password` replaces the password of an existing super-admin. Local dev seed (`seed-dev.js`) creates `superadmin@example.com` / `Super@123`.
+
+### Invitation emails
+Invitation and password-reset emails link to `FRONTEND_URL`, which points at the admin console. Admins and super-admins can use the link directly. Kitchen users cannot use that link: they should open the kitchen app, choose "Forgot password?", request a reset for their email, then paste the token from the email into the reset-token screen and choose a password (the invitation token works there too, within its 24 hours).
 
 ### Roles
 - `super_admin` - everything an admin can do, never feature-gated, plus Executive Report, Feature Visibility, Users and Report Schedules.
@@ -126,7 +131,7 @@ Run these at the repository root:
 | `npm run dev:admin` | Start the admin UI on port 5173. |
 | `npm run dev:client` | Start the kitchen UI on port 5174. |
 | `npm test` | Run backend, admin-web and kitchen-client tests. |
-| `npm run lint` | Lint the kitchen client. Admin and backend do not yet have lint scripts. |
+| `npm run lint` | Lint admin-web and client-web. The backend has no lint script. |
 | `npm run build` | Build both frontend applications. |
 | `npm run check` | Run tests, lint, and both builds. |
 | `npm run seed` | Seed the configured database with development data. |
