@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Route, Routes, Navigate } from "react-router-dom";
-import { logout, SESSION_EXPIRED_EVENT } from "./api.js";
-import { isAdminRole } from "./roles.js";
+import { logout, setStoredRole, SESSION_EXPIRED_EVENT } from "./api.js";
+import { isAdminRole, isSuperAdmin } from "./roles.js";
 import { AuthPage } from "./pages/AuthPage.jsx";
 import { ConsumptionPage } from "./pages/ConsumptionPage.jsx";
 import { GodownsPage } from "./pages/GodownsPage.jsx";
@@ -13,7 +13,7 @@ import { ReportsPage } from "./pages/ReportsPage.jsx";
 import { RequestsPage } from "./pages/RequestsPage.jsx";
 import { StockDistributionPage } from "./pages/StockDistributionPage.jsx";
 import { TransferStockPage } from "./pages/TransferStockPage.jsx";
-import { Banner, Button } from "./components/ui/index.jsx";
+import { Banner, Button, LoadingState } from "./components/ui/index.jsx";
 import ProductLedger from "./pages/ProductLedger.jsx";
 import { Layout } from "./components/Layout.jsx";
 import { NAV, SUPER_NAV } from "./components/navItems.js";
@@ -35,6 +35,14 @@ function AdminShell({ onLogout, routeMap }) {
     if (!isPathAllowed(path, { flags, role })) return <Navigate to={home} replace />;
     return element;
   };
+  // Until the flags arrive an admin's nav and routes would flash (and 403) pages that may be switched off.
+  if (!isSuperAdmin(role) && status === "loading") {
+    return (
+      <Layout onLogout={onLogout} sections={[]}>
+        <LoadingState label="Loading your workspace…" />
+      </Layout>
+    );
+  }
   return (
     <Layout onLogout={onLogout} sections={sections}>
       {status === "error" && (
@@ -78,12 +86,12 @@ export const App = () => {
     []
   );
 
-  const [expired, setExpired] = useState(false);
+  const [notice, setNotice] = useState("");
 
   // The API client fires this when a token can no longer be refreshed.
   useEffect(() => {
     const onExpired = () => {
-      setExpired(true);
+      setNotice("Your session has expired. Please sign in again.");
       setSession({ loggedIn: false, role: null });
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
@@ -91,14 +99,20 @@ export const App = () => {
   }, []);
 
   const handleLogin = ({ role }) => {
-    setExpired(false);
+    setNotice("");
     setSession({ loggedIn: true, role });
   };
 
-  const handleLogout = async () => {
+  const handleLogout = async (message = "") => {
     await logout();
-    setExpired(false);
+    setNotice(message);
     setSession({ loggedIn: false, role: null });
+  };
+
+  // The server's view of this account differs from the stored role: follow it.
+  const handleRoleChange = (role) => {
+    setStoredRole(role);
+    setSession({ loggedIn: true, role });
   };
 
   // --- 1. PUBLIC ROUTES (Accessible without login) ---
@@ -116,16 +130,21 @@ export const App = () => {
         path="*"
         element={
           !session.loggedIn ? (
-            <AuthPage onLogin={handleLogin} notice={expired ? "Your session has expired. Please sign in again." : undefined} />
+            <AuthPage onLogin={handleLogin} notice={notice || undefined} />
           ) : !isAdminRole(session.role) ? (
             <div className="access-restricted">
               <h1>Access restricted</h1>
               <p>This web app is for administrators only. Please sign in with an admin account.</p>
-              <Button onClick={handleLogout}>Back to sign in</Button>
+              <Button onClick={() => handleLogout()}>Back to sign in</Button>
             </div>
           ) : (
-            <FeatureFlagsProvider key={session.role} role={session.role}>
-              <AdminShell onLogout={handleLogout} routeMap={routeMap} />
+            <FeatureFlagsProvider
+              key={session.role}
+              role={session.role}
+              onRoleChange={handleRoleChange}
+              onSignOut={() => handleLogout("This account no longer has access to the admin console. Kitchen accounts sign in on the kitchen app.")}
+            >
+              <AdminShell onLogout={() => handleLogout()} routeMap={routeMap} />
             </FeatureFlagsProvider>
           )
         }

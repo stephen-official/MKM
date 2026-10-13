@@ -1,4 +1,5 @@
 import axios from "axios";
+import { isJwtExpired } from "./jwt.js";
 
 // VITE_API_URL is set per environment (Vercel / .env); localhost is the dev fallback.
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
@@ -25,20 +26,12 @@ export const setSession = ({ accessToken, refreshToken, role }) => {
   if (role) localStorage.setItem(KEYS.role, role);
 };
 
+/** Updates only the stored role (the server reported a different admin-tier role for this account). */
+export const setStoredRole = (role) => localStorage.setItem(KEYS.role, role);
+
 export const clearSession = () => {
   applyToken(null);
   Object.values(KEYS).forEach((key) => localStorage.removeItem(key));
-};
-
-/** Revokes the refresh token server-side when possible, then forgets the session locally. */
-export const logout = async () => {
-  try {
-    if (localStorage.getItem(KEYS.access)) await api.post("/auth/logout");
-  } catch {
-    // Best effort: an expired or offline session is still cleared locally.
-  } finally {
-    clearSession();
-  }
 };
 
 // Kept for callers that only set or clear the access token.
@@ -62,6 +55,31 @@ const refreshAccessToken = () => {
       refreshing = null;
     });
   return refreshing;
+};
+
+/**
+ * Revokes the refresh token server-side when possible, then forgets the session locally.
+ * /auth/logout needs a valid access token, so an expired one gets a single refresh attempt first.
+ * Never throws.
+ */
+export const logout = async () => {
+  try {
+    const access = localStorage.getItem(KEYS.access);
+    if (access) {
+      if (isJwtExpired(access)) {
+        try {
+          await refreshAccessToken();
+        } catch {
+          // Could not renew: still try below, then clear locally.
+        }
+      }
+      await api.post("/auth/logout");
+    }
+  } catch {
+    // Best effort: an expired or offline session is still cleared locally.
+  } finally {
+    clearSession();
+  }
 };
 
 api.interceptors.response.use(
