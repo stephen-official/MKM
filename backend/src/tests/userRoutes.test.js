@@ -9,6 +9,7 @@ import { User } from "../models/User.js";
 import { assertNotLastActiveSuperAdmin } from "../routes/userRoutes.js";
 import { setIo } from "../realtime.js";
 import { Godown } from "../models/InventoryModels.js";
+import { UserAdminAudit } from "../models/AdminAuditModels.js";
 
 let app;
 let ctx;
@@ -59,9 +60,147 @@ test("create users with invites; validation", async (t) => {
   assert.equal((await as("root", "post", "/api/users").send({ name: "S", email: "s@x.io", role: "super_admin", confirmSuperAdmin: true })).status, 201);
 
   t.mock.method(mailer, "sendInviteEmail", async () => { throw new Error("smtp down"); });
+  const errors = t.mock.method(console, "error", () => {});
   const noMail = await as("root", "post", "/api/users").send({ name: "Z", email: "z@x.io", role: "admin" });
   assert.equal(noMail.status, 201);
   assert.equal(noMail.body.inviteSent, false);
+  assert.deepEqual(errors.mock.calls.map((c) => c.arguments[0]), ["[users] invite email to z@x.io failed: smtp down"]);
+  assert.ok(await User.exists({ email: "z@x.io" }), "the account is kept when only the email fails");
+});
+
+test("create: the account and its audit row commit together, and the invite goes out only after the commit", async (t) => {
+  let existedWhenMailed = null;
+  t.mock.method(mailer, "sendInviteEmail", async ({ email }) => {
+    existedWhenMailed = {
+      user: !!(await User.exists({ email })),
+      audit: (await UserAdminAudit.countDocuments({ action: "create" })) === 1
+    };
+  });
+  const ok = await as("root", "post", "/api/users").send({ name: "Atomic", email: "atomic@x.io", role: "admin" });
+  assert.equal(ok.status, 201);
+  assert.deepEqual(existedWhenMailed, { user: true, audit: true });
+
+  // A failing audit write rolls the account back and no invite is sent.
+  const calls = mailer.sendInviteEmail.mock.callCount();
+  t.mock.method(UserAdminAudit, "create", async () => { throw new Error("audit down"); });
+  const errors = t.mock.method(console, "error", () => {});
+  const failed = await as("root", "post", "/api/users").send({ name: "Lost", email: "lost@x.io", role: "admin" });
+  assert.equal(failed.status, 500);
+  assert.equal(await User.exists({ email: "lost@x.io" }), null, "no account without its audit row");
+  assert.equal(mailer.sendInviteEmail.mock.callCount(), calls);
+  assert.equal(errors.mock.callCount(), 1);
+});
+
+test("a duplicate-key error maps to EMAIL_EXISTS only for the email key", async (t) => {
+  // Simulate losing the race: the pre-check sees nothing, the unique index then rejects the insert.
+  t.mock.method(User, "exists", async () => null);
+  const raced = await as("root", "post", "/api/users").send({ name: "Dup", email: "amy@x.io", role: "admin" });
+  assert.equal(raced.status, 409);
+  assert.equal(raced.body.code, "EMAIL_EXISTS");
+  assert.equal(await User.countDocuments({ email: "amy@x.io" }), 1);
+
+  const errors = t.mock.method(console, "error", () => {});
+  t.mock.method(User.prototype, "save", async () => { throw Object.assign(new Error("E11000 duplicate key"), { code: 11000, keyPattern: { somethingElse: 1 } }); });
+  const other = await as("root", "post", "/api/users").send({ name: "Other", email: "other@x.io", role: "admin" });
+  assert.equal(other.status, 500);
+  assert.equal(other.body.code, "INTERNAL_ERROR");
+  assert.equal(errors.mock.callCount(), 1);
+});
+
+test("PATCH re-checks inside the transaction that the actor is still an active super-admin, even for a rename", async (t) => {
+  const target = await User.findById(ctx.admin.user._id).lean();
+  const realFindOne = User.findOne.bind(User);
+  t.mock.method(User, "findOne", (filter, ...rest) =>
+    (String(filter?._id) === String(ctx.root.user._id) && filter.role === "super_admin"
+      ? { session: () => ({ lean: async () => null }) }
+      : realFindOne(filter, ...rest)));
+  const res = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, name: "Should Not Apply" });
+  assert.equal(res.status, 403);
+  assert.equal(res.body.code, "FORBIDDEN");
+  assert.equal((await User.findById(target._id)).name, "Amy");
+  assert.equal(await UserAdminAudit.countDocuments(), 0);
+});
+
+test("PATCH without a body is a version conflict, not a crash", async () => {
+  const res = await as("root", "patch", `/api/users/${ctx.admin.user._id}`);
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, "VERSION_CONFLICT");
+});
+
+test("PATCH ignores fields it does not manage (mass assignment)", async () => {
+  const before = await User.findById(ctx.admin.user._id).lean();
+  const res = await as("root", "patch", `/api/users/${before._id}`).send({
+    expectedUpdatedAt: before.updatedAt, name: "Amy Renamed",
+    email: "evil@x.io", passwordHash: "plain", refreshToken: "forged", resetToken: "forged", _id: String(ctx.root.user._id)
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const after = await User.findById(before._id).lean();
+  assert.equal(after.name, "Amy Renamed");
+  assert.equal(after.email, before.email);
+  assert.equal(after.passwordHash, before.passwordHash);
+  assert.equal(after.refreshToken, before.refreshToken, "a rename does not touch the session");
+  assert.equal(after.resetToken, before.resetToken);
+  assert.equal(await User.countDocuments({ email: "evil@x.io" }), 0);
+});
+
+test("deactivating or moving a user revokes their refresh token; a rename keeps it", async () => {
+  const other = await createGodown("Kitchen B");
+  assert.ok((await User.findById(ctx.cook.user._id)).refreshToken);
+
+  let target = await User.findById(ctx.cook.user._id).lean();
+  await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, name: "Cook 2" });
+  assert.ok((await User.findById(target._id)).refreshToken, "rename keeps the session");
+
+  target = await User.findById(ctx.cook.user._id).lean();
+  const moved = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, godownId: other._id });
+  assert.equal(moved.status, 200, JSON.stringify(moved.body));
+  assert.equal((await User.findById(target._id)).refreshToken, null, "kitchen change revokes");
+
+  await User.updateOne({ _id: target._id }, { refreshToken: "again" });
+  target = await User.findById(ctx.cook.user._id).lean();
+  const off = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, active: false });
+  assert.equal(off.status, 200, JSON.stringify(off.body));
+  assert.equal((await User.findById(target._id)).refreshToken, null, "deactivation revokes");
+});
+
+test("send-reset refuses an inactive account and sends nothing", async () => {
+  await User.updateOne({ _id: ctx.cook.user._id }, { active: false });
+  const res = await as("root", "post", `/api/users/${ctx.cook.user._id}/send-reset`);
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, "USER_INACTIVE");
+  assert.equal(mailer.sendInviteEmail.mock.callCount(), 0);
+  assert.equal((await User.findById(ctx.cook.user._id)).resetToken, null);
+  assert.equal(await UserAdminAudit.countDocuments({ action: "send-reset" }), 0);
+  // active accounts still work
+  const ok = await as("root", "post", `/api/users/${ctx.admin.user._id}/send-reset`);
+  assert.deepEqual([ok.status, ok.body.sent], [200, true]);
+});
+
+test("deactivating a user clears any outstanding invite/reset token", async () => {
+  await as("root", "post", `/api/users/${ctx.cook.user._id}/send-reset`);
+  const issued = await User.findById(ctx.cook.user._id).lean();
+  assert.ok(issued.resetToken && issued.resetTokenExpiry);
+  const res = await as("root", "patch", `/api/users/${issued._id}`).send({ expectedUpdatedAt: issued.updatedAt, active: false });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const after = await User.findById(issued._id).lean();
+  assert.equal(after.resetToken, null);
+  assert.equal(after.resetTokenExpiry, null);
+});
+
+test("reactivating a super-admin needs explicit confirmation; reactivating anyone else does not", async () => {
+  const dormant = await createUser({ role: "super_admin", email: "dormant@x.io", active: false });
+  let doc = await User.findById(dormant.user._id).lean();
+  const refused = await as("root", "patch", `/api/users/${doc._id}`).send({ expectedUpdatedAt: doc.updatedAt, active: true });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.body.code, "CONFIRMATION_REQUIRED");
+  assert.equal((await User.findById(doc._id)).active, false);
+  const allowed = await as("root", "patch", `/api/users/${doc._id}`).send({ expectedUpdatedAt: doc.updatedAt, active: true, confirmSuperAdmin: true });
+  assert.equal(allowed.status, 200, JSON.stringify(allowed.body));
+
+  await User.updateOne({ _id: ctx.cook.user._id }, { active: false });
+  doc = await User.findById(ctx.cook.user._id).lean();
+  const cook = await as("root", "patch", `/api/users/${doc._id}`).send({ expectedUpdatedAt: doc.updatedAt, active: true });
+  assert.equal(cook.status, 200, JSON.stringify(cook.body));
 });
 
 test("role change revokes sessions and applies on the next request", async () => {
@@ -139,10 +278,11 @@ test("a kitchen user whose kitchen is inactive can still be renamed and deactiva
   const off = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: again.updatedAt, active: false });
   assert.equal(off.status, 200, JSON.stringify(off.body));
   assert.equal(off.body.user.active, false);
-  // moving to an inactive kitchen is still refused
+  // reactivating while keeping the (inactive) kitchen is fine: an unchanged kitchen is not re-validated
   const back = await User.findById(target._id).lean();
-  const moved = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: back.updatedAt, godownId: ctx.kitchen._id, role: "user", active: true });
-  assert.equal(moved.status, 200, "unchanged kitchen is not re-validated");
+  const reactivated = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: back.updatedAt, godownId: ctx.kitchen._id, role: "user", active: true });
+  assert.equal(reactivated.status, 200, `unchanged kitchen is not re-validated: ${JSON.stringify(reactivated.body)}`);
+  // ...but moving to an inactive kitchen is still refused
   const other = await createGodown("Kitchen B");
   await Godown.updateOne({ _id: other._id }, { $set: { active: false } });
   const last = await User.findById(target._id).lean();

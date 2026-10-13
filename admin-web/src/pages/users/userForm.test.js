@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { patchFromForm, validateUserForm } from "./userForm.js";
+import { needsSuperAdminConfirm, patchFromForm, validateUserForm } from "./userForm.js";
 
 describe("user form", () => {
   it("validates", () => {
@@ -21,5 +21,16 @@ describe("user form", () => {
     const sup = { ...admin, role: "super_admin" };
     expect(patchFromForm(sup, { name: "B", role: "super_admin", godownId: "", active: true, confirmSuperAdmin: true }))
       .toEqual({ expectedUpdatedAt: "t1", name: "B" });
+  });
+  it("asks for confirmation when reactivating an inactive super_admin, and only then", () => {
+    const dormant = { _id: "1", name: "A", role: "super_admin", godownId: null, active: false, updatedAt: "t1" };
+    const reactivated = { name: "A", role: "super_admin", godownId: "", active: true };
+    expect(needsSuperAdminConfirm(dormant, reactivated)).toBe(true);
+    expect(needsSuperAdminConfirm(dormant, { ...reactivated, active: false })).toBe(false);
+    expect(needsSuperAdminConfirm({ ...dormant, active: true }, reactivated)).toBe(false);
+    expect(patchFromForm(dormant, { ...reactivated, confirmSuperAdmin: true }))
+      .toEqual({ expectedUpdatedAt: "t1", active: true, confirmSuperAdmin: true });
+    expect(patchFromForm(dormant, { ...reactivated, confirmSuperAdmin: false })).not.toHaveProperty("confirmSuperAdmin");
+    expect(needsSuperAdminConfirm({ ...dormant, role: "admin", active: false }, { ...reactivated, role: "admin" })).toBe(false);
   });
 });

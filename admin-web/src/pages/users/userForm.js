@@ -2,6 +2,10 @@ import { isKitchenRole, isSuperAdmin } from "../../roles.js";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** A super-admin is being created, promoted to, or reactivated: the server wants an explicit confirmation. */
+export const needsSuperAdminConfirm = (original, form) =>
+  isSuperAdmin(form.role) && (!isSuperAdmin(original.role) || (original.active === false && form.active === true));
+
 export const validateUserForm = ({ name, email, role, godownId, confirmSuperAdmin }) => {
   const errors = {};
   if (!String(name || "").trim()) errors.name = "Enter a name.";
@@ -18,6 +22,6 @@ export const patchFromForm = (original, form) => {
   const nextKitchen = isKitchenRole(form.role) ? form.godownId || null : null;
   if (String(nextKitchen || "") !== String(original.godownId || "")) body.godownId = nextKitchen;
   if (form.active !== original.active) body.active = form.active;
-  if (isSuperAdmin(form.role) && !isSuperAdmin(original.role) && form.confirmSuperAdmin) body.confirmSuperAdmin = true;
+  if (needsSuperAdminConfirm(original, form) && form.confirmSuperAdmin) body.confirmSuperAdmin = true;
   return body;
 };

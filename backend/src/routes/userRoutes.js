@@ -24,9 +24,11 @@ class UserAdminError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
 const fail = (status, code, message) => { throw new UserAdminError(status, code, message); };
+const isDuplicateEmail = (error) => Object.keys(error?.keyPattern || error?.keyValue || {}).includes("email");
 const sendError = (res, error) => {
   if (error instanceof UserAdminError) return res.status(error.status).json({ code: error.code, message: error.message });
-  if (error?.code === 11000) return res.status(409).json({ code: "EMAIL_EXISTS", message: "That email is already in use." });
+  // Only a duplicate email is the caller's mistake; any other unique index tripping is a server problem.
+  if (error?.code === 11000 && isDuplicateEmail(error)) return res.status(409).json({ code: "EMAIL_EXISTS", message: "That email is already in use." });
   console.error("[users]", error);
   return res.status(500).json({ code: "INTERNAL_ERROR", message: "Something went wrong." });
 };
@@ -52,19 +54,24 @@ const validateKitchen = async (role, godownId) => {
  * conflict and one is retried; the retry re-checks that the actor is still an active
  * super-admin and that another active super-admin remains.
  */
-export const assertNotLastActiveSuperAdmin = async (session, targetId, actorId) => {
-  await mongoose.connection.collection("locks").updateOne({ _id: "super-admin-guard" }, { $inc: { n: 1 } }, { upsert: true, session });
+/** The request was authorised before the transaction began; make sure the actor still holds that power. */
+export const assertActorIsActiveSuperAdmin = async (session, actorId) => {
   const actor = await User.findOne({ _id: actorId, role: ROLES.SUPER_ADMIN, active: true }).session(session).lean();
   if (!actor) fail(403, "FORBIDDEN", "Your access has changed. Sign in again.");
+};
+
+export const assertNotLastActiveSuperAdmin = async (session, targetId, actorId) => {
+  await mongoose.connection.collection("locks").updateOne({ _id: "super-admin-guard" }, { $inc: { n: 1 } }, { upsert: true, session });
+  await assertActorIsActiveSuperAdmin(session, actorId);
   const others = await User.countDocuments({ role: ROLES.SUPER_ADMIN, active: true, _id: { $ne: targetId } }).session(session);
   if (others === 0) fail(409, "LAST_SUPER_ADMIN", "At least one active super-admin must remain.");
 };
 
-const issueToken = async (user, ttlMs) => {
+/** Sets a fresh single-use password token on the (unsaved or loaded) user document and returns the plain token. */
+const stageToken = (user, ttlMs) => {
   const token = createResetToken();
   user.resetToken = hashResetToken(token);
   user.resetTokenExpiry = new Date(Date.now() + ttlMs);
-  await user.save();
   return token;
 };
 
@@ -103,6 +110,7 @@ userRoutes.get("/audit", async (req, res) => {
 });
 
 userRoutes.post("/", async (req, res) => {
+  const session = await mongoose.startSession();
   try {
     const name = String(req.body?.name || "").trim();
     const email = String(req.body?.email || "").toLowerCase().trim();
@@ -114,11 +122,15 @@ userRoutes.post("/", async (req, res) => {
     const godownId = await validateKitchen(role, req.body?.godownId);
     if (await User.exists({ email })) fail(409, "EMAIL_EXISTS", "That email is already in use.");
 
-    const user = await User.create({
-      name, email, role, godownId, active: true,
-      passwordHash: await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10)
+    const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
+    const actor = await actorOf(req);
+    const user = new User({ name, email, role, godownId, active: true, passwordHash });
+    const token = stageToken(user, INVITE_TTL_MS);
+    // The account and its audit row commit together; the email goes out only once they are durable.
+    await session.withTransaction(async () => {
+      await user.save({ session });
+      await UserAdminAudit.create([{ ...actor, targetUserId: user._id, action: "create", before: null, after: snapshot(user) }], { session });
     });
-    const token = await issueToken(user, INVITE_TTL_MS);
     let inviteSent = true;
     try {
       await mailer.sendInviteEmail({ email, name, token });
@@ -126,28 +138,32 @@ userRoutes.post("/", async (req, res) => {
       inviteSent = false;
       console.error(`[users] invite email to ${email} failed: ${error.message}`);
     }
-    await UserAdminAudit.create({ ...(await actorOf(req)), targetUserId: user._id, action: "create", before: null, after: snapshot(user) });
     const created = await User.findById(user._id).select(SAFE_FIELDS).populate("godownId", "name").lean();
     return res.status(201).json({ user: safe(created), inviteSent });
   } catch (error) {
     return sendError(res, error);
+  } finally {
+    await session.endSession();
   }
 });
 
 userRoutes.patch("/:id", async (req, res) => {
   const session = await mongoose.startSession();
+  const body = req.body ?? {};
   try {
     if (!mongoose.isValidObjectId(req.params.id)) fail(404, "USER_NOT_FOUND", "No such user.");
     let result;
     let revoke = false;
     await session.withTransaction(async () => {
+      // Authorised before the transaction started; confirm the actor still holds super-admin now.
+      await assertActorIsActiveSuperAdmin(session, req.user.sub);
       const user = await User.findById(req.params.id).session(session);
       if (!user) fail(404, "USER_NOT_FOUND", "No such user.");
-      const expected = req.body?.expectedUpdatedAt ? new Date(req.body.expectedUpdatedAt).getTime() : NaN;
+      const expected = body.expectedUpdatedAt ? new Date(body.expectedUpdatedAt).getTime() : NaN;
       if (expected !== user.updatedAt.getTime()) fail(409, "VERSION_CONFLICT", "This account was changed by someone else. Reload and try again.");
       const before = snapshot(user);
       const self = String(user._id) === String(req.user.sub);
-      const { name, role, godownId, active } = req.body;
+      const { name, role, godownId, active } = body;
 
       if (name !== undefined) {
         const clean = String(name).trim();
@@ -158,9 +174,12 @@ userRoutes.patch("/:id", async (req, res) => {
       if (role !== undefined) {
         if (!ALL_ROLES.includes(role)) fail(400, "INVALID_INPUT", "Choose a valid role.");
         if (self && role !== user.role) fail(400, "CANNOT_MODIFY_SELF", "You cannot change your own role.");
-        if (isSuperAdmin(role) && !isSuperAdmin(user.role) && req.body?.confirmSuperAdmin !== true) fail(400, "CONFIRMATION_REQUIRED", "Confirm that this account should be a super-admin.");
+        if (isSuperAdmin(role) && !isSuperAdmin(user.role) && body.confirmSuperAdmin !== true) fail(400, "CONFIRMATION_REQUIRED", "Confirm that this account should be a super-admin.");
       }
       if (active !== undefined && typeof active !== "boolean") fail(400, "INVALID_INPUT", "active must be true or false.");
+      if (active === true && !user.active && isSuperAdmin(nextRole) && body.confirmSuperAdmin !== true) {
+        fail(400, "CONFIRMATION_REQUIRED", "Confirm that this super-admin account should be reactivated.");
+      }
       if (self && active === false) fail(400, "CANNOT_MODIFY_SELF", "You cannot deactivate your own account.");
 
       const losingSuper = isSuperAdmin(user.role) && user.active && (!isSuperAdmin(nextRole) || active === false);
@@ -175,6 +194,8 @@ userRoutes.patch("/:id", async (req, res) => {
       else if (roleChanged || kitchenChanged) user.godownId = await validateKitchen(nextRole, godownId ?? user.godownId);
       if (active !== undefined) user.active = active;
       if (accessChanged) user.refreshToken = null;
+      // A deactivated account must not keep a live invite/reset link that would work after reactivation.
+      if (active === false) { user.resetToken = null; user.resetTokenExpiry = null; }
       await user.save({ session });
       await UserAdminAudit.create([{ ...(await actorOf(req)), targetUserId: user._id, action: "update", before, after: snapshot(user) }], { session });
       result = user._id;
@@ -195,7 +216,9 @@ userRoutes.post("/:id/send-reset", async (req, res) => {
     if (!mongoose.isValidObjectId(req.params.id)) fail(404, "USER_NOT_FOUND", "No such user.");
     const user = await User.findById(req.params.id);
     if (!user) fail(404, "USER_NOT_FOUND", "No such user.");
-    const token = await issueToken(user, INVITE_TTL_MS);
+    if (!user.active) fail(409, "USER_INACTIVE", "This account is deactivated. Reactivate it before sending a password link.");
+    const token = stageToken(user, INVITE_TTL_MS);
+    await user.save();
     let sent = true;
     try {
       await mailer.sendInviteEmail({ email: user.email, name: user.name, token });
