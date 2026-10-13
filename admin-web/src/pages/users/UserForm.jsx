@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button, Field, Modal } from "../../components/ui/index.jsx";
-import { isSuperAdmin } from "../../roles.js";
+import { isKitchenRole, isSuperAdmin } from "../../roles.js";
 import { validateUserForm } from "./userForm.js";
 
 const ROLE_LABEL = { user: "Kitchen user", admin: "Admin", super_admin: "Super-admin" };
@@ -31,7 +31,7 @@ export function UserForm({ title, initial, kitchens, isNew, busy, onCancel, onSu
             {Object.entries(ROLE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </Field>
-        {form.role === "user" && (
+        {isKitchenRole(form.role) && (
           <Field label="Kitchen">
             <select value={form.godownId || ""} onChange={(e) => set({ godownId: e.target.value })}>
               <option value="">Choose…</option>

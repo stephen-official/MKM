@@ -21,7 +21,13 @@ export const syncAllIndexes = async () => {
 };
 
 export const stopDb = async () => {
-  await mongoose.disconnect();
-  await replSet?.stop();
-  replSet = null;
+  try {
+    await mongoose.disconnect();
+  } finally {
+    try {
+      await replSet?.stop();
+    } finally {
+      replSet = null;
+    }
+  }
 };

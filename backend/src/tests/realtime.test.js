@@ -19,9 +19,12 @@ test("disconnectUser is a no-op before setIo and drops the user's room afterward
   const calls = [];
   const fake = { in: (room) => ({ disconnectSockets: (close) => calls.push([room, close]) }) };
   setIo(fake);
-  disconnectUser("u1");
-  assert.deepEqual(calls, [["user:u1", true]]);
-  setIo(null);
+  try {
+    disconnectUser("u1");
+    assert.deepEqual(calls, [["user:u1", true]]);
+  } finally {
+    setIo(null);
+  }
 });
 
 test("emits are no-ops before setIo and delegate after", () => {
@@ -29,7 +32,10 @@ test("emits are no-ops before setIo and delegate after", () => {
   const calls = [];
   const fake = { to: (room) => { calls.push(room); return fake; }, emit: (event) => { calls.push(event); return true; } };
   setIo(fake);
-  io.to("admins").emit("ping");
-  assert.deepEqual(calls, ["admins", "ping"]);
-  setIo(null);
+  try {
+    io.to("admins").emit("ping");
+    assert.deepEqual(calls, ["admins", "ping"]);
+  } finally {
+    setIo(null);
+  }
 });

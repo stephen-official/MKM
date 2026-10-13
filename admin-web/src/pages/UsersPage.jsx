@@ -3,13 +3,14 @@ import { api } from "../api.js";
 import { Badge, Banner, Button, Card, DataTable, EmptyState, ErrorState, LoadingState, PageHeader } from "../components/ui/index.jsx";
 import { useToast } from "../useToast.js";
 import { formatDateTime } from "../businessTime.js";
+import { ROLES, isKitchenRole } from "../roles.js";
 import { UserForm } from "./users/UserForm.jsx";
 import { patchFromForm } from "./users/userForm.js";
 import { createRequestTracker } from "./executive/requestTracker.js";
 import "./executive/executive.css";
 
 const ROLE_BADGE = { super_admin: ["info", "Super-admin"], admin: ["neutral", "Admin"], user: ["neutral", "Kitchen"] };
-const EMPTY = { name: "", email: "", role: "user", godownId: "", active: true, confirmSuperAdmin: false };
+const EMPTY = { name: "", email: "", role: ROLES.USER, godownId: "", active: true, confirmSuperAdmin: false };
 
 const SEARCH_DEBOUNCE_MS = 250;
 
@@ -56,7 +57,7 @@ export function UsersPage() {
     setBusy(true);
     try {
       if (editing.isNew) {
-        const { data: res } = await api.post("/users", { ...form, godownId: form.role === "user" ? form.godownId : undefined });
+        const { data: res } = await api.post("/users", { ...form, godownId: isKitchenRole(form.role) ? form.godownId : undefined });
         setNotice(res.inviteSent ? `Invitation sent to ${res.user.email}.` : "Account created, but the invitation email failed. Use “Send password link” to retry.");
       } else {
         await api.patch(`/users/${editing.user._id}`, patchFromForm(editing.user, form));

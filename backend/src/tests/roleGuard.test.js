@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const SCANNED = ["backend/src", "admin-web/src", "client-web/src"];
 const ALLOWED = new Set(["backend/src/utils/roles.js", "admin-web/src/roles.js"]);
-const DIRECT = /\brole\s*[!=]==?\s*["'](admin|super_admin)["']|["'](admin|super_admin)["']\s*[!=]==?\s*[\w.]*role\b/;
+const DIRECT = /\brole\s*[!=]==?\s*["'](admin|super_admin|user)["']|["'](admin|super_admin|user)["']\s*[!=]==?\s*[\w.]*role\b/;
 
 const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
   const full = path.join(dir, entry.name);
@@ -15,7 +15,7 @@ const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entr
   return /\.(js|jsx)$/.test(entry.name) ? [full] : [];
 });
 
-test("no code compares a role to admin/super_admin directly", () => {
+test("no code compares a role to admin/super_admin/user directly", () => {
   const offenders = [];
   for (const base of SCANNED) {
     for (const file of walk(path.join(root, base))) {
@@ -26,5 +26,5 @@ test("no code compares a role to admin/super_admin directly", () => {
       });
     }
   }
-  assert.deepEqual(offenders, [], `Use isAdminRole/isSuperAdmin instead:\n${offenders.join("\n")}`);
+  assert.deepEqual(offenders, [], `Use isAdminRole/isSuperAdmin/isKitchenRole or ROLES instead:\n${offenders.join("\n")}`);
 });

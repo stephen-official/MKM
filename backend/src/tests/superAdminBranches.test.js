@@ -95,6 +95,19 @@ test("indent requests: super_admin is not subject to kitchen ownership rules", a
   assert.equal(deleted.status, 200);
 });
 
+test("indent requests: a kitchen user who does not own the request is still forbidden (ownership rules stay guarded)", async () => {
+  const supply = await IndentRequest.create({
+    godownId: ctx.a._id, userId: ctx.userA.user._id, status: "confirmed",
+    items: [{ stockItemId: ctx.rice._id, qtyBaseUnit: 4, status: "approved" }]
+  });
+  const received = await as("userB")("post", `/api/indent-requests/${supply._id}/receive`)
+    .send({ items: [{ stockItemId: ctx.rice._id, receivedQty: 4 }] });
+  assert.equal(received.status, 403, JSON.stringify(received.body));
+  const deleted = await as("userB")("delete", `/api/indent-requests/${supply._id}`);
+  assert.equal(deleted.status, 403, JSON.stringify(deleted.body));
+  assert.ok(await IndentRequest.exists({ _id: supply._id }));
+});
+
 test("admin-only routes admit super_admin; user-only routes reject it exactly like admin", async () => {
   for (const url of ["/api/consumptions", "/api/procurement/indents", "/api/reports/indents", "/api/product-ledger/godowns", "/api/daily-usage"]) {
     assert.equal((await as("superAdmin")("get", url)).status, 200, url);

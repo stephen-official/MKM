@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { fetchGodowns, registerUser } from '../api/auth';
 import { useNavigate } from 'react-router-dom';
+import { Roles } from '../types';
 
 const Register = () => {
   const [godowns, setGodowns] = useState([]);
-  const [formData, setFormData] = useState({ name: '', email: '', password: '', role: 'user', godownId: '' });
+  const [formData, setFormData] = useState({ name: '', email: '', password: '', role: Roles.USER, godownId: '' });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -37,7 +38,7 @@ const Register = () => {
             onChange={(e) => setFormData({...formData, password: e.target.value})} required />
 
           <select className="w-full p-3 border rounded-lg" 
-            onChange={(e) => setFormData({...formData, godownId: e.target.value})} required={formData.role === 'user'}>
+            onChange={(e) => setFormData({...formData, godownId: e.target.value})} required={formData.role === Roles.USER}>
             <option value="">Select Your Godown</option>
             {godowns.map(g => <option key={g._id} value={g._id}>{g.name}</option>)}
           </select>

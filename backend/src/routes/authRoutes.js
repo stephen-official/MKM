@@ -6,7 +6,7 @@ import { env } from "../config/env.js";
 import { createResetToken, hashResetToken, signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/tokens.js";
 import { authenticate } from "../middleware/auth.js";
 import { sendResetEmail } from "../utils/mailer.js";
-import { PRIVILEGED_ROLES } from "../utils/roles.js";
+import { PRIVILEGED_ROLES, ROLES, isKitchenRole } from "../utils/roles.js";
 
 export const authRoutes = express.Router();
 const MIN_PASSWORD_LENGTH = 8;
@@ -16,10 +16,10 @@ export const isValidPassword = (password) =>
 
 // --- Registration ---
 authRoutes.post("/register", async (req, res) => {
-  const { name, email, password, role = "user", godownId } = req.body;
+  const { name, email, password, role = ROLES.USER, godownId } = req.body;
   if (!name || !email || !password) return res.status(400).json({ message: "name, email and password are required" });
   if (PRIVILEGED_ROLES.includes(role)) return res.status(403).json({ message: "Privileged accounts cannot be created through public registration" });
-  if (role !== "user") return res.status(400).json({ message: "Invalid role" });
+  if (!isKitchenRole(role)) return res.status(400).json({ message: "Invalid role" });
   if (!isValidPassword(password)) return res.status(400).json({ message: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
   if (!godownId) return res.status(400).json({ message: "godownId is required for user" });
   
@@ -27,7 +27,7 @@ authRoutes.post("/register", async (req, res) => {
   const existing = await User.findOne({ email: emailNormalized });
   if (existing) return res.status(409).json({ message: "Email already exists" });
   
-  const roleCount = await User.countDocuments({ role: "user" });
+  const roleCount = await User.countDocuments({ role: ROLES.USER });
   const limit = env.userRegistrationLimit;
   if (roleCount >= limit) return res.status(403).json({ message: `${role} registration limit reached` });
   
@@ -39,7 +39,7 @@ authRoutes.post("/register", async (req, res) => {
     name, 
     email: emailNormalized, 
     passwordHash, 
-    role: "user",
+    role: ROLES.USER,
     godownId
   });
   return res.status(201).json({ id: user._id, role: user.role });
