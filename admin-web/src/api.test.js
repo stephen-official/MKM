@@ -42,7 +42,7 @@ describe("logout", () => {
     mocks.apiPost.mockResolvedValue({});
     await logout();
     expect(mocks.post).not.toHaveBeenCalled();
-    expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout");
+    expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout", null, { timeout: 15_000 });
     expect(storage.data.size).toBe(0);
   });
 
@@ -53,8 +53,9 @@ describe("logout", () => {
     await logout();
     expect(mocks.post).toHaveBeenCalledTimes(1);
     expect(mocks.post.mock.calls[0][1]).toEqual({ refreshToken: "r1" });
+    expect(mocks.post.mock.calls[0][2]).toEqual({ timeout: 15_000 });
     expect(mocks.post.mock.invocationCallOrder[0]).toBeLessThan(mocks.apiPost.mock.invocationCallOrder[0]);
-    expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout");
+    expect(mocks.apiPost).toHaveBeenCalledWith("/auth/logout", null, { timeout: 15_000 });
     expect(storage.data.size).toBe(0);
   });
 

@@ -1,5 +1,5 @@
 import { axisTicks, linePath, niceMax, niceMin } from "./chartScale.js";
-import { formatMoney, formatPct } from "./format.js";
+import { formatMoney, formatPct, plural } from "./format.js";
 
 const W = 640;
 const H = 180;
@@ -16,7 +16,7 @@ export function TrendChart({ data }) {
     <figure className="exec-chart">
       <figcaption className="exec-chart__caption">
         Total {formatMoney(data.total)}{data.deltaPct !== null && ` · ${formatPct(data.deltaPct)} vs previous period`}
-        {unvalued > 0 && ` · ${unvalued} unvalued lines not plotted`}
+        {unvalued > 0 && ` · ${unvalued} unvalued ${plural(unvalued, "line", "lines")} not plotted`}
       </figcaption>
       <div className="exec-chart__plot">
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="exec-chart__svg" role="img"

@@ -22,12 +22,18 @@ export const linePath = (points, { width, height, max, min }) => {
  * Y-axis labels to draw. The maximum is always labelled; when the data goes negative the zero line and the
  * minimum are labelled too. `fraction` is the distance from the top of the plot (0 = top, 1 = bottom).
  */
+/** Closest two axis labels may sit, as a fraction of the plot height. */
+const MIN_TICK_GAP = 0.12;
+
 export const axisTicks = ({ min, max }) => {
   const range = max - min || 1;
   const at = (value) => (max - value) / range;
   const ticks = [{ kind: "max", value: max, fraction: 0 }];
   if (min < 0) {
-    ticks.push({ kind: "zero", value: 0, fraction: at(0) });
+    const zero = at(0);
+    // With mostly-negative data the zero line sits at the top: its label replaces the (crowded) maximum.
+    if (zero < MIN_TICK_GAP) ticks.shift();
+    ticks.push({ kind: "zero", value: 0, fraction: zero });
     ticks.push({ kind: "min", value: min, fraction: 1 });
   }
   return ticks;

@@ -87,6 +87,7 @@ export const App = () => {
   );
 
   const [notice, setNotice] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
 
   // The API client fires this when a token can no longer be refreshed.
   useEffect(() => {
@@ -103,10 +104,17 @@ export const App = () => {
     setSession({ loggedIn: true, role });
   };
 
+  // The shell (and its flag refreshes) is unmounted while signing out, so a focus event cannot
+  // surface "session expired" over the sign-out message.
   const handleLogout = async (message = "") => {
-    await logout();
-    setNotice(message);
-    setSession({ loggedIn: false, role: null });
+    setSigningOut(true);
+    try {
+      await logout();
+    } finally {
+      setNotice(message);
+      setSession({ loggedIn: false, role: null });
+      setSigningOut(false);
+    }
   };
 
   // The server's view of this account differs from the stored role: follow it.
@@ -114,6 +122,8 @@ export const App = () => {
     setStoredRole(role);
     setSession({ loggedIn: true, role });
   };
+
+  if (signingOut) return <LoadingState label="Signing out…" />;
 
   // --- 1. PUBLIC ROUTES (Accessible without login) ---
   // This allows the /reset-password path to work even when session.loggedIn is false

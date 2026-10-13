@@ -21,6 +21,11 @@ describe("chart scale", () => {
   it("labels only the maximum when nothing is negative", () => {
     expect(axisTicks({ min: 0, max: 100 })).toEqual([{ kind: "max", value: 100, fraction: 0 }]);
   });
+  it("drops the maximum label when the zero line sits right under it (all values negative)", () => {
+    const ticks = axisTicks({ min: -100, max: 1 });
+    expect(ticks.map((t) => t.kind)).toEqual(["zero", "min"]);
+    expect(axisTicks({ min: -5, max: 1 }).map((t) => t.kind)).toEqual(["max", "zero", "min"]);
+  });
   it("labels the zero line and the minimum when values go negative", () => {
     expect(axisTicks({ min: -50, max: 150 })).toEqual([
       { kind: "max", value: 150, fraction: 0 },

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, FEATURE_DISABLED_EVENT } from "../api.js";
+import { api, FEATURE_DISABLED_EVENT, REQUEST_TIMEOUT_MS } from "../api.js";
 import { isSuperAdmin } from "../roles.js";
 import { createRequestTracker } from "../pages/executive/requestTracker.js";
 import { FeatureFlagsContext } from "./FeatureFlagsContext.js";
@@ -24,11 +24,12 @@ export function FeatureFlagsProvider({ role, onRoleChange, onSignOut, children }
     lastRefreshAt.current = Date.now();
     const request = tracker.start();
     try {
-      const { data } = await api.get("/features", { signal: request.signal });
+      const { data } = await api.get("/features", { signal: request.signal, timeout: REQUEST_TIMEOUT_MS });
       if (!request.isLatest()) return;
       const action = reconcileAudience(data.audience, sync.current.role);
-      if (action.type === "sign-out") return sync.current.onSignOut?.();
-      if (action.type === "set-role") return sync.current.onRoleChange?.(action.role);
+      // Without a handler the state would stay "loading" forever, so fall through to "ready".
+      if (action.type === "sign-out" && sync.current.onSignOut) return sync.current.onSignOut();
+      if (action.type === "set-role" && sync.current.onRoleChange) return sync.current.onRoleChange(action.role);
       setState({ flags: data.flags, version: data.version, status: "ready", error: null });
     } catch (error) {
       if (!request.isLatest()) return;

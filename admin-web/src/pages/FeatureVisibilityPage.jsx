@@ -60,24 +60,24 @@ export function FeatureVisibilityPage() {
   }, [loadAdmin, loadAudit]);
 
   // Target lists load when their tab is first opened (or when the change history needs their names).
+  // A failed load clears its "requested" flag; `scope` is a dependency so re-opening a tab retries it.
   const need = neededTargetScopes(visited, audit?.items);
   useEffect(() => {
     if (need.kitchen && !requested.current.kitchen) {
       requested.current.kitchen = true;
       api.get("/inventory/godowns").then(({ data }) => setKitchens(data)).catch(() => {
         requested.current.kitchen = false;
-        setKitchens([]);
+        showToast("Could not load kitchens. Switch tabs to try again.", "error");
       });
     }
     if (need.user && !requested.current.user) {
       requested.current.user = true;
       api.get("/users", { params: { pageSize: "all" } }).then(({ data }) => { setUsers(data.items); setUsersTotal(data.total); }).catch(() => {
         requested.current.user = false;
-        setUsers([]);
-        setUsersTotal(0);
+        showToast("Could not load users. Switch tabs to try again.", "error");
       });
     }
-  }, [need.kitchen, need.user]);
+  }, [need.kitchen, need.user, scope, showToast]);
 
   const changeScope = (next) => {
     setScope(next);

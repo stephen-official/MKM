@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
-import { api } from "../api.js";
+import { api, REQUEST_TIMEOUT_MS } from "../api.js";
 import { Banner, ErrorState, LoadingState, PageHeader } from "../components/ui/index.jsx";
 import { formatDateTime, todayInBusinessTz } from "../businessTime.js";
 import { ReportFilters } from "./executive/ReportFilters.jsx";
@@ -20,7 +20,7 @@ export function ExecutiveReportPage() {
 
   useEffect(() => {
     let cancelled = false;
-    api.get("/inventory/godowns")
+    api.get("/inventory/godowns", { timeout: REQUEST_TIMEOUT_MS })
       .then(({ data }) => { if (!cancelled) setKitchens([...data].sort((a, b) => a.name.localeCompare(b.name))); })
       .catch(() => { if (!cancelled) setKitchenError(true); });
     return () => { cancelled = true; };

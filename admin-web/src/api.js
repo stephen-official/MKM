@@ -4,6 +4,9 @@ import { isJwtExpired } from "./jwt.js";
 // VITE_API_URL is set per environment (Vercel / .env); localhost is the dev fallback.
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+/** Requests that gate the UI (workspace load, sign-out, token refresh) must not hang on a dead network. */
+export const REQUEST_TIMEOUT_MS = 15_000;
+
 export const api = axios.create({ baseURL: API_BASE });
 
 const KEYS = { access: "accessToken", refresh: "refreshToken", role: "userRole" };
@@ -46,7 +49,7 @@ const refreshAccessToken = () => {
   const refreshToken = localStorage.getItem(KEYS.refresh);
   if (!refreshToken) return Promise.reject(new Error("No refresh token"));
   refreshing ??= axios
-    .post(`${API_BASE}/auth/refresh`, { refreshToken })
+    .post(`${API_BASE}/auth/refresh`, { refreshToken }, { timeout: REQUEST_TIMEOUT_MS })
     .then(({ data }) => {
       setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken });
       return data.accessToken;
@@ -73,7 +76,7 @@ export const logout = async () => {
           // Could not renew: still try below, then clear locally.
         }
       }
-      await api.post("/auth/logout");
+      await api.post("/auth/logout", null, { timeout: REQUEST_TIMEOUT_MS });
     }
   } catch {
     // Best effort: an expired or offline session is still cleared locally.
