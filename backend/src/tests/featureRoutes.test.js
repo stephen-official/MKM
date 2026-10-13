@@ -4,6 +4,7 @@ import request from "supertest";
 import { startDb, clearDb, stopDb, syncAllIndexes } from "./helpers/db.js";
 import { createGodown, createUser } from "./helpers/auth.js";
 import { invalidateFlagCache } from "../features/featureFlagService.js";
+import { FeatureFlags } from "../models/FeatureModels.js";
 
 let app;
 let admin;
@@ -91,4 +92,27 @@ test("audit filters ignore object-shaped query params instead of passing them to
   const res = await as(superAdmin, "get", "/api/features/audit?targetId[$ne]=x&scope[$ne]=global");
   assert.equal(res.status, 200);
   assert.equal(res.body.total, 1);
+});
+
+test("GET /api/features is a 503 for an admin when the flags cannot be read", async (t) => {
+  t.mock.method(FeatureFlags, "findById", () => ({ lean: async () => { throw new Error("db down"); } }));
+  const warn = t.mock.method(console, "warn", () => {});
+  const res = await as(admin, "get", "/api/features");
+  assert.equal(res.status, 503);
+  assert.equal(res.body.code, "FEATURE_FLAGS_UNAVAILABLE");
+  assert.equal(warn.mock.callCount(), 0, "no stale copy existed, so nothing to warn about");
+});
+
+test("PUT rejects non-boolean values and empty change sets with their own codes", async () => {
+  const invalid = await as(superAdmin, "put", "/api/features").send({ expectedVersion: 0, changes: { reports: "no" } });
+  assert.equal(invalid.status, 400);
+  assert.equal(invalid.body.code, "INVALID_FEATURE_VALUE");
+  assert.deepEqual(invalid.body.keys, ["reports"]);
+
+  for (const changes of [{}, undefined, [], null]) {
+    const none = await as(superAdmin, "put", "/api/features").send({ expectedVersion: 0, changes });
+    assert.equal(none.status, 400, JSON.stringify(changes));
+    assert.equal(none.body.code, "NO_CHANGES", JSON.stringify(changes));
+  }
+  assert.equal(await FeatureFlags.countDocuments(), 0);
 });

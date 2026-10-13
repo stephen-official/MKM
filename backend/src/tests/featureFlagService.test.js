@@ -3,8 +3,10 @@ import { after, before, beforeEach, test } from "node:test";
 import mongoose from "mongoose";
 import { startDb, clearDb, stopDb, syncAllIndexes } from "./helpers/db.js";
 import { FeatureFlagAudit, FeatureFlags } from "../models/FeatureModels.js";
+import { Godown } from "../models/InventoryModels.js";
 import {
-  DEFAULT_FLAGS, invalidateFlagCache, listAudit, loadGlobalFlags, resolveEffectiveFlags, updateGlobalFlags
+  DEFAULT_FLAGS, invalidateFlagCache, listAudit, listOverrides, loadGlobalFlags, resolveEffectiveFlags, updateGlobalFlags,
+  updateOverride
 } from "../features/featureFlagService.js";
 
 const actor = { id: new mongoose.Types.ObjectId(), name: "Root", email: "root@x.io" };
@@ -111,7 +113,10 @@ test("cache: served for 5 s, then reloaded; stale copy used for up to 5 min when
   assert.equal((await loadGlobalFlags({ now: t0 + 6000 })).version, 7, "reloaded after TTL");
 
   t.mock.method(FeatureFlags, "findById", () => ({ lean: async () => { throw new Error("db down"); } }));
+  const warn = t.mock.method(console, "warn", () => {});
   assert.equal((await loadGlobalFlags({ now: t0 + 6000 + 10_000 })).version, 7, "stale fallback");
+  assert.equal(warn.mock.callCount(), 1);
+  assert.match(warn.mock.calls[0].arguments[0], /using cached global; reload failed: db down/);
   await assert.rejects(loadGlobalFlags({ now: t0 + 6000 + 6 * 60_000 }),
     (e) => e.status === 503 && e.code === "FEATURE_FLAGS_UNAVAILABLE");
 });
@@ -133,4 +138,89 @@ test("effective flags: super_admin is not gated; kitchen users get flags; admins
   assert.equal(await resolveEffectiveFlags({ role: "super_admin" }), null);
   assert.equal((await resolveEffectiveFlags({ role: "user", godownId: "65f0c0ffee0000000000abcd" })).reports, true);
   assert.equal((await resolveEffectiveFlags({ role: "admin" })).reports, false);
+});
+
+test("a load that started before a write cannot repopulate the cache with pre-write state", async (t) => {
+  await FeatureFlags.create({ _id: "global", flags: { reports: false }, version: 1 });
+  const realFindById = FeatureFlags.findById.bind(FeatureFlags);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let calls = 0;
+  t.mock.method(FeatureFlags, "findById", (...args) => {
+    calls += 1;
+    if (calls > 1) return realFindById(...args);
+    // First load: reads the pre-write document immediately, but only resolves once released.
+    const pre = realFindById(...args).lean();
+    return { lean: async () => { const doc = await pre; await gate; return doc; } };
+  });
+
+  const inFlight = loadGlobalFlags();
+  await new Promise((resolve) => setImmediate(resolve));
+  await updateGlobalFlags({ actor, expectedVersion: 1, changes: { reports: true } });
+  release();
+  assert.equal((await inFlight).version, 1, "the in-flight caller still gets what it read");
+
+  const after = await loadGlobalFlags();
+  assert.equal(after.version, 2, "the stale in-flight result was not cached over the write");
+  assert.equal(after.flags.reports, true);
+});
+
+test("two writers at an existing version: exactly one wins and the loser sees the real current version", async () => {
+  await updateGlobalFlags({ actor, expectedVersion: 0, changes: { reports: false } });
+  const results = await Promise.allSettled([
+    updateGlobalFlags({ actor, expectedVersion: 1, changes: { inventory: false } }),
+    updateGlobalFlags({ actor, expectedVersion: 1, changes: { godowns: false } })
+  ]);
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  const lost = results.find((r) => r.status === "rejected");
+  assert.equal(lost.reason.code, "VERSION_CONFLICT");
+  assert.equal(lost.reason.details.currentVersion, 2);
+  assert.equal((await loadGlobalFlags()).version, 2);
+  assert.equal(await FeatureFlagAudit.countDocuments(), 2);
+});
+
+test("a duplicate-key race reports the re-read current version, not a guess", async (t) => {
+  await FeatureFlags.create({ _id: "global", flags: {}, version: 4 });
+  const realFindById = FeatureFlags.findById.bind(FeatureFlags);
+  let first = true;
+  t.mock.method(FeatureFlags, "findById", (...args) => {
+    if (!first) return realFindById(...args);
+    first = false;
+    // The transactional read still sees "no document", so the upsert hits the existing _id.
+    return { session: () => ({ lean: async () => null }) };
+  });
+  await assert.rejects(updateGlobalFlags({ actor, expectedVersion: 0, changes: { reports: false } }),
+    (e) => e.status === 409 && e.code === "VERSION_CONFLICT" && e.details.currentVersion === 4);
+});
+
+test("cached flag objects are frozen so callers cannot corrupt the cache", async () => {
+  await FeatureFlags.create({ _id: "global", flags: { reports: false }, version: 2 });
+  const { loadFlagsDoc } = await import("../features/featureFlagService.js");
+  const stored = await loadFlagsDoc("global");
+  assert.ok(Object.isFrozen(stored));
+  assert.ok(Object.isFrozen(stored.flags));
+  assert.throws(() => { stored.flags.reports = true; }, TypeError);
+  assert.throws(() => { stored.version = 99; }, TypeError);
+  assert.equal((await loadFlagsDoc("global")).flags.reports, false);
+});
+
+test("listAudit rejects an unknown scope and matches targetId case-insensitively", async () => {
+  const kitchen = await Godown.create({ name: "K" });
+  await updateOverride({ actor, scope: "kitchen", targetId: kitchen._id, expectedVersion: 0, changes: { requests: false } });
+  await assert.rejects(listAudit({ scope: "team" }), (e) => e.status === 400 && e.code === "INVALID_SCOPE");
+  await assert.rejects(listAudit({ scope: { $ne: "global" } }), (e) => e.code === "INVALID_SCOPE");
+  const upper = String(kitchen._id).toUpperCase();
+  assert.equal((await listAudit({ scope: "kitchen", targetId: upper })).total, 1);
+  assert.equal((await listAudit({ targetId: { $ne: "x" } })).total, 0, "non-string targetId is stringified, not passed to Mongo as an operator");
+});
+
+test("listOverrides marks entries whose target no longer exists", async () => {
+  const kept = await Godown.create({ name: "Kept" });
+  const removed = await Godown.create({ name: "Removed" });
+  await updateOverride({ actor, scope: "kitchen", targetId: kept._id, expectedVersion: 0, changes: { requests: false } });
+  await updateOverride({ actor, scope: "kitchen", targetId: removed._id, expectedVersion: 0, changes: { requests: false } });
+  await Godown.deleteOne({ _id: removed._id });
+  const list = await listOverrides("kitchen");
+  const byId = Object.fromEntries(list.map((entry) => [entry.targetId, entry.targetExists]));
+  assert.deepEqual(byId, { [String(kept._id)]: true, [String(removed._id)]: false });
 });

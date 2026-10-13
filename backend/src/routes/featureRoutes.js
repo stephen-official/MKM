@@ -1,9 +1,10 @@
 import express from "express";
+import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { User } from "../models/User.js";
 import { FEATURES, describeFeature } from "../features/registry.js";
 import {
-  DEFAULT_FLAGS, FeatureFlagError, listAudit, listOverrides, loadFlagsDoc, loadGlobalFlags, overrideId,
+  DEFAULT_FLAGS, FLAG_SCOPES, FeatureFlagError, OVERRIDE_SCOPES, listAudit, listOverrides, loadFlagsDoc, loadGlobalFlags, overrideId,
   resolveEffectiveFlags, updateGlobalFlags, updateOverride
 } from "../features/featureFlagService.js";
 import { isAdminRole, isSuperAdmin } from "../utils/roles.js";
@@ -54,7 +55,7 @@ featureRoutes.put("/", superAdminOnly, async (req, res) => {
 
 featureRoutes.get("/audit", superAdminOnly, async (req, res) => {
   try {
-    const scope = ["global", "kitchen", "user"].includes(req.query.scope) ? req.query.scope : undefined;
+    const scope = FLAG_SCOPES.includes(req.query.scope) ? req.query.scope : undefined;
     const targetId = typeof req.query.targetId === "string" ? req.query.targetId : undefined;
     return res.json(await listAudit({ page: req.query.page, scope, targetId }));
   } catch (error) {
@@ -62,7 +63,7 @@ featureRoutes.get("/audit", superAdminOnly, async (req, res) => {
   }
 });
 
-const isOverrideScope = (scope) => ["kitchen", "user"].includes(scope);
+const isOverrideScope = (scope) => OVERRIDE_SCOPES.includes(scope);
 const invalidScope = (res) => res.status(400).json({ code: "INVALID_SCOPE", message: 'scope must be "kitchen" or "user".' });
 
 featureRoutes.get("/overrides", superAdminOnly, async (req, res) => {
@@ -77,6 +78,10 @@ featureRoutes.get("/overrides", superAdminOnly, async (req, res) => {
 featureRoutes.get("/overrides/:scope/:targetId", superAdminOnly, async (req, res) => {
   try {
     if (!isOverrideScope(req.params.scope)) return invalidScope(res);
+    // Reject junk ids before they reach the cache (every distinct id would otherwise get an entry).
+    if (!mongoose.isValidObjectId(req.params.targetId)) {
+      return res.status(404).json({ code: "TARGET_NOT_FOUND", message: "No such kitchen or user." });
+    }
     return res.json(await loadFlagsDoc(overrideId(req.params.scope, req.params.targetId)));
   } catch (error) {
     return sendError(res, error);

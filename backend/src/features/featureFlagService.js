@@ -31,23 +31,40 @@ const toState = (doc) => {
   return { flags, version: doc?.version ?? 0, updatedAt: doc?.updatedAt ?? null };
 };
 
+export const FLAG_SCOPES = Object.freeze(["global", "kitchen", "user"]);
+export const OVERRIDE_SCOPES = Object.freeze(["kitchen", "user"]);
+
 const caches = new Map(); // id -> { state, loadedAt }
 
+// Bumped by every invalidation. A load remembers the generation it started in and
+// only caches its result if no write invalidated the id meanwhile, so a slow read
+// that began before a write cannot put pre-write state back into the cache.
+const generations = new Map(); // id -> number
+let globalGeneration = 0;
+const generationOf = (id) => `${globalGeneration}:${generations.get(id) ?? 0}`;
+
 export const invalidateFlagCache = (id) => {
-  if (id) caches.delete(id);
-  else caches.clear();
+  if (id) {
+    generations.set(id, (generations.get(id) ?? 0) + 1);
+    caches.delete(id);
+  } else {
+    globalGeneration += 1;
+    caches.clear();
+  }
 };
 
 /** Stored (partial) flags for any flags document, cached like the global one. */
 export const loadFlagsDoc = async (id, { now = Date.now() } = {}) => {
   const cached = caches.get(id);
   if (cached && now - cached.loadedAt < CACHE_TTL_MS) return cached.state;
+  const startedIn = generationOf(id);
   try {
     const doc = await FeatureFlags.findById(id).lean();
     const flags = {};
     for (const key of FEATURE_KEYS) if (typeof doc?.flags?.[key] === "boolean") flags[key] = doc.flags[key];
-    const state = { flags, version: doc?.version ?? 0, updatedAt: doc?.updatedAt ?? null };
-    caches.set(id, { state, loadedAt: now });
+    // Frozen: cached objects are shared by every caller and must never be mutated.
+    const state = Object.freeze({ flags: Object.freeze(flags), version: doc?.version ?? 0, updatedAt: doc?.updatedAt ?? null });
+    if (generationOf(id) === startedIn) caches.set(id, { state, loadedAt: now });
     return state;
   } catch (error) {
     if (cached && now - cached.loadedAt < STALE_LIMIT_MS) {
@@ -89,7 +106,7 @@ const conflict = (currentVersion) =>
 
 /**
  * Applies `changes` to one flags document atomically with its audit row.
- * Shared by the global document and (Phase 6) per-kitchen / per-user overrides.
+ * Shared by the global document and the per-kitchen / per-user overrides.
  */
 export const writeFlagsDocument = async ({ id, scope, targetId = null, actor, expectedVersion, changes, baseFlags = DEFAULT_FLAGS, extraFields = {}, allowNull = false }) => {
   validateChanges(changes, { allowNull });
@@ -121,17 +138,13 @@ export const writeFlagsDocument = async ({ id, scope, targetId = null, actor, ex
       }
       const update = { $set, $inc: { version: 1 } };
       if (Object.keys($unset).length) update.$unset = $unset;
-      let doc;
-      try {
-        doc = await FeatureFlags.findOneAndUpdate(
-          { _id: id, version: expectedVersion },
-          update,
-          { upsert: expectedVersion === 0, new: true, session, lean: true }
-        );
-      } catch (error) {
-        if (error?.code === 11000) throw conflict(currentVersion + 1);
-        throw error;
-      }
+      // E11000 here = another writer created the document between our read and the upsert;
+      // it propagates and the outer catch reports the re-read current version.
+      const doc = await FeatureFlags.findOneAndUpdate(
+        { _id: id, version: expectedVersion },
+        update,
+        { upsert: expectedVersion === 0, new: true, session, lean: true }
+      );
       if (!doc) throw conflict(currentVersion);
 
       await FeatureFlagAudit.create([{
@@ -144,7 +157,10 @@ export const writeFlagsDocument = async ({ id, scope, targetId = null, actor, ex
     return result;
   } catch (error) {
     if (error instanceof FeatureFlagError) throw error;
-    if (error?.code === 11000) throw conflict(expectedVersion + 1);
+    if (error?.code === 11000) {
+      const latest = await FeatureFlags.findById(id).select("version").lean();
+      throw conflict(latest?.version ?? 0);
+    }
     throw error;
   } finally {
     await session.endSession();
@@ -162,7 +178,7 @@ const ADMIN_KEYS = new Set(FEATURES.filter((f) => f.audiences.includes("admin"))
 export const overrideId = (scope, targetId) => `${scope}:${String(targetId).toLowerCase()}`;
 
 const resolveTarget = async (scope, targetId) => {
-  if (!["kitchen", "user"].includes(scope)) throw new FeatureFlagError(400, "INVALID_SCOPE", 'scope must be "kitchen" or "user".');
+  if (!OVERRIDE_SCOPES.includes(scope)) throw new FeatureFlagError(400, "INVALID_SCOPE", 'scope must be "kitchen" or "user".');
   if (!mongoose.isValidObjectId(targetId)) throw new FeatureFlagError(404, "TARGET_NOT_FOUND", "No such kitchen or user.");
   if (scope === "kitchen") {
     if (!(await Godown.exists({ _id: targetId }))) throw new FeatureFlagError(404, "TARGET_NOT_FOUND", "No such kitchen.");
@@ -191,9 +207,14 @@ export const updateOverride = async ({ actor, scope, targetId, expectedVersion, 
 
 export const listOverrides = async (scope) => {
   const docs = await FeatureFlags.find({ scope }).sort({ targetId: 1 }).lean();
+  // Overrides outlive deleted kitchens/users; flag them so the console can offer cleanup.
+  const ids = docs.map((d) => d.targetId).filter((id) => mongoose.isValidObjectId(id));
+  const model = scope === "kitchen" ? Godown : User;
+  const existing = new Set((ids.length ? await model.find({ _id: { $in: ids } }).select("_id").lean() : []).map((row) => String(row._id)));
   return docs.map((d) => ({
     scope: d.scope,
     targetId: d.targetId,
+    targetExists: existing.has(String(d.targetId)),
     flags: Object.fromEntries(Object.entries(d.flags || {}).filter(([k, v]) => FEATURE_KEYS.includes(k) && typeof v === "boolean")),
     version: d.version,
     updatedAt: d.updatedAt
@@ -216,9 +237,13 @@ export const resolveEffectiveFlags = async (user) => {
 
 export const listAudit = async ({ page = 1, scope, targetId } = {}) => {
   const safePage = clampPage(page);
+  if (scope !== undefined && !FLAG_SCOPES.includes(scope)) {
+    throw new FeatureFlagError(400, "INVALID_SCOPE", `scope must be one of: ${FLAG_SCOPES.join(", ")}.`);
+  }
   const filter = {};
   if (scope) filter.scope = scope;
-  if (targetId) filter.targetId = String(targetId);
+  // Override ids are stored lower-cased (see overrideId).
+  if (targetId) filter.targetId = String(targetId).toLowerCase();
   const [items, total] = await Promise.all([
     FeatureFlagAudit.find(filter).sort({ at: -1, _id: -1 }).skip((safePage - 1) * AUDIT_PAGE_SIZE).limit(AUDIT_PAGE_SIZE).lean(),
     FeatureFlagAudit.countDocuments(filter)

@@ -4,6 +4,7 @@ import request from "supertest";
 import { startDb, clearDb, stopDb, syncAllIndexes } from "./helpers/db.js";
 import { createGodown, createUser } from "./helpers/auth.js";
 import { invalidateFlagCache } from "../features/featureFlagService.js";
+import { FeatureFlags } from "../models/FeatureModels.js";
 
 let app;
 let ctx;
@@ -77,4 +78,35 @@ test("listing and audit show override scope and inherit values", async () => {
   const audit = await as("superAdmin", "get", `/api/features/audit?scope=kitchen&targetId=${ctx.a._id}`);
   assert.deepEqual(audit.body.items[0].changes, [{ key: "requests", previous: false, next: null }]);
   assert.deepEqual(audit.body.items[1].changes, [{ key: "requests", previous: null, next: false }]);
+});
+
+test("override endpoints are super-admin only: admins and kitchen users get 403 on GET and PUT", async () => {
+  const target = `/api/features/overrides/kitchen/${ctx.a._id}`;
+  for (const who of ["admin", "cookA"]) {
+    assert.equal((await as(who, "get", "/api/features/overrides?scope=kitchen")).status, 403, `${who} list`);
+    assert.equal((await as(who, "get", target)).status, 403, `${who} get`);
+    const write = await as(who, "put", target).send({ expectedVersion: 0, changes: { requests: false } });
+    assert.equal(write.status, 403, `${who} put`);
+  }
+  assert.equal(await FeatureFlags.countDocuments(), 0, "nothing was written");
+});
+
+test("GET /overrides/:scope/:targetId rejects malformed target ids without touching the cache or database", async (t) => {
+  const findById = t.mock.method(FeatureFlags, "findById");
+  const res = await as("superAdmin", "get", "/api/features/overrides/kitchen/not-an-object-id");
+  assert.equal(res.status, 404);
+  assert.equal(res.body.code, "TARGET_NOT_FOUND");
+  assert.equal(findById.mock.callCount(), 0, "no lookup, so no cache entry for junk ids");
+  const ok = await as("superAdmin", "get", `/api/features/overrides/kitchen/${ctx.a._id}`);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.version, 0);
+});
+
+test("the override listing flags a deleted kitchen's leftover override", async () => {
+  await put("kitchen", ctx.a._id, { expectedVersion: 0, changes: { requests: false } });
+  await put("kitchen", ctx.b._id, { expectedVersion: 0, changes: { requests: false } });
+  await ctx.b.deleteOne();
+  const list = await as("superAdmin", "get", "/api/features/overrides?scope=kitchen");
+  const byId = Object.fromEntries(list.body.map((entry) => [entry.targetId, entry.targetExists]));
+  assert.deepEqual(byId, { [String(ctx.a._id)]: true, [String(ctx.b._id)]: false });
 });
