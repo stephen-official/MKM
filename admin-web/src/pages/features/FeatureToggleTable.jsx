@@ -36,7 +36,7 @@ export function FeatureToggleTable({ features, values, saved, disabled, onToggle
                   <span className="switch__text">{on ? "Shown" : "Hidden"}</span>
                 </label>
               </td>
-              <td>{feature.audiences.includes("kitchen") ? <Badge variant="info">Kitchen app (per-kitchen setting)</Badge> : "—"}</td>
+              <td>{feature.audiences.includes("kitchen") ? <Badge variant="info">Kitchen app (set per kitchen)</Badge> : "—"}</td>
               <td>
                 <details>
                   <summary>{feature.routes.reads.length + feature.routes.mutations.length} admin endpoints</summary>

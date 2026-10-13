@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
-import { Banner, Button, Card, ConfirmDialog, ErrorState, LoadingState, PageHeader } from "../components/ui/index.jsx";
+import { Banner, Button, Card, ConfirmDialog, ErrorState, LoadingState, PageHeader, Tabs } from "../components/ui/index.jsx";
 import { useToast } from "../useToast.js";
 import { useFeatureFlags } from "../features/FeatureFlagsContext.js";
 import { formatDateTime } from "../businessTime.js";
 import { FeatureToggleTable } from "./features/FeatureToggleTable.jsx";
 import { FeatureAuditList } from "./features/FeatureAuditList.jsx";
+import { OverridesPanel } from "./features/OverridesPanel.jsx";
 import { applyEdits, describeChange, pendingChanges, pruneEdits } from "./features/diff.js";
+
+const SCOPE_TABS = [{ value: "global", label: "All admins" }, { value: "kitchen", label: "Per kitchen" }];
 
 export function FeatureVisibilityPage() {
   const { showToast } = useToast();
@@ -18,6 +21,8 @@ export function FeatureVisibilityPage() {
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [audit, setAudit] = useState(null);
+  const [scope, setScope] = useState("global");
+  const [kitchens, setKitchens] = useState([]);
 
   // Resolves true when the latest settings were loaded, so callers can tell a failed reload apart.
   const loadAdmin = useCallback(async () => {
@@ -46,6 +51,15 @@ export function FeatureVisibilityPage() {
     loadAdmin();
     loadAudit(1);
   }, [loadAdmin, loadAudit]);
+
+  useEffect(() => {
+    api.get("/inventory/godowns").then(({ data }) => setKitchens(data)).catch(() => setKitchens([]));
+  }, []);
+
+  const kitchenTargets = useMemo(
+    () => kitchens.map((k) => ({ id: String(k._id), label: k.active === false ? `${k.name} (inactive)` : k.name, audience: "kitchen" })),
+    [kitchens]
+  );
 
   const labels = useMemo(() => Object.fromEntries((admin?.features || []).map((f) => [f.key, f.label])), [admin]);
   const changes = admin ? pendingChanges(admin.flags, edits) : {};
@@ -86,7 +100,7 @@ export function FeatureVisibilityPage() {
       <PageHeader
         title="Feature Visibility"
         subtitle={`Choose which modules administrators can use. Version ${admin.version}${admin.updatedAt ? ` · last changed ${formatDateTime(admin.updatedAt)}` : ""}`}
-        actions={(
+        actions={scope === "global" && (
           <>
             <Button variant="ghost" disabled={!changeCount || saving} onClick={() => setEdits({})}>Discard</Button>
             <Button disabled={!changeCount || saving || conflict !== null} onClick={() => setConfirming(true)}>
@@ -99,21 +113,29 @@ export function FeatureVisibilityPage() {
         Changes apply to administrators within a minute (immediately on their next action). Super-admins always see every module.
         Shared reference data (stock items, kitchens, units, stock levels) stays available to the modules that depend on it.
       </Banner>
-      {conflict !== null && (
+      <Tabs items={SCOPE_TABS} value={scope} onChange={setScope} label="Settings scope" />
+      {scope === "global" && conflict !== null && (
         <Banner variant="warn">
           Someone else saved changes (now version {conflict}). Reload to see them — your unsaved edits are kept where they still differ.
           {" "}<Button size="sm" variant="ghost" onClick={reload}>Reload</Button>
         </Banner>
       )}
-      <Card>
-        <FeatureToggleTable
-          features={admin.features}
-          saved={admin.flags}
-          values={applyEdits(admin.flags, edits)}
-          disabled={saving}
-          onToggle={(key, value) => setEdits((prev) => ({ ...prev, [key]: value }))}
-        />
-      </Card>
+      {scope === "global" && (
+        <Card>
+          <FeatureToggleTable
+            features={admin.features}
+            saved={admin.flags}
+            values={applyEdits(admin.flags, edits)}
+            disabled={saving}
+            onToggle={(key, value) => setEdits((prev) => ({ ...prev, [key]: value }))}
+          />
+        </Card>
+      )}
+      {scope === "kitchen" && (
+        <Card>
+          <OverridesPanel scope="kitchen" targets={kitchenTargets} features={admin.features} globalFlags={admin.flags} onSaved={() => loadAudit(1)} />
+        </Card>
+      )}
       <h2 className="section-title">Change history</h2>
       <Card>
         <FeatureAuditList audit={audit} labels={labels} onPage={loadAudit} />

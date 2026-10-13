@@ -8,6 +8,8 @@ import {
 import { createElement } from "react";
 import "./kitchen-ui.css";
 
+const NO_HIDDEN_TABS = new Set();
+
 const TABS = [
   { id: "home", label: "Home", Icon: Home },
   { id: "stock", label: "Stock", Icon: Package },
@@ -23,6 +25,7 @@ const TABS = [
  * @param {"home"|"stock"|"usage"|"requests"|"more"} props.activeTab
  * @param {(tab: string) => void} props.onTabChange
  * @param {number} [props.requestCount=0] Number of requests requiring attention.
+ * @param {Set<string>} [props.hiddenTabs] Tab ids to hide (features disabled for this kitchen).
  * @param {boolean} [props.disabled=false]
  * @param {string} [props.className=""]
  */
@@ -30,6 +33,7 @@ export default function KitchenBottomNav({
   activeTab,
   onTabChange,
   requestCount = 0,
+  hiddenTabs = NO_HIDDEN_TABS,
   disabled = false,
   className = "",
 }) {
@@ -43,7 +47,7 @@ export default function KitchenBottomNav({
       aria-label="Kitchen navigation"
     >
       <div className="kitchen-bottom-nav__items">
-        {TABS.map(({ id, label, accessibleLabel, Icon }) => {
+        {TABS.filter(({ id }) => !hiddenTabs.has(id)).map(({ id, label, accessibleLabel, Icon }) => {
           const isActive = activeTab === id;
           const showBadge = id === "requests" && safeRequestCount > 0;
 

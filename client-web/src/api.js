@@ -1,4 +1,5 @@
 import axios from "axios";
+import { toast } from "react-hot-toast";
 import { clearSession } from "./utils/session";
 
 /**
@@ -36,6 +37,15 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    if (error.response?.status === 403 && error.response.data?.code === "FEATURE_DISABLED") {
+      const key = `mkm:feature-toast:${error.response.data.feature}`;
+      try {
+        if (!sessionStorage.getItem(key)) {
+          sessionStorage.setItem(key, "1");
+          toast.error("This feature is currently disabled for your kitchen.");
+        }
+      } catch { /* storage unavailable: skip the toast rather than break the request flow */ }
+    }
     const refreshToken = localStorage.getItem("refreshToken");
     if (error.response?.status === 401 && refreshToken && !originalRequest?._retried && !originalRequest?.url?.includes("/auth/")) {
       originalRequest._retried = true;

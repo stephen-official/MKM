@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, forwardRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, forwardRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from "../api";
 import { toast } from 'react-hot-toast';
@@ -21,6 +21,7 @@ import KitchenMore from "./kitchen/KitchenMore";
 import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../utils/date";
 import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../features/kitchen/workflows";
 import { clearSession } from "../utils/session";
+import { fetchKitchenFlags, hiddenTabs as computeHidden, isFeatureOn } from "../features.js";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
   <button
@@ -43,6 +44,7 @@ const limitTo3Decimals = (value) => {
   return Number(num.toFixed(3));
 };
 const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "more", "activity", "transfers"]);
+const FEATURE_DISABLED_MESSAGE = "This feature is currently disabled for your kitchen.";
 const legacyUiEnabled = import.meta.env.VITE_ENABLE_LEGACY_KITCHEN_UI === "true";
 const viewFromLocation = () => {
   const view = window.location.hash.replace(/^#\/?/, "");
@@ -83,10 +85,19 @@ const [dailyItems, setDailyItems] = useState([]);
   const [activeReceiveIndent, setActiveReceiveIndent] = useState(null);
   const [receiveItems, setReceiveItems] = useState({});
   const [selectedDate, setSelectedDate] = useState(toLocalDateKey());
+  const [flags, setFlags] = useState(null);
+  const flagsRef = useRef(null);
+  const hidden = useMemo(() => computeHidden(flags), [flags]);
 
   const navigate = useNavigate();
 
   const setActiveTab = (nextView, options = {}) => {
+    if (hidden.has(nextView)) {
+      toast.error(FEATURE_DISABLED_MESSAGE);
+      setActiveTabState("home");
+      window.history.replaceState({ kitchenView: "home" }, "", `${window.location.pathname}${window.location.search}#/home`);
+      return;
+    }
     setActiveTabState(nextView);
     const nextUrl = `${window.location.pathname}${window.location.search}#/${nextView}`;
     window.history[options.replace ? "replaceState" : "pushState"]({ kitchenView: nextView }, "", nextUrl);
@@ -205,22 +216,65 @@ setItems(formatted);
     } catch { setRequests([]); }
   };
 
+  // Loads the lists that belong to the given features; disabled features are never requested.
+  const fetchFeatureData = (nextFlags, only = null) => {
+    const wants = (key) => isFeatureOn(nextFlags, key) && (!only || only.includes(key));
+    return Promise.all([
+      wants("consumption") && fetchMyOrders(),
+      wants("consumption") && fetchDailyUsage(),
+      wants("requests") && fetchMyRequests(),
+      wants("indent") && fetchIndents()
+    ]);
+  };
+
+  // Applies freshly loaded flags: empties lists of newly disabled features, fetches newly enabled ones.
+  const applyFlags = (nextFlags) => {
+    const previous = flagsRef.current;
+    flagsRef.current = nextFlags;
+    setFlags(nextFlags);
+    const newlyOff = (key) => isFeatureOn(previous, key) && !isFeatureOn(nextFlags, key);
+    const newlyOn = ["consumption", "requests", "indent"].filter((key) => !isFeatureOn(previous, key) && isFeatureOn(nextFlags, key));
+    if (newlyOff("consumption")) { setOrders([]); setDailyUsageHistory([]); }
+    if (newlyOff("requests")) setRequests([]);
+    if (newlyOff("indent")) setIndents([]);
+    if (newlyOn.length) fetchFeatureData(nextFlags, newlyOn);
+  };
+
   useEffect(() => {
     const init = async () => {
       setLoading(true);
- await Promise.all([
-  fetchUserInfo(),
-  fetchItems(false),
-  fetchMyOrders(),
-  fetchMyRequests(),
-  fetchIndents(),
-  fetchDailyUsage(),
-  fetchGodowns()
-]);
+      const loadFlags = fetchKitchenFlags().catch(() => null).then((loaded) => {
+        flagsRef.current = loaded;
+        setFlags(loaded);
+        return loaded;
+      });
+      await Promise.all([
+        fetchUserInfo(),
+        fetchItems(false),
+        fetchGodowns(),
+        loadFlags.then((loaded) => fetchFeatureData(loaded))
+      ]);
       setLoading(false);
     };
     init();
+    // Mount-only load; the fetch helpers are re-created every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Pick up admin changes to this kitchen's features whenever the app regains focus.
+  useEffect(() => {
+    const refreshFlags = () => { fetchKitchenFlags().then(applyFlags).catch(() => {}); };
+    window.addEventListener("focus", refreshFlags);
+    return () => window.removeEventListener("focus", refreshFlags);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- applyFlags only touches refs and state setters
+  }, []);
+
+  // A view can become hidden after load (deep link, or flags changed on focus): fall back to home.
+  useEffect(() => {
+    if (!hidden.has(activeTab)) return;
+    setActiveTabState("home");
+    window.history.replaceState({ kitchenView: "home" }, "", `${window.location.pathname}${window.location.search}#/home`);
+  }, [hidden, activeTab]);
 
   const hasDraft = cart.some((item) =>
     Number(mode === "daily" ? item.qtyBaseUnit : item.requestedQty) > 0
@@ -760,7 +814,7 @@ setEditIndentId(indent._id);
           onSubmit={submitReceive}
         />
       ) : activeTab === "more" ? (
-        <KitchenMore userInfo={userInfo} onActivity={openActivity} onTransfers={() => setActiveTab("transfers")} onLogout={handleLogout} />
+        <KitchenMore userInfo={userInfo} hidden={hidden} onActivity={openActivity} onTransfers={() => setActiveTab("transfers")} onLogout={handleLogout} />
       ) : (
         <KitchenItemBuilder
           type={activeTransactionType}
@@ -1480,6 +1534,7 @@ activeTransactionType === "request"
         }
         onTabChange={handleTabChange}
         requestCount={attentionCount}
+        hiddenTabs={hidden}
       />
     </div>
   );
