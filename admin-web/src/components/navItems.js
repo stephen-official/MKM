@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, BookOpen, Boxes, ChartColumn, ClipboardCheck, ClipboardList, Gauge, Share2, ShoppingCart, ToggleRight, Users, Utensils, Warehouse
+  ArrowLeftRight, BookOpen, Boxes, CalendarClock, ChartColumn, ClipboardCheck, ClipboardList, Gauge, Share2, ShoppingCart, ToggleRight, Users, Utensils, Warehouse
 } from "lucide-react";
 
 export const NAV = [
@@ -19,5 +19,6 @@ export const NAV = [
 export const SUPER_NAV = [
   { label: "Executive Report", path: "/executive-report", icon: Gauge, section: "Executive" },
   { label: "Feature Visibility", path: "/feature-visibility", icon: ToggleRight, section: "Executive" },
-  { label: "Users", path: "/users", icon: Users, section: "Executive" }
+  { label: "Users", path: "/users", icon: Users, section: "Executive" },
+  { label: "Report Schedules", path: "/report-schedules", icon: CalendarClock, section: "Executive" }
 ];

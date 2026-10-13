@@ -24,6 +24,7 @@ import { NO_ACCESS_PATH, buildSections, disabledFeatureForPath, firstAllowedPath
 import { FeatureVisibilityPage } from "./pages/FeatureVisibilityPage.jsx";
 import { UsersPage } from "./pages/UsersPage.jsx";
 import { ExecutiveReportPage } from "./pages/ExecutiveReportPage.jsx";
+import { ReportSchedulesPage } from "./pages/ReportSchedulesPage.jsx";
 
 function AdminShell({ onLogout, routeMap }) {
   const { flags, role, status } = useFeatureFlags();
@@ -71,7 +72,8 @@ export const App = () => {
       "/product-ledger": <ProductLedger />,
       "/executive-report": <ExecutiveReportPage />,
       "/feature-visibility": <FeatureVisibilityPage />,
-      "/users": <UsersPage />
+      "/users": <UsersPage />,
+      "/report-schedules": <ReportSchedulesPage />
     }),
     []
   );
