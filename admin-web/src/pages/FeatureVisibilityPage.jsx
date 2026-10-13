@@ -9,7 +9,7 @@ import { FeatureAuditList } from "./features/FeatureAuditList.jsx";
 import { OverridesPanel } from "./features/OverridesPanel.jsx";
 import { applyEdits, describeChange, pendingChanges, pruneEdits } from "./features/diff.js";
 
-const SCOPE_TABS = [{ value: "global", label: "All admins" }, { value: "kitchen", label: "Per kitchen" }];
+const SCOPE_TABS = [{ value: "global", label: "All admins" }, { value: "kitchen", label: "Per kitchen" }, { value: "user", label: "Per user" }];
 
 export function FeatureVisibilityPage() {
   const { showToast } = useToast();
@@ -23,6 +23,7 @@ export function FeatureVisibilityPage() {
   const [audit, setAudit] = useState(null);
   const [scope, setScope] = useState("global");
   const [kitchens, setKitchens] = useState([]);
+  const [users, setUsers] = useState([]);
 
   // Resolves true when the latest settings were loaded, so callers can tell a failed reload apart.
   const loadAdmin = useCallback(async () => {
@@ -55,6 +56,20 @@ export function FeatureVisibilityPage() {
   useEffect(() => {
     api.get("/inventory/godowns").then(({ data }) => setKitchens(data)).catch(() => setKitchens([]));
   }, []);
+
+  useEffect(() => {
+    api.get("/users", { params: { pageSize: "all" } }).then(({ data }) => setUsers(data.items)).catch(() => setUsers([]));
+  }, []);
+
+  const userTargets = useMemo(
+    () => users.filter((u) => u.role !== "super_admin").map((u) => ({
+      id: String(u._id),
+      label: `${u.name} (${u.role === "admin" ? "admin" : u.kitchenName || "kitchen"})`,
+      audience: u.role === "admin" ? "admin" : "kitchen",
+      kitchenId: u.godownId ? String(u.godownId) : null
+    })),
+    [users]
+  );
 
   const kitchenTargets = useMemo(
     () => kitchens.map((k) => ({ id: String(k._id), label: k.active === false ? `${k.name} (inactive)` : k.name, audience: "kitchen" })),
@@ -134,6 +149,11 @@ export function FeatureVisibilityPage() {
       {scope === "kitchen" && (
         <Card>
           <OverridesPanel scope="kitchen" targets={kitchenTargets} features={admin.features} globalFlags={admin.flags} onSaved={() => loadAudit(1)} />
+        </Card>
+      )}
+      {scope === "user" && (
+        <Card>
+          <OverridesPanel scope="user" targets={userTargets} features={admin.features} globalFlags={admin.flags} onSaved={() => loadAudit(1)} />
         </Card>
       )}
       <h2 className="section-title">Change history</h2>

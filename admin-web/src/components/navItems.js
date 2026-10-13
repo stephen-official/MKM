@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, BookOpen, Boxes, ChartColumn, ClipboardCheck, ClipboardList, Gauge, Share2, ShoppingCart, ToggleRight, Utensils, Warehouse
+  ArrowLeftRight, BookOpen, Boxes, ChartColumn, ClipboardCheck, ClipboardList, Gauge, Share2, ShoppingCart, ToggleRight, Users, Utensils, Warehouse
 } from "lucide-react";
 
 export const NAV = [
@@ -18,5 +18,6 @@ export const NAV = [
 /** Super-admin-only pages. They are not feature flags and cannot be disabled. */
 export const SUPER_NAV = [
   { label: "Executive Report", path: "/executive-report", icon: Gauge, section: "Executive" },
-  { label: "Feature Visibility", path: "/feature-visibility", icon: ToggleRight, section: "Executive" }
+  { label: "Feature Visibility", path: "/feature-visibility", icon: ToggleRight, section: "Executive" },
+  { label: "Users", path: "/users", icon: Users, section: "Executive" }
 ];

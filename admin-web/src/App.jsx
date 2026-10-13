@@ -22,6 +22,7 @@ import { useFeatureFlags } from "./features/FeatureFlagsContext.js";
 import { FeatureDisabledPage } from "./features/FeatureDisabledPage.jsx";
 import { NO_ACCESS_PATH, buildSections, disabledFeatureForPath, firstAllowedPath, isPathAllowed } from "./features/featureNav.js";
 import { FeatureVisibilityPage } from "./pages/FeatureVisibilityPage.jsx";
+import { UsersPage } from "./pages/UsersPage.jsx";
 import { ExecutiveReportPage } from "./pages/ExecutiveReportPage.jsx";
 
 function AdminShell({ onLogout, routeMap }) {
@@ -69,7 +70,8 @@ export const App = () => {
       "/reports": <ReportsPage />,
       "/product-ledger": <ProductLedger />,
       "/executive-report": <ExecutiveReportPage />,
-      "/feature-visibility": <FeatureVisibilityPage />
+      "/feature-visibility": <FeatureVisibilityPage />,
+      "/users": <UsersPage />
     }),
     []
   );

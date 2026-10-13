@@ -17,7 +17,7 @@ describe("featureNav", () => {
     const reports = sections.flatMap((s) => s.items).find((i) => i.path === "/reports");
     expect(reports.hiddenFromAdmins).toBe(true);
     expect(sections.at(-1).title).toBe("Executive");
-    expect(sections.at(-1).items.map((i) => i.path)).toEqual(["/executive-report", "/feature-visibility"]);
+    expect(sections.at(-1).items.map((i) => i.path)).toEqual(["/executive-report", "/feature-visibility", "/users"]);
   });
   it("empty sections are dropped", () => {
     const flags = { ...all, reports: false, consumption: false, requests: false, "product-ledger": false, "transfer-stock": false };
