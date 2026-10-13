@@ -100,6 +100,28 @@ test("a schedule whose next run cannot be computed is deactivated without sendin
   assert.equal(sent.length, 0);
 });
 
+test("failing to persist nextRunAt skips the run, keeps the schedule active and releases the lock", async (t) => {
+  const s = await schedule();
+  const original = ReportSchedule.updateOne.bind(ReportSchedule);
+  let calls = 0;
+  t.mock.method(ReportSchedule, "updateOne", (...args) => {
+    calls += 1;
+    if (calls === 1) throw new Error("db blip");
+    return original(...args);
+  });
+  t.mock.method(console, "error", () => {});
+  await runDueSchedules({ now: NOW, mailer: fakeMailer });
+  assert.equal(sent.length, 0, "no send without a persisted next run");
+  const doc = await ReportSchedule.findById(s._id).lean();
+  assert.equal(doc.active, true);
+  assert.equal(doc.lockedUntil, null);
+  assert.equal(doc.lastError ?? null, null);
+  assert.equal(await ReportRun.countDocuments({ errorCode: "INVALID_SCHEDULE" }), 0);
+  // the next tick picks it up normally
+  assert.equal((await runDueSchedules({ now: NOW, mailer: fakeMailer })).ran, 1);
+  assert.equal(sent.length, 1);
+});
+
 test("a bookkeeping failure after a successful send never causes a second send", async (t) => {
   await schedule();
   t.mock.method(ReportRun, "create", () => { throw new Error("db"); });
@@ -138,4 +160,5 @@ test("HTTP: create, conflict, run-now, history (super-admin only)", async () => 
   assert.equal(inactive.status, 409);
   assert.equal(inactive.body.code, "SCHEDULE_INACTIVE");
   assert.equal((await as(root, "get", `/api/report-schedules/${created.body._id}/runs`)).body.total, 0);
+  assert.equal((await as(root, "get", `/api/report-schedules/${created.body._id}/runs?page=100000000000000000000`)).status, 200);
 });

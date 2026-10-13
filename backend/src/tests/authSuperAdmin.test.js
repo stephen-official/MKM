@@ -54,3 +54,12 @@ test("logout revokes the refresh token for any role", async () => {
   }
   assert.equal((await request(app).post("/api/auth/logout")).status, 401);
 });
+
+test("logout answers 500 with a message when revoking fails", async (t) => {
+  const { token } = await createUser({ role: "admin" });
+  t.mock.method(User, "updateOne", async () => { throw new Error("db down"); });
+  t.mock.method(console, "error", () => {});
+  const out = await request(app).post("/api/auth/logout").set("Authorization", `Bearer ${token}`);
+  assert.equal(out.status, 500);
+  assert.ok(out.body.message);
+});

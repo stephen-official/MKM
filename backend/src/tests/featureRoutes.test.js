@@ -80,6 +80,12 @@ test("audit page parameter is sanitised", async () => {
   assert.equal(res.body.page, 1);
 });
 
+test("audit page is capped so a huge page cannot overflow skip", async () => {
+  const res = await as(superAdmin, "get", "/api/features/audit?page=100000000000000000000");
+  assert.equal(res.status, 200);
+  assert.equal(res.body.page, 10000);
+});
+
 test("audit filters ignore object-shaped query params instead of passing them to Mongo", async () => {
   await as(superAdmin, "put", "/api/features").send({ expectedVersion: 0, changes: { reports: false } });
   const res = await as(superAdmin, "get", "/api/features/audit?targetId[$ne]=x&scope[$ne]=global");

@@ -1,17 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { io, roomsFor, setIo } from "../realtime.js";
+import { disconnectUser, io, roomsFor, setIo } from "../realtime.js";
 
-test("admin-tier users join the admins room only", () => {
-  assert.deepEqual(roomsFor({ role: "admin", godownId: null }), ["admins"]);
-  assert.deepEqual(roomsFor({ role: "super_admin", godownId: null }), ["admins"]);
-  assert.deepEqual(roomsFor({ role: "super_admin", godownId: "abc" }), ["admins"]);
+test("admin-tier users join the admins room and their personal room", () => {
+  assert.deepEqual(roomsFor({ id: "u1", role: "admin", godownId: null }), ["admins", "user:u1"]);
+  assert.deepEqual(roomsFor({ id: "u2", role: "super_admin", godownId: null }), ["admins", "user:u2"]);
+  assert.deepEqual(roomsFor({ id: "u2", role: "super_admin", godownId: "abc" }), ["admins", "user:u2"]);
 });
 
-test("kitchen users join their kitchen room; a user without a kitchen joins nothing", () => {
-  assert.deepEqual(roomsFor({ role: "user", godownId: "g1" }), ["g1"]);
-  assert.deepEqual(roomsFor({ role: "user", godownId: null }), []);
+test("kitchen users join their kitchen room and personal room; without a kitchen only the personal room", () => {
+  assert.deepEqual(roomsFor({ id: "u3", role: "user", godownId: "g1" }), ["g1", "user:u3"]);
+  assert.deepEqual(roomsFor({ id: "u3", role: "user", godownId: null }), ["user:u3"]);
   assert.deepEqual(roomsFor(undefined), []);
+});
+
+test("disconnectUser is a no-op before setIo and drops the user's room afterwards", () => {
+  assert.doesNotThrow(() => disconnectUser("u1"));
+  const calls = [];
+  const fake = { in: (room) => ({ disconnectSockets: (close) => calls.push([room, close]) }) };
+  setIo(fake);
+  disconnectUser("u1");
+  assert.deepEqual(calls, [["user:u1", true]]);
+  setIo(null);
 });
 
 test("emits are no-ops before setIo and delegate after", () => {

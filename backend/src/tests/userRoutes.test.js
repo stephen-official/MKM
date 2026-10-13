@@ -7,6 +7,8 @@ import mongoose from "mongoose";
 import { mailer } from "../utils/mailer.js";
 import { User } from "../models/User.js";
 import { assertNotLastActiveSuperAdmin } from "../routes/userRoutes.js";
+import { setIo } from "../realtime.js";
+import { Godown } from "../models/InventoryModels.js";
 
 let app;
 let ctx;
@@ -124,4 +126,48 @@ test("audit rows record before/after without secrets", async () => {
   const audit = await as("root", "get", "/api/users/audit");
   assert.equal(audit.body.items[0].action, "create");
   assert.equal(JSON.stringify(audit.body.items[0]).includes("passwordHash"), false);
+});
+
+test("a kitchen user whose kitchen is inactive can still be renamed and deactivated", async () => {
+  await Godown.updateOne({ _id: ctx.kitchen._id }, { $set: { active: false } });
+  const target = await User.findById(ctx.cook.user._id).lean();
+  const renamed = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, name: "Cook Renamed" });
+  assert.equal(renamed.status, 200, JSON.stringify(renamed.body));
+  assert.equal(renamed.body.user.name, "Cook Renamed");
+  assert.equal(String(renamed.body.user.godownId), String(ctx.kitchen._id));
+  const again = await User.findById(target._id).lean();
+  const off = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: again.updatedAt, active: false });
+  assert.equal(off.status, 200, JSON.stringify(off.body));
+  assert.equal(off.body.user.active, false);
+  // moving to an inactive kitchen is still refused
+  const back = await User.findById(target._id).lean();
+  const moved = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: back.updatedAt, godownId: ctx.kitchen._id, role: "user", active: true });
+  assert.equal(moved.status, 200, "unchanged kitchen is not re-validated");
+  const other = await createGodown("Kitchen B");
+  await Godown.updateOne({ _id: other._id }, { $set: { active: false } });
+  const last = await User.findById(target._id).lean();
+  const bad = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: last.updatedAt, godownId: other._id });
+  assert.equal(bad.body.code, "INVALID_KITCHEN");
+});
+
+test("demoting a user disconnects their live sockets; a rename does not", async () => {
+  const calls = [];
+  setIo({ in: (room) => ({ disconnectSockets: (close) => calls.push([room, close]) }) });
+  try {
+    const target = await User.findById(ctx.admin.user._id).lean();
+    const renamed = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, name: "Amy 2" });
+    assert.equal(renamed.status, 200);
+    assert.deepEqual(calls, []);
+    const fresh = await User.findById(target._id).lean();
+    const demoted = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: fresh.updatedAt, role: "user", godownId: ctx.kitchen._id });
+    assert.equal(demoted.status, 200, JSON.stringify(demoted.body));
+    assert.deepEqual(calls, [[`user:${target._id}`, true]]);
+  } finally {
+    setIo(null);
+  }
+});
+
+test("absurd page numbers are clamped instead of failing", async () => {
+  assert.equal((await as("root", "get", "/api/users?page=100000000000000000000")).status, 200);
+  assert.equal((await as("root", "get", "/api/users/audit?page=100000000000000000000")).status, 200);
 });

@@ -16,8 +16,15 @@ export const io = {
   emit: (...args) => (instance ? instance.emit(...args) : false)
 };
 
+/** Drop every live socket of a user (their role, kitchen or active flag changed). No-op before setIo. */
+export const disconnectUser = (id) => {
+  if (instance) instance.in(`user:${id}`).disconnectSockets(true);
+};
+
 /** Rooms a connected socket joins. Admin-tier users share "admins"; kitchens join their godown room. */
 export const roomsFor = (user) => {
-  if (isAdminRole(user?.role)) return ["admins"];
-  return user?.godownId ? [String(user.godownId)] : [];
+  if (!user) return [];
+  const personal = user.id ? [`user:${user.id}`] : [];
+  if (isAdminRole(user.role)) return ["admins", ...personal];
+  return user.godownId ? [String(user.godownId), ...personal] : personal;
 };

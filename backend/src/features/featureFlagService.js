@@ -4,6 +4,7 @@ import { FeatureFlagAudit, FeatureFlags, GLOBAL_FLAGS_ID } from "../models/Featu
 import { User } from "../models/User.js";
 import { Godown } from "../models/InventoryModels.js";
 import { isAdminRole, isSuperAdmin } from "../utils/roles.js";
+import { clampPage } from "../utils/pagination.js";
 
 export const CACHE_TTL_MS = 5_000;
 export const STALE_LIMIT_MS = 5 * 60_000;
@@ -214,7 +215,7 @@ export const resolveEffectiveFlags = async (user) => {
 };
 
 export const listAudit = async ({ page = 1, scope, targetId } = {}) => {
-  const safePage = Number.isInteger(Number(page)) && Number(page) > 0 ? Number(page) : 1;
+  const safePage = clampPage(page);
   const filter = {};
   if (scope) filter.scope = scope;
   if (targetId) filter.targetId = String(targetId);

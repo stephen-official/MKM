@@ -50,9 +50,9 @@ export const ensureSuperAdmin = async ({ email, name, password, promote = false,
 };
 
 const main = async () => {
-  const { connectDB } = await import("../config/db.js");
-  await connectDB();
   try {
+    const { connectDB } = await import("../config/db.js");
+    await connectDB();
     const result = await ensureSuperAdmin({
       email: process.env.SUPER_ADMIN_EMAIL,
       name: process.env.SUPER_ADMIN_NAME,

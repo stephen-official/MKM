@@ -84,8 +84,13 @@ authRoutes.post("/refresh", async (req, res) => {
 
 // --- Logout: revoke the refresh token so it cannot mint new access tokens ---
 authRoutes.post("/logout", authenticate, async (req, res) => {
-  await User.updateOne({ _id: req.user.sub }, { $set: { refreshToken: null } });
-  return res.status(204).end();
+  try {
+    await User.updateOne({ _id: req.user.sub }, { $set: { refreshToken: null } });
+    return res.status(204).end();
+  } catch (error) {
+    console.error("[auth] logout failed", error);
+    return res.status(500).json({ message: "Could not sign out. Try again." });
+  }
 });
 
 // --- Password Reset Flow ---

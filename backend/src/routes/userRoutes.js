@@ -9,6 +9,8 @@ import { UserAdminAudit } from "../models/AdminAuditModels.js";
 import { ALL_ROLES, ROLES, isSuperAdmin } from "../utils/roles.js";
 import { createResetToken, hashResetToken } from "../utils/tokens.js";
 import { mailer } from "../utils/mailer.js";
+import { clampPage } from "../utils/pagination.js";
+import { disconnectUser } from "../realtime.js";
 
 export const userRoutes = express.Router();
 const superAdminOnly = authorize(["super_admin"]);
@@ -75,7 +77,7 @@ userRoutes.get("/", async (req, res) => {
     const q = String(req.query.q || "").trim();
     if (q) filter.$or = [{ name: { $regex: escapeRegex(q), $options: "i" } }, { email: { $regex: escapeRegex(q), $options: "i" } }];
     const pageSize = req.query.pageSize === "all" ? 1000 : Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 25));
-    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const page = clampPage(req.query.page);
     const [items, total] = await Promise.all([
       User.find(filter).select(SAFE_FIELDS).populate("godownId", "name").collation({ locale: "en", strength: 2 })
         .sort({ name: 1, _id: 1 }).skip((page - 1) * pageSize).limit(pageSize).lean(),
@@ -89,7 +91,7 @@ userRoutes.get("/", async (req, res) => {
 
 userRoutes.get("/audit", async (req, res) => {
   try {
-    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const page = clampPage(req.query.page);
     const [items, total] = await Promise.all([
       UserAdminAudit.find().sort({ at: -1, _id: -1 }).skip((page - 1) * 25).limit(25).lean(),
       UserAdminAudit.countDocuments()
@@ -137,6 +139,7 @@ userRoutes.patch("/:id", async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) fail(404, "USER_NOT_FOUND", "No such user.");
     let result;
+    let revoke = false;
     await session.withTransaction(async () => {
       const user = await User.findById(req.params.id).session(session);
       if (!user) fail(404, "USER_NOT_FOUND", "No such user.");
@@ -165,14 +168,19 @@ userRoutes.patch("/:id", async (req, res) => {
 
       const accessChanged = (role !== undefined && role !== user.role) || (active !== undefined && active !== user.active) ||
         (godownId !== undefined && String(godownId || "") !== String(user.godownId || ""));
+      const roleChanged = nextRole !== user.role;
+      const kitchenChanged = godownId !== undefined && String(godownId || "") !== String(user.godownId || "");
       user.role = nextRole;
-      user.godownId = nextRole === ROLES.USER ? await validateKitchen(nextRole, godownId ?? user.godownId) : null;
+      if (nextRole !== ROLES.USER) user.godownId = null;
+      else if (roleChanged || kitchenChanged) user.godownId = await validateKitchen(nextRole, godownId ?? user.godownId);
       if (active !== undefined) user.active = active;
       if (accessChanged) user.refreshToken = null;
       await user.save({ session });
       await UserAdminAudit.create([{ ...(await actorOf(req)), targetUserId: user._id, action: "update", before, after: snapshot(user) }], { session });
       result = user._id;
+      revoke = accessChanged;
     });
+    if (revoke) disconnectUser(result);
     const updated = await User.findById(result).select(SAFE_FIELDS).populate("godownId", "name").lean();
     return res.json({ user: safe(updated) });
   } catch (error) {

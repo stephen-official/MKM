@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { ReportRun, ReportSchedule } from "../models/ReportScheduleModels.js";
 import { computeNextRun, validateSchedule } from "../executive/schedule.js";
+import { clampPage } from "../utils/pagination.js";
 
 export const reportScheduleRoutes = express.Router();
 reportScheduleRoutes.use(authorize(["super_admin"]));
@@ -70,7 +71,7 @@ reportScheduleRoutes.post("/:id/run", async (req, res) => {
 reportScheduleRoutes.get("/:id/runs", async (req, res) => {
   try {
     const current = await findOr404(req.params.id);
-    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+    const page = clampPage(req.query.page);
     const [items, total] = await Promise.all([
       ReportRun.find({ scheduleId: current._id }).sort({ startedAt: -1, _id: -1 }).skip((page - 1) * 25).limit(25).lean(),
       ReportRun.countDocuments({ scheduleId: current._id })
