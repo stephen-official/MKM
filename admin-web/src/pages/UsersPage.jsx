@@ -4,6 +4,7 @@ import { Badge, Banner, Button, Card, DataTable, EmptyState, ErrorState, Loading
 import { useToast } from "../useToast.js";
 import { formatDateTime } from "../businessTime.js";
 import { ROLES, isKitchenRole } from "../roles.js";
+import { jwtSubject } from "../jwt.js";
 import { UserForm } from "./users/UserForm.jsx";
 import { patchFromForm } from "./users/userForm.js";
 import { createRequestTracker } from "./executive/requestTracker.js";
@@ -137,6 +138,7 @@ export function UsersPage() {
           initial={editing.isNew ? EMPTY : { ...editing.user, godownId: editing.user.godownId || "", confirmSuperAdmin: false }}
           kitchens={kitchens}
           isNew={editing.isNew}
+          isSelf={!editing.isNew && String(editing.user._id) === jwtSubject(localStorage.getItem("accessToken"))}
           busy={busy}
           onCancel={() => setEditing(null)}
           onSubmit={save}

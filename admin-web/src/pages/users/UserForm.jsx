@@ -5,7 +5,7 @@ import { needsSuperAdminConfirm, validateUserForm } from "./userForm.js";
 
 const ROLE_LABEL = { user: "Kitchen user", admin: "Admin", super_admin: "Super-admin" };
 
-export function UserForm({ title, initial, kitchens, isNew, busy, onCancel, onSubmit }) {
+export function UserForm({ title, initial, kitchens, isNew, isSelf = false, busy, onCancel, onSubmit }) {
   const [form, setForm] = useState(initial);
   const [errors, setErrors] = useState({});
   const set = (patch) => setForm((prev) => ({ ...prev, ...patch }));
@@ -27,10 +27,11 @@ export function UserForm({ title, initial, kitchens, isNew, busy, onCancel, onSu
         <Field label="Name"><input value={form.name} onChange={(e) => set({ name: e.target.value })} />{error("name")}</Field>
         {isNew && <Field label="Email"><input type="email" value={form.email} onChange={(e) => set({ email: e.target.value })} />{error("email")}</Field>}
         <Field label="Role">
-          <select value={form.role} onChange={(e) => set({ role: e.target.value })}>
+          <select value={form.role} disabled={isSelf} onChange={(e) => set({ role: e.target.value })}>
             {Object.entries(ROLE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </Field>
+        {isSelf && <p className="exec-section__note">This is your own account, so you cannot change your role or deactivate it.</p>}
         {isKitchenRole(form.role) && (
           <Field label="Kitchen">
             <select value={form.godownId || ""} onChange={(e) => set({ godownId: e.target.value })}>
@@ -48,7 +49,7 @@ export function UserForm({ title, initial, kitchens, isNew, busy, onCancel, onSu
         )}
         {!isNew && (
           <label className="checkbox">
-            <input type="checkbox" checked={form.active} onChange={(e) => set({ active: e.target.checked })} />
+            <input type="checkbox" checked={form.active} disabled={isSelf} onChange={(e) => set({ active: e.target.checked })} />
             <span>Account active</span>
           </label>
         )}

@@ -6,8 +6,8 @@ import { TRI_STATE, effectivePreview, overrideChanges, toTri } from "./overrides
 
 const TRI_LABEL = { inherit: "Inherit", shown: "Shown", hidden: "Hidden" };
 
-/** scope: "kitchen" | "user". targets: [{ id, label, audience: "admin"|"kitchen", kitchenId? }] */
-export function OverridesPanel({ scope, targets, features, globalFlags, onSaved }) {
+/** scope: "kitchen" | "user". targets: [{ id, label, audience: "admin"|"kitchen", kitchenId? }]; note: optional text under the picker. */
+export function OverridesPanel({ scope, targets, note, features, globalFlags, onSaved }) {
   const { showToast } = useToast();
   const [targetId, setTargetId] = useState("");
   const [doc, setDoc] = useState(null);
@@ -89,6 +89,7 @@ export function OverridesPanel({ scope, targets, features, globalFlags, onSaved 
           {targets.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
         </select>
       </Field>
+      {note && <p className="exec-section__note">{note}</p>}
       {!targetId && <EmptyState title={`Choose a ${scope} to see its overrides`}>Overrides take priority over the general setting.</EmptyState>}
       {conflict && (
         <Banner variant="warn">

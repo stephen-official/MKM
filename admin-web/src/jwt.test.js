@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isJwtExpired } from "./jwt.js";
+import { isJwtExpired, jwtSubject } from "./jwt.js";
 
 const make = (payload) => `h.${btoa(JSON.stringify(payload)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}.s`;
 
@@ -16,5 +16,14 @@ describe("isJwtExpired", () => {
     expect(isJwtExpired(make({ sub: "1" }), now)).toBe(false);
     expect(isJwtExpired("garbage", now)).toBe(true);
     expect(isJwtExpired(undefined, now)).toBe(true);
+  });
+});
+
+describe("jwtSubject", () => {
+  it("reads the sub claim and tolerates unreadable tokens", () => {
+    expect(jwtSubject(make({ sub: "u1" }))).toBe("u1");
+    expect(jwtSubject(make({ exp: 1 }))).toBe(null);
+    expect(jwtSubject("garbage")).toBe(null);
+    expect(jwtSubject(null)).toBe(null);
   });
 });

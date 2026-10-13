@@ -9,3 +9,14 @@ export const isJwtExpired = (token, now = Date.now(), skewMs = 5_000) => {
     return true;
   }
 };
+
+/** The `sub` (user id) claim of a JWT, or null when it cannot be read. */
+export const jwtSubject = (token) => {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const { sub } = JSON.parse(atob(payload));
+    return typeof sub === "string" ? sub : null;
+  } catch {
+    return null;
+  }
+};

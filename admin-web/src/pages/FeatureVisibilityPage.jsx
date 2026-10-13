@@ -7,6 +7,7 @@ import { isAdminRole, isSuperAdmin } from "../roles.js";
 import { formatDateTime } from "../businessTime.js";
 import { FeatureToggleTable } from "./features/FeatureToggleTable.jsx";
 import { FeatureAuditList } from "./features/FeatureAuditList.jsx";
+import { truncationNote } from "./features/overrides.js";
 import { OverridesPanel } from "./features/OverridesPanel.jsx";
 import { applyEdits, describeChange, neededTargetScopes, pendingChanges, pruneEdits, scopeNote } from "./features/diff.js";
 
@@ -25,6 +26,7 @@ export function FeatureVisibilityPage() {
   const [scope, setScope] = useState("global");
   const [kitchens, setKitchens] = useState([]);
   const [users, setUsers] = useState([]);
+  const [usersTotal, setUsersTotal] = useState(0);
   const [reloading, setReloading] = useState(false);
   const [visited, setVisited] = useState(() => new Set(["global"]));
   const requested = useRef({ kitchen: false, user: false });
@@ -69,9 +71,10 @@ export function FeatureVisibilityPage() {
     }
     if (need.user && !requested.current.user) {
       requested.current.user = true;
-      api.get("/users", { params: { pageSize: "all" } }).then(({ data }) => setUsers(data.items)).catch(() => {
+      api.get("/users", { params: { pageSize: "all" } }).then(({ data }) => { setUsers(data.items); setUsersTotal(data.total); }).catch(() => {
         requested.current.user = false;
         setUsers([]);
+        setUsersTotal(0);
       });
     }
   }, [need.kitchen, need.user]);
@@ -182,7 +185,7 @@ export function FeatureVisibilityPage() {
       )}
       {scope === "user" && (
         <Card>
-          <OverridesPanel scope="user" targets={userTargets} features={admin.features} globalFlags={admin.flags} onSaved={() => loadAudit(1)} />
+          <OverridesPanel scope="user" targets={userTargets} note={truncationNote(usersTotal, users.length)} features={admin.features} globalFlags={admin.flags} onSaved={() => loadAudit(1)} />
         </Card>
       )}
       <h2 className="section-title">Change history</h2>
