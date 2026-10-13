@@ -67,7 +67,8 @@ export const loadFlagsDoc = async (id, { now = Date.now() } = {}) => {
     if (generationOf(id) === startedIn) caches.set(id, { state, loadedAt: now });
     return state;
   } catch (error) {
-    if (cached && now - cached.loadedAt < STALE_LIMIT_MS) {
+    // A copy from before an invalidation (a write) must not be served as "stale": better unavailable than wrong.
+    if (cached && now - cached.loadedAt < STALE_LIMIT_MS && generationOf(id) === startedIn) {
       console.warn(`[features] using cached ${id}; reload failed: ${error.message}`);
       return cached.state;
     }

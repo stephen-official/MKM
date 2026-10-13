@@ -121,6 +121,41 @@ test("PATCH re-checks inside the transaction that the actor is still an active s
   assert.equal(await UserAdminAudit.countDocuments(), 0);
 });
 
+test("create and send-reset refuse an actor who is no longer an active super-admin", async (t) => {
+  const realFindOne = User.findOne.bind(User);
+  t.mock.method(User, "findOne", (filter, ...rest) =>
+    (String(filter?._id) === String(ctx.root.user._id) && filter.role === "super_admin"
+      ? { session: () => ({ lean: async () => null }) }
+      : realFindOne(filter, ...rest)));
+  const created = await as("root", "post", "/api/users").send({ name: "Nope", email: "nope@x.io", role: "admin" });
+  assert.equal(created.status, 403);
+  assert.equal(await User.exists({ email: "nope@x.io" }), null);
+  assert.equal(await UserAdminAudit.countDocuments(), 0);
+  const reset = await as("root", "post", `/api/users/${ctx.admin.user._id}/send-reset`);
+  assert.equal(reset.status, 403);
+  assert.equal(mailer.sendInviteEmail.mock.callCount(), 0);
+});
+
+test("create is retried as a whole: a transient transaction error still yields one account and one audit row", async (t) => {
+  const realSave = User.prototype.save;
+  let attempts = 0;
+  t.mock.method(User.prototype, "save", async function (...args) {
+    attempts += 1;
+    const saved = await realSave.apply(this, args);
+    if (attempts === 1) {
+      const transient = new mongoose.mongo.MongoServerError({ message: "transient" });
+      transient.addErrorLabel("TransientTransactionError");
+      throw transient;
+    }
+    return saved;
+  });
+  const res = await as("root", "post", "/api/users").send({ name: "Retry", email: "retry@x.io", role: "admin" });
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  assert.ok(attempts >= 2);
+  assert.equal(await User.countDocuments({ email: "retry@x.io" }), 1);
+  assert.equal(await UserAdminAudit.countDocuments({ action: "create" }), 1);
+});
+
 test("PATCH without a body is a version conflict, not a crash", async () => {
   const res = await as("root", "patch", `/api/users/${ctx.admin.user._id}`);
   assert.equal(res.status, 409);

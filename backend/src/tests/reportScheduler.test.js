@@ -84,6 +84,14 @@ test("mail failure is a failed run", async (t) => {
   assert.equal(errors.mock.callCount(), 1);
 });
 
+test("an xlsx schedule attaches a Buffer (so the size guard counts bytes)", async () => {
+  await schedule({ format: "xlsx" });
+  await runDueSchedules({ now: NOW, mailer: fakeMailer });
+  assert.equal(sent.length, 1);
+  assert.ok(Buffer.isBuffer(sent[0].attachment.content));
+  assert.equal(sent[0].attachment.content.subarray(0, 2).toString(), "PK", "xlsx is a zip");
+});
+
 test("a PDF schedule attaches a real PDF with the right name and type", async () => {
   const s = await schedule({ format: "pdf" });
   await runDueSchedules({ now: NOW, mailer: fakeMailer });

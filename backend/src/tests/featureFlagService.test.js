@@ -121,6 +121,17 @@ test("cache: served for 5 s, then reloaded; stale copy used for up to 5 min when
     (e) => e.status === 503 && e.code === "FEATURE_FLAGS_UNAVAILABLE");
 });
 
+test("a pre-write cached copy is not served as stale after an invalidation", async (t) => {
+  const t0 = Date.now();
+  await loadGlobalFlags({ now: t0 });
+  t.mock.method(FeatureFlags, "findById", () => ({
+    lean: async () => { invalidateFlagCache("global"); throw new Error("db down"); }
+  }));
+  const warn = t.mock.method(console, "warn", () => {});
+  await assert.rejects(loadGlobalFlags({ now: t0 + 10_000 }), (e) => e.status === 503 && e.code === "FEATURE_FLAGS_UNAVAILABLE");
+  assert.equal(warn.mock.callCount(), 0, "no stale copy was used");
+});
+
 test("no cached copy and DB down → 503", async (t) => {
   t.mock.method(FeatureFlags, "findById", () => ({ lean: async () => { throw new Error("db down"); } }));
   await assert.rejects(loadGlobalFlags(), (e) => e.code === "FEATURE_FLAGS_UNAVAILABLE");

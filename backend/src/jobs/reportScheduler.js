@@ -17,7 +17,8 @@ const claimNext = (now, skip = []) => ReportSchedule.findOneAndUpdate(
 
 const defaultRenderers = {
   pdf: (report) => renderPdf(pdfBlocks(report)),
-  xlsx: (report) => buildExcelWorkbook(report).xlsx.writeBuffer()
+  // writeBuffer is typed as ArrayBuffer-ish; a real Buffer keeps `.length` a byte count for the size guard.
+  xlsx: async (report) => Buffer.from(await buildExcelWorkbook(report).xlsx.writeBuffer())
 };
 
 const runOne = async (schedule, now, mailer, renderers) => {

@@ -56,7 +56,7 @@ const validateKitchen = async (role, godownId) => {
  */
 /** The request was authorised before the transaction began; make sure the actor still holds that power. */
 export const assertActorIsActiveSuperAdmin = async (session, actorId) => {
-  const actor = await User.findOne({ _id: actorId, role: ROLES.SUPER_ADMIN, active: true }).session(session).lean();
+  const actor = await User.findOne({ _id: actorId, role: ROLES.SUPER_ADMIN, active: true }).session(session ?? null).lean();
   if (!actor) fail(403, "FORBIDDEN", "Your access has changed. Sign in again.");
 };
 
@@ -124,10 +124,14 @@ userRoutes.post("/", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
     const actor = await actorOf(req);
-    const user = new User({ name, email, role, godownId, active: true, passwordHash });
-    const token = stageToken(user, INVITE_TTL_MS);
+    let user;
+    let token;
     // The account and its audit row commit together; the email goes out only once they are durable.
+    // Everything is built inside the callback so a retried attempt starts from a fresh, new document.
     await session.withTransaction(async () => {
+      await assertActorIsActiveSuperAdmin(session, req.user.sub);
+      user = new User({ name, email, role, godownId, active: true, passwordHash });
+      token = stageToken(user, INVITE_TTL_MS);
       await user.save({ session });
       await UserAdminAudit.create([{ ...actor, targetUserId: user._id, action: "create", before: null, after: snapshot(user) }], { session });
     });
@@ -213,6 +217,7 @@ userRoutes.patch("/:id", async (req, res) => {
 
 userRoutes.post("/:id/send-reset", async (req, res) => {
   try {
+    await assertActorIsActiveSuperAdmin(null, req.user.sub);
     if (!mongoose.isValidObjectId(req.params.id)) fail(404, "USER_NOT_FOUND", "No such user.");
     const user = await User.findById(req.params.id);
     if (!user) fail(404, "USER_NOT_FOUND", "No such user.");
