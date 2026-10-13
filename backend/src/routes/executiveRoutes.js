@@ -3,6 +3,7 @@ import { authorize } from "../middleware/auth.js";
 import { buildExecutiveReport } from "../executive/buildReport.js";
 import { buildExcelWorkbook } from "../executive/excelExport.js";
 import { buildExportReport, contentDisposition, exportFilename } from "../executive/exportCommon.js";
+import { pdfBlocks, renderPdf } from "../executive/pdfExport.js";
 import { ReportParamError, parseReportParams } from "../executive/params.js";
 
 export const executiveRoutes = express.Router();
@@ -44,6 +45,18 @@ executiveRoutes.get("/export.xlsx", superAdminOnly, async (req, res) => {
     const filename = exportFilename({ kitchen: report.meta.kitchen, from: report.meta.from, to: report.meta.to, generatedAt: report.meta.generatedAt, tz: report.meta.timezone, ext: "xlsx" });
     res.set({ "Content-Type": XLSX_MIME, "Content-Disposition": contentDisposition(filename), "Cache-Control": "no-store" });
     return res.send(Buffer.from(buffer));
+  } catch (error) {
+    return exportError(res, error);
+  }
+});
+
+executiveRoutes.get("/export.pdf", superAdminOnly, async (req, res) => {
+  try {
+    const report = await buildExportReport(req.query);
+    const buffer = await renderPdf(pdfBlocks(report));
+    const filename = exportFilename({ kitchen: report.meta.kitchen, from: report.meta.from, to: report.meta.to, generatedAt: report.meta.generatedAt, tz: report.meta.timezone, ext: "pdf" });
+    res.set({ "Content-Type": "application/pdf", "Content-Disposition": contentDisposition(filename), "Cache-Control": "no-store" });
+    return res.send(buffer);
   } catch (error) {
     return exportError(res, error);
   }

@@ -27,8 +27,11 @@ export const exportFilename = ({ kitchen, from, to, generatedAt, tz, ext }) => {
   return `MKM-Executive-Report_${who}_${from}_to_${to}_generated-${p.y}${p.m}${p.d}-${p.h}${p.min}-${tzLabel(tz)}.${ext}`;
 };
 
+const encodeRfc5987 = (value) => encodeURIComponent(value).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+
+/** Safe for any name: the quoted fallback is printable ASCII without quotes/backslashes, the UTF-8 form is fully percent-encoded. */
 export const contentDisposition = (filename) =>
-  `attachment; filename="${filename.replace(/"/g, "")}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  `attachment; filename="${filename.replace(/[^\x20-\x7E]|["\\]/g, "_")}"; filename*=UTF-8''${encodeRfc5987(filename)}`;
 
 export const withTimeout = (promise, ms) => {
   let timer;

@@ -6,7 +6,7 @@ import { startDb, clearDb, stopDb } from "./helpers/db.js";
 import { createUser } from "./helpers/auth.js";
 import { consumption, distribution, kitchen, seedCatalog, stockRow } from "./helpers/fixtures.js";
 import { buildExcelWorkbook, SHEETS } from "../executive/excelExport.js";
-import { exportFilename, withTimeout } from "../executive/exportCommon.js";
+import { contentDisposition, exportFilename, withTimeout } from "../executive/exportCommon.js";
 
 let app;
 let f;
@@ -76,6 +76,18 @@ test("filename and disposition follow the convention", async () => {
     exportFilename({ kitchen: { id: "x", name: "Café / Annex #2" }, from: "2026-10-01", to: "2026-10-02", generatedAt: "2026-10-13T08:35:00Z", tz: "Europe/London", ext: "pdf" }),
     "MKM-Executive-Report_Cafe-Annex-2_2026-10-01_to_2026-10-02_generated-20261013-0935-Europe-London.pdf"
   );
+});
+
+test("contentDisposition is safe for hostile filenames", () => {
+  const header = contentDisposition('a"b\\c\r\nSet-Cookie: x=1\u00e9\u20b9\u{1F600}\'()*.pdf');
+  assert.doesNotMatch(header, /[^\x20-\x7E]/);
+  const ascii = header.match(/filename="([^;]*)";/)?.[1];
+  assert.ok(ascii, "quoted ASCII fallback present");
+  assert.doesNotMatch(ascii, /["\\\r\n]/);
+  assert.match(ascii, /^[\x20-\x7E]+$/);
+  const encoded = header.split("filename*=UTF-8''")[1];
+  assert.doesNotMatch(encoded, /['()*]/);
+  assert.equal(decodeURIComponent(encoded), 'a"b\\c\r\nSet-Cookie: x=1\u00e9\u20b9\u{1F600}\'()*.pdf');
 });
 
 test("long lists are truncated with a visible note", async () => {

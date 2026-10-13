@@ -6,7 +6,10 @@ import { useToast } from "../../useToast.js";
 import { filenameFromDisposition } from "./format.js";
 import { readBlobError, saveBlob } from "./download.js";
 
-const FORMATS = [{ id: "xlsx", label: "Excel", path: "/executive/export.xlsx" }];
+const FORMATS = [
+  { id: "xlsx", label: "Excel", path: "/executive/export.xlsx" },
+  { id: "pdf", label: "PDF", path: "/executive/export.pdf" }
+];
 
 export function ExportButtons({ apiQuery, disabled }) {
   const { showToast } = useToast();
