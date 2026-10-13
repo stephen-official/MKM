@@ -32,6 +32,8 @@ const RECEIVABLE_STATUSES = new Set([
   "partially_received",
 ]);
 
+const NO_HIDDEN = new Set();
+
 const asNumber = (value) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
@@ -84,7 +86,11 @@ export default function KitchenHome({
   onRequestSupplies,
   onReceiveDelivery,
   onOpenActivity,
+  hidden = NO_HIDDEN,
 }) {
+  // Views whose feature is off for this kitchen are not offered at all (rather than toasting on tap).
+  const canRecordUsage = !hidden.has("usage");
+  const canOpenActivity = !hidden.has("activity");
   const today = toLocalDateKey();
   void userInfo;
 
@@ -107,7 +113,7 @@ export default function KitchenHome({
 
   return (
     <main className="kh-shell">
-      <section className={`kh-day-status ${usageComplete ? "kh-day-status--done" : ""}`} aria-labelledby="today-status-title">
+      {canRecordUsage && <section className={`kh-day-status ${usageComplete ? "kh-day-status--done" : ""}`} aria-labelledby="today-status-title">
         <span className="kh-day-status__icon" aria-hidden="true">
           {usageComplete ? <CheckCircle2 size={24} /> : <ClipboardCheck size={24} />}
         </span>
@@ -118,12 +124,12 @@ export default function KitchenHome({
         <button type="button" onClick={onRecordUsage}>
           {usageComplete ? "Add more" : "Start"}<ArrowRight size={17} aria-hidden="true" />
         </button>
-      </section>
+      </section>}
 
       <section aria-labelledby="overview-title">
         <div className="kh-section-heading">
           <div><p>Overview</p><h2 id="overview-title">What needs attention</h2></div>
-          <button type="button" onClick={onOpenActivity}>View activity</button>
+          {canOpenActivity && <button type="button" onClick={onOpenActivity}>View activity</button>}
         </div>
         <div className="kh-metrics">
           <button type="button" className="kh-metric kh-metric--warning" onClick={onViewStock} aria-label={`${attentionItems.length} stock items need attention. View stock.`}>
@@ -147,7 +153,7 @@ export default function KitchenHome({
       <section aria-labelledby="actions-title">
         <div className="kh-section-heading"><div><p>Daily tasks</p><h2 id="actions-title">What would you like to do?</h2></div></div>
         <div className="kh-actions">
-          <ActionButton icon={Utensils} title="Record usage" description="Enter supplies used today" onClick={onRecordUsage} tone="primary" />
+          {canRecordUsage && <ActionButton icon={Utensils} title="Record usage" description="Enter supplies used today" onClick={onRecordUsage} tone="primary" />}
           <ActionButton icon={Boxes} title="View kitchen stock" description={`${items.length} items in this kitchen`} onClick={onViewStock} />
           <ActionButton icon={Plus} title="Request supplies" description="Ask the central store for items" onClick={onRequestSupplies} />
           <ActionButton icon={PackageCheck} title="Receive a delivery" description={deliveries.length ? `${deliveries.length} waiting for confirmation` : "Check incoming supplies"} onClick={onReceiveDelivery} />

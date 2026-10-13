@@ -21,7 +21,8 @@ import KitchenMore from "./kitchen/KitchenMore";
 import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../utils/date";
 import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../features/kitchen/workflows";
 import { clearSession } from "../utils/session";
-import { FEATURE_DISABLED_EVENT, fetchKitchenFlags, hiddenTabs as computeHidden, isFeatureOn, isViewHidden, sameFlags } from "../features.js";
+import { FEATURE_DISABLED_EVENT, featureForView, fetchKitchenFlags, hiddenTabs as computeHidden, isFeatureOn, isViewHidden, sameFlags, tabTarget } from "../features.js";
+import { toastFeatureDisabled } from "../featureToast.js";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
   <button
@@ -44,7 +45,6 @@ const limitTo3Decimals = (value) => {
   return Number(num.toFixed(3));
 };
 const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "more", "activity", "transfers"]);
-const FEATURE_DISABLED_MESSAGE = "This feature is currently disabled for your kitchen.";
 const legacyUiEnabled = import.meta.env.VITE_ENABLE_LEGACY_KITCHEN_UI === "true";
 const viewFromLocation = () => {
   const view = window.location.hash.replace(/^#\/?/, "");
@@ -95,7 +95,7 @@ const [dailyItems, setDailyItems] = useState([]);
     // "request-builder" is exempt: its feature depends on the transaction type, which settles after this call,
     // so the redirect effect below evaluates it with current state.
     if (nextView !== "request-builder" && hidden.has(nextView)) {
-      toast.error(FEATURE_DISABLED_MESSAGE);
+      toastFeatureDisabled(featureForView(nextView));
       setActiveTabState("home");
       window.history.replaceState({ kitchenView: "home" }, "", `${window.location.pathname}${window.location.search}#/home`);
       return;
@@ -288,7 +288,7 @@ setItems(formatted);
   // A view can become hidden after load (deep link, or flags changed on focus): fall back to home.
   useEffect(() => {
     if (!isViewHidden(flags, activeTab, activeTransactionType)) return;
-    toast.error(FEATURE_DISABLED_MESSAGE);
+    toastFeatureDisabled(featureForView(activeTab, activeTransactionType));
     setActiveTabState("home");
     window.history.replaceState({ kitchenView: "home" }, "", `${window.location.pathname}${window.location.search}#/home`);
   }, [flags, activeTab, activeTransactionType]);
@@ -705,14 +705,12 @@ setEditIndentId(indent._id);
     if (tab === activeTab) return;
     if (hasDraft && !window.confirm("Discard your unfinished draft?")) return;
     setCart([]);
-    if (tab === "home") return setActiveTab("home");
-    if (tab === "stock") return openStock(true);
-    if (tab === "usage") return openUsage(true);
-    if (tab === "requests") {
-      setSupplyInitialTab("requests");
-      return;
-    }
-    if (tab === "more") return setActiveTab("more");
+    const target = tabTarget(tab);
+    if (!target) return;
+    if (target.view === "stock") return openStock(true);
+    if (target.view === "usage") return openUsage(true);
+    if (target.supplyTab) setSupplyInitialTab(target.supplyTab);
+    setActiveTab(target.view);
   };
 
   const deleteSupplyRequest = async (indent) => {
@@ -762,6 +760,7 @@ setEditIndentId(indent._id);
           onRequestSupplies={openSupplyRequest}
           onReceiveDelivery={openDeliveries}
           onOpenActivity={openActivity}
+          hidden={hidden}
         />
       ) : activeTab === "stock" ? (
         <KitchenStock
@@ -973,7 +972,7 @@ setEditIndentId(indent._id);
                     
                     {logTab === 'requests' && (
                         <>
-                         <div className="grid grid-cols-2 gap-2 mb-4">
+                         {isFeatureOn(flags, "requests") && <div className="grid grid-cols-2 gap-2 mb-4">
 
   <button
     onClick={() => {
@@ -1003,7 +1002,7 @@ setEditIndentId(indent._id);
     + Daily Usage Request
   </button>
 
-</div>
+</div>}
                           
 {requests.filter(r =>
   isSameLocalDate(

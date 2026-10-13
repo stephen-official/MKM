@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { featureForView, hiddenTabs, isFeatureOn, isViewHidden, sameFlags, shouldToastFeature } from "./featureTabs.js";
+import { featureForView, hiddenTabs, isFeatureOn, isViewHidden, sameFlags, shouldToastFeature, tabTarget } from "./featureTabs.js";
 
 describe("kitchen features", () => {
   it("hides tabs whose feature is off; unknown flags mean on", () => {
@@ -31,6 +31,22 @@ describe("kitchen features", () => {
     assert.equal(sameFlags({ a: true }, { a: true, b: true }), false);
     assert.equal(sameFlags(null, null), true);
     assert.equal(sameFlags(null, {}), false);
+  });
+});
+
+describe("bottom tab targets", () => {
+  it("maps the Requests tab to the requests view on the requests sub-tab", () => {
+    assert.deepEqual(tabTarget("requests"), { view: "requests", supplyTab: "requests" });
+  });
+
+  it("maps the other tabs to their own view and ignores unknown tabs", () => {
+    for (const tab of ["home", "stock", "usage", "more"]) assert.deepEqual(tabTarget(tab), { view: tab });
+    assert.equal(tabTarget("nope"), null);
+  });
+
+  it("targets a view that the indent flag gates", () => {
+    assert.equal(isViewHidden({ indent: false }, tabTarget("requests").view), true);
+    assert.equal(isViewHidden({ indent: true }, tabTarget("requests").view), false);
   });
 });
 

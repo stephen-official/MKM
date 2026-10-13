@@ -28,6 +28,17 @@ export const sameFlags = (a, b) => {
   return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 };
 
+const BOTTOM_TAB_TARGETS = Object.freeze({
+  home: Object.freeze({ view: "home" }),
+  stock: Object.freeze({ view: "stock" }),
+  usage: Object.freeze({ view: "usage" }),
+  requests: Object.freeze({ view: "requests", supplyTab: "requests" }),
+  more: Object.freeze({ view: "more" })
+});
+
+/** The view (and requests sub-tab, if any) a bottom-nav tab opens, or null for an unknown tab. */
+export const tabTarget = (tab) => BOTTOM_TAB_TARGETS[tab] ?? null;
+
 // Fired on window by the API layer when the server answers FEATURE_DISABLED, so the store can refetch flags.
 export const FEATURE_DISABLED_EVENT = "mkm:feature-disabled";
 export const FEATURE_TOAST_WINDOW_MS = 10_000;
