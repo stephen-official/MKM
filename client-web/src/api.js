@@ -1,6 +1,7 @@
 import axios from "axios";
 import { toast } from "react-hot-toast";
 import { clearSession } from "./utils/session";
+import { FEATURE_DISABLED_EVENT, shouldToastFeature } from "./features/kitchen/featureTabs.js";
 
 /**
  * API Configuration
@@ -32,19 +33,17 @@ api.interceptors.request.use(
 
 // Optional: Response Interceptor (Useful for handling 401/403 globally)
 let refreshRequest = null;
+const featureToastShownAt = new Map();
 
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
     if (error.response?.status === 403 && error.response.data?.code === "FEATURE_DISABLED") {
-      const key = `mkm:feature-toast:${error.response.data.feature}`;
-      try {
-        if (!sessionStorage.getItem(key)) {
-          sessionStorage.setItem(key, "1");
-          toast.error("This feature is currently disabled for your kitchen.");
-        }
-      } catch { /* storage unavailable: skip the toast rather than break the request flow */ }
+      const feature = error.response.data.feature;
+      if (shouldToastFeature(featureToastShownAt, feature)) toast.error("This feature is currently disabled for your kitchen.");
+      // Let the store refetch the flags so navigation catches up with the server (same rules as focus refresh).
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(FEATURE_DISABLED_EVENT, { detail: { feature } }));
     }
     const refreshToken = localStorage.getItem("refreshToken");
     if (error.response?.status === 401 && refreshToken && !originalRequest?._retried && !originalRequest?.url?.includes("/auth/")) {

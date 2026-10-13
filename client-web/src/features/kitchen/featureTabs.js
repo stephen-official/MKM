@@ -27,3 +27,15 @@ export const sameFlags = (a, b) => {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 };
+
+// Fired on window by the API layer when the server answers FEATURE_DISABLED, so the store can refetch flags.
+export const FEATURE_DISABLED_EVENT = "mkm:feature-disabled";
+export const FEATURE_TOAST_WINDOW_MS = 10_000;
+
+/** True (and records `now`) when the disabled-feature toast for `feature` was not shown within `windowMs`. */
+export const shouldToastFeature = (lastShown, feature, now = Date.now(), windowMs = FEATURE_TOAST_WINDOW_MS) => {
+  const last = lastShown.get(feature);
+  if (last !== undefined && now - last < windowMs) return false;
+  lastShown.set(feature, now);
+  return true;
+};

@@ -21,7 +21,7 @@ import KitchenMore from "./kitchen/KitchenMore";
 import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../utils/date";
 import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../features/kitchen/workflows";
 import { clearSession } from "../utils/session";
-import { fetchKitchenFlags, hiddenTabs as computeHidden, isFeatureOn, isViewHidden, sameFlags } from "../features.js";
+import { FEATURE_DISABLED_EVENT, fetchKitchenFlags, hiddenTabs as computeHidden, isFeatureOn, isViewHidden, sameFlags } from "../features.js";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
   <button
@@ -264,11 +264,24 @@ setItems(formatted);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pick up admin changes to this kitchen's features whenever the app regains focus.
+  // Pick up admin changes to this kitchen's features on focus, when the app becomes visible again
+  // (Android resume) and whenever the server reports a disabled feature.
   useEffect(() => {
-    const refreshFlags = () => { fetchKitchenFlags().then(applyFlags).catch(() => {}); };
+    let inFlight = false;
+    const refreshFlags = () => {
+      if (inFlight) return;
+      inFlight = true;
+      fetchKitchenFlags().then(applyFlags).catch(() => {}).finally(() => { inFlight = false; });
+    };
+    const onVisibility = () => { if (document.visibilityState === "visible") refreshFlags(); };
     window.addEventListener("focus", refreshFlags);
-    return () => window.removeEventListener("focus", refreshFlags);
+    window.addEventListener(FEATURE_DISABLED_EVENT, refreshFlags);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", refreshFlags);
+      window.removeEventListener(FEATURE_DISABLED_EVENT, refreshFlags);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- applyFlags only touches refs and state setters
   }, []);
 

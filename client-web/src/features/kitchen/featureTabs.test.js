@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { featureForView, hiddenTabs, isFeatureOn, isViewHidden, sameFlags } from "./featureTabs.js";
+import { featureForView, hiddenTabs, isFeatureOn, isViewHidden, sameFlags, shouldToastFeature } from "./featureTabs.js";
 
 describe("kitchen features", () => {
   it("hides tabs whose feature is off; unknown flags mean on", () => {
@@ -31,5 +31,16 @@ describe("kitchen features", () => {
     assert.equal(sameFlags({ a: true }, { a: true, b: true }), false);
     assert.equal(sameFlags(null, null), true);
     assert.equal(sameFlags(null, {}), false);
+  });
+});
+
+describe("disabled-feature toast dedupe", () => {
+  it("toasts once per feature inside the window, then again after it", () => {
+    const seen = new Map();
+    assert.equal(shouldToastFeature(seen, "indent", 1_000, 10_000), true);
+    assert.equal(shouldToastFeature(seen, "indent", 5_000, 10_000), false);
+    assert.equal(shouldToastFeature(seen, "consumption", 5_000, 10_000), true, "other features are independent");
+    assert.equal(shouldToastFeature(seen, "indent", 11_000, 10_000), true, "window elapsed");
+    assert.equal(shouldToastFeature(seen, "indent", 12_000, 10_000), false);
   });
 });
