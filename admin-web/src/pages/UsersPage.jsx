@@ -5,14 +5,18 @@ import { useToast } from "../useToast.js";
 import { formatDateTime } from "../businessTime.js";
 import { UserForm } from "./users/UserForm.jsx";
 import { patchFromForm } from "./users/userForm.js";
+import { createRequestTracker } from "./executive/requestTracker.js";
 import "./executive/executive.css";
 
 const ROLE_BADGE = { super_admin: ["info", "Super-admin"], admin: ["neutral", "Admin"], user: ["neutral", "Kitchen"] };
 const EMPTY = { name: "", email: "", role: "user", godownId: "", active: true, confirmSuperAdmin: false };
 
+const SEARCH_DEBOUNCE_MS = 250;
+
 export function UsersPage() {
   const { showToast } = useToast();
   const [filters, setFilters] = useState({ q: "", role: "", active: "", page: 1 });
+  const [search, setSearch] = useState("");
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [kitchens, setKitchens] = useState([]);
@@ -20,15 +24,30 @@ export function UsersPage() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
 
+  const [tracker] = useState(createRequestTracker);
+
+  // Only the newest request may update the list, so a slow earlier search cannot overwrite a newer one.
   const load = useCallback(async () => {
+    const request = tracker.start();
     try {
       const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== ""));
-      setData((await api.get("/users", { params })).data);
+      const { data: next } = await api.get("/users", { params, signal: request.signal });
+      if (!request.isLatest()) return;
+      setData(next);
       setError(null);
     } catch (e) {
+      if (!request.isLatest()) return;
       setError(e.response?.data?.message || "Could not load users.");
     }
-  }, [filters]);
+  }, [filters, tracker]);
+
+  useEffect(() => {
+    if (search === filters.q) return undefined;
+    const timer = setTimeout(() => setFilters((prev) => ({ ...prev, q: search, page: 1 })), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search, filters.q]);
+
+  useEffect(() => () => tracker.cancel(), [tracker]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get("/inventory/godowns").then(({ data: rows }) => setKitchens(rows)).catch(() => setKitchens([])); }, []);
@@ -69,7 +88,7 @@ export function UsersPage() {
         actions={<Button onClick={() => setEditing({ isNew: true, user: EMPTY })}>Add user</Button>} />
       {notice && <Banner variant="info">{notice}</Banner>}
       <div className="exec-filters">
-        <input aria-label="Search by name or email" placeholder="Search name or email" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value, page: 1 })} />
+        <input aria-label="Search by name or email" placeholder="Search name or email" value={search} onChange={(e) => setSearch(e.target.value)} />
         <select aria-label="Role" value={filters.role} onChange={(e) => setFilters({ ...filters, role: e.target.value, page: 1 })}>
           <option value="">All roles</option><option value="super_admin">Super-admins</option><option value="admin">Admins</option><option value="user">Kitchen users</option>
         </select>

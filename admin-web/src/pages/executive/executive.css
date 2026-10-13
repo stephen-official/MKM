@@ -14,7 +14,7 @@
 .exec-kpis { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
 .exec-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-card); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .exec-kpi p { margin: 0; }
-.exec-kpi__label { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
+.exec-kpi__label { position: relative; display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
 .exec-kpi__value { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; color: var(--ink); overflow-wrap: anywhere; }
 .exec-kpi__value--na { font-size: 16px; color: var(--muted); }
 .exec-kpi__tags { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -24,11 +24,12 @@
 .exec-section__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .exec-section__title { font-size: 16px; font-weight: 650; margin: 0; }
 .exec-section__note { font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
-.exec-tip { position: relative; display: inline-flex; }
+/* Static so the body is positioned against its container (the KPI label row), not the icon. */
+.exec-tip { position: static; display: inline-flex; }
 .exec-tip__btn { border: 0; background: none; padding: 2px; color: var(--muted); cursor: help; border-radius: 4px; display: inline-flex; }
 .exec-tip__btn:hover { color: var(--ink-soft); }
 .exec-tip__btn:focus-visible { outline: 2px solid var(--primary); }
-.exec-tip__body { position: absolute; z-index: 20; top: 100%; left: 0; width: min(280px, 80vw); padding: 8px 10px; border-radius: var(--radius); background: var(--ink); color: var(--on-dark); font-size: 12px; line-height: 1.4; font-weight: 400; }
+.exec-tip__body { position: absolute; z-index: 20; top: 100%; left: 0; right: 0; width: auto; box-sizing: border-box; overflow-wrap: anywhere; padding: 8px 10px; border-radius: var(--radius); background: var(--ink); color: var(--on-dark); font-size: 12px; line-height: 1.4; font-weight: 400; }
 .exec-chart { margin: 0; }
 .exec-chart__svg { width: 100%; height: 180px; display: block; }
 .exec-chart__line { stroke: var(--primary); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }

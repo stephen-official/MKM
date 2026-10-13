@@ -1,8 +1,8 @@
 import { Button, DataTable, EmptyState } from "../../components/ui/index.jsx";
 import { formatDateTime } from "../../businessTime.js";
-import { describeChange } from "./diff.js";
+import { describeChange, describeScope } from "./diff.js";
 
-export function FeatureAuditList({ audit, labels, onPage }) {
+export function FeatureAuditList({ audit, labels, names, onPage }) {
   if (!audit) return null;
   if (audit.total === 0) return <EmptyState title="No changes yet">Every change to feature visibility will be listed here.</EmptyState>;
   const pages = Math.max(1, Math.ceil(audit.total / audit.pageSize));
@@ -15,7 +15,7 @@ export function FeatureAuditList({ audit, labels, onPage }) {
             <tr key={row._id}>
               <td>{formatDateTime(row.at)}</td>
               <td>{row.actorName || "—"}<br /><small>{row.actorEmail}</small></td>
-              <td>{row.scope === "global" ? "All admins" : `${row.scope} ${row.targetId}`}</td>
+              <td>{describeScope(row, names)}</td>
               <td><ul className="plain-list">{row.changes.map((c) => <li key={c.key}>{describeChange(c, labels)}</li>)}</ul></td>
             </tr>
           ))}

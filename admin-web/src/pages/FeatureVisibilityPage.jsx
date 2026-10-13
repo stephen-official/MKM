@@ -77,6 +77,11 @@ export function FeatureVisibilityPage() {
     [kitchens]
   );
 
+  const names = useMemo(() => ({
+    kitchen: Object.fromEntries(kitchens.map((k) => [String(k._id), k.name])),
+    user: Object.fromEntries(users.map((u) => [String(u._id), u.name]))
+  }), [kitchens, users]);
+
   const labels = useMemo(() => Object.fromEntries((admin?.features || []).map((f) => [f.key, f.label])), [admin]);
   const changes = admin ? pendingChanges(admin.flags, edits) : {};
   const changeCount = Object.keys(changes).length;
@@ -159,7 +164,7 @@ export function FeatureVisibilityPage() {
       )}
       <h2 className="section-title">Change history</h2>
       <Card>
-        <FeatureAuditList audit={audit} labels={labels} onPage={loadAudit} />
+        <FeatureAuditList audit={audit} labels={labels} names={names} onPage={loadAudit} />
       </Card>
       {confirming && (
         <ConfirmDialog
