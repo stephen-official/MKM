@@ -6,7 +6,7 @@
     "dev:backend": "npm --prefix backend run dev",
     "dev:admin": "npm --prefix admin-web run dev -- --port 5173",
     "dev:client": "npm --prefix client-web run dev -- --port 5174",
-    "test": "npm --prefix backend test && npm --prefix admin-web test",
+    "test": "npm --prefix backend test && npm --prefix admin-web test && npm --prefix client-web test",
     "lint": "npm --prefix admin-web run lint && npm --prefix client-web run lint",
     "build:admin": "npm --prefix admin-web run build",
     "build:client": "npm --prefix client-web run build",

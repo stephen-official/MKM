@@ -64,7 +64,7 @@ The API health check is `http://localhost:5000/api/health`.
 | `ADMIN_REGISTRATION_LIMIT` | No | Legacy administrator count cap; not a security boundary. |
 | `USER_REGISTRATION_LIMIT` | No | Kitchen-user count cap. |
 | `CORS_ORIGIN` | Yes | Comma-separated browser origins allowed to call the API. |
-| `FRONTEND_URL` | Yes | Frontend URL used in password-reset links. |
+| `FRONTEND_URL` | Yes | Frontend URL used in password-reset and invitation links. |
 | `CLOUDINARY_CLOUD_NAME` | For uploads | Cloudinary cloud name. |
 | `CLOUDINARY_API_KEY` | For uploads | Cloudinary API key. |
 | `CLOUDINARY_API_SECRET` | For uploads | Cloudinary API secret. |
@@ -77,6 +77,44 @@ Both applications use `VITE_API_URL`. Locally it is `http://localhost:5000/api`.
 
 On a physical Android phone, `localhost` means the phone. Set `VITE_API_URL` to an API address reachable from the device, then rebuild and synchronize Android.
 
+## Super-admin, feature visibility and executive report
+
+### Creating the first super-admin
+Credentials are never committed. Run once per environment (safe to re-run):
+
+    SUPER_ADMIN_EMAIL=you@example.com SUPER_ADMIN_NAME="Your Name" SUPER_ADMIN_PASSWORD='a long password' \
+      npm --prefix backend run create-super-admin
+
+Flags: `--promote` turns an existing account with that email into a super-admin; `--reset-password` replaces the password of an existing super-admin. Local dev seed (`seed-dev.js`) creates `superadmin@example.com` / `Super@123`.
+
+### Roles
+- `super_admin` - everything an admin can do, never feature-gated, plus Executive Report, Feature Visibility, Users and Report Schedules.
+- `admin` - admin console, subject to feature visibility.
+- `user` - kitchen app, subject only to per-kitchen / per-user overrides.
+
+Role and active-status changes apply on the user's next request; socket rooms update on their next reconnect.
+
+### Feature visibility
+Global settings apply to admins; per-kitchen overrides apply to that kitchen's users (the kitchen app in `client-web` respects them); per-user overrides win over both. Changes reach other servers within 5 seconds and admin browsers within a minute (immediately on window focus or their next blocked action). Every change is recorded in an append-only history. The route-to-feature map lives in `backend/src/features/registry.js`; `featureRouteCoverage.test.js` fails if a new route is not classified there - add every new route to the registry.
+
+### Executive report
+Definitions of every figure are in `backend/src/executive/definitions.js` and in the export's Definitions sheet. Business timezone `Asia/Kolkata` (override with `BUSINESS_TZ`), currency INR. Stock figures are current (not historical). Consumption is valued at the price captured when it was recorded; consumption recorded before this release has no captured price and appears as "unvalued lines".
+
+### Environment variables
+| Variable | Default | Purpose |
+|---|---|---|
+| `BUSINESS_TZ` | `Asia/Kolkata` | Day boundaries for reports and schedules |
+| `REPORT_SCHEDULER_ENABLED` | `false` | Run scheduled report emails in this process (safe on several instances) |
+| `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_NAME` / `SUPER_ADMIN_PASSWORD` | - | Only for `create-super-admin` |
+| `FRONTEND_URL` | `http://localhost:5173` | Links in invitation and reset emails |
+
+### Production rollout notes
+- Build the new indexes before deploying on large collections (see `backend/src/models/FlowModels.js`, "Executive report indexes"), e.g. `db.consumptions.createIndex({ godownId: 1, date: 1 })`, during a quiet period.
+- The database must be a replica set (already required by existing transactions).
+- Run `create-super-admin` once after deploying.
+- Performance check: `npm --prefix backend run test:perf` seeds a production-sized fixture covering one year of history and asserts report latency targets. Real latency with more history will be somewhat higher; re-run with larger counts (`PRODUCTION_SIZE` in the test helpers) if production data exceeds the fixture.
+- Scheduled report emails need working SMTP (`EMAIL_USER` / `EMAIL_PASS`); without it, runs are recorded with status `EMAIL_FAILED`.
+
 ## Common commands
 
 Run these at the repository root:
@@ -87,7 +125,7 @@ Run these at the repository root:
 | `npm run dev:backend` | Start the API with automatic restart. |
 | `npm run dev:admin` | Start the admin UI on port 5173. |
 | `npm run dev:client` | Start the kitchen UI on port 5174. |
-| `npm test` | Run backend tests. |
+| `npm test` | Run backend, admin-web and kitchen-client tests. |
 | `npm run lint` | Lint the kitchen client. Admin and backend do not yet have lint scripts. |
 | `npm run build` | Build both frontend applications. |
 | `npm run check` | Run tests, lint, and both builds. |
