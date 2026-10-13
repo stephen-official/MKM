@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button, Field, Modal } from "../../components/ui/index.jsx";
+import { isSuperAdmin } from "../../roles.js";
 import { validateUserForm } from "./userForm.js";
 
 const ROLE_LABEL = { user: "Kitchen user", admin: "Admin", super_admin: "Super-admin" };
@@ -10,7 +11,7 @@ export function UserForm({ title, initial, kitchens, isNew, busy, onCancel, onSu
   const set = (patch) => setForm((prev) => ({ ...prev, ...patch }));
   const submit = (event) => {
     event.preventDefault();
-    const found = validateUserForm({ ...form, email: isNew ? form.email : undefined, confirmSuperAdmin: initial.role === "super_admin" ? true : form.confirmSuperAdmin });
+    const found = validateUserForm({ ...form, email: isNew ? form.email : undefined, confirmSuperAdmin: isSuperAdmin(initial.role) ? true : form.confirmSuperAdmin });
     setErrors(found);
     if (!Object.keys(found).length) onSubmit(form);
   };
@@ -39,7 +40,7 @@ export function UserForm({ title, initial, kitchens, isNew, busy, onCancel, onSu
             {error("godownId")}
           </Field>
         )}
-        {form.role === "super_admin" && initial.role !== "super_admin" && (
+        {isSuperAdmin(form.role) && !isSuperAdmin(initial.role) && (
           <label className="checkbox">
             <input type="checkbox" checked={!!form.confirmSuperAdmin} onChange={(e) => set({ confirmSuperAdmin: e.target.checked })} />
             <span>This person should have full access, including user management and feature settings.{error("confirmSuperAdmin")}</span>

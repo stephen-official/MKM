@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { Banner, Button, Card, ConfirmDialog, ErrorState, LoadingState, PageHeader, Tabs } from "../components/ui/index.jsx";
 import { useToast } from "../useToast.js";
 import { useFeatureFlags } from "../features/FeatureFlagsContext.js";
+import { isAdminRole, isSuperAdmin } from "../roles.js";
 import { formatDateTime } from "../businessTime.js";
 import { FeatureToggleTable } from "./features/FeatureToggleTable.jsx";
 import { FeatureAuditList } from "./features/FeatureAuditList.jsx";
@@ -62,10 +63,10 @@ export function FeatureVisibilityPage() {
   }, []);
 
   const userTargets = useMemo(
-    () => users.filter((u) => u.role !== "super_admin").map((u) => ({
+    () => users.filter((u) => !isSuperAdmin(u.role)).map((u) => ({
       id: String(u._id),
-      label: `${u.name} (${u.role === "admin" ? "admin" : u.kitchenName || "kitchen"})`,
-      audience: u.role === "admin" ? "admin" : "kitchen",
+      label: `${u.name} (${isAdminRole(u.role) ? "admin" : u.kitchenName || "kitchen"})`,
+      audience: isAdminRole(u.role) ? "admin" : "kitchen",
       kitchenId: u.godownId ? String(u.godownId) : null
     })),
     [users]
