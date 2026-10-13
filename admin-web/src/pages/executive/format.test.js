@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filenameFromDisposition, formatCount, formatDays, formatMoney, formatPct, formatQty } from "./format.js";
+import { filenameFromDisposition, formatCount, formatDays, formatMoney, formatPct, formatQty, plural } from "./format.js";
 
 describe("format", () => {
   it("money uses rupees with Indian grouping and two decimals", () => {
@@ -20,5 +20,11 @@ describe("format", () => {
     expect(filenameFromDisposition(`attachment; filename="a.xlsx"; filename*=UTF-8''Caf%C3%A9.xlsx`)).toBe("Café.xlsx");
     expect(filenameFromDisposition(`attachment; filename="a.xlsx"`)).toBe("a.xlsx");
     expect(filenameFromDisposition(undefined)).toBe(null);
+  });
+  it("plural picks the singular only for exactly one", () => {
+    expect(plural(1, "distribution", "distributions")).toBe("distribution");
+    expect(plural(0, "purchase order", "purchase orders")).toBe("purchase orders");
+    expect(plural(2, "item", "items")).toBe("items");
+    expect(plural(1.5, "item", "items")).toBe("items");
   });
 });

@@ -1,5 +1,5 @@
 import { DataTable } from "../../components/ui/index.jsx";
-import { formatCount, formatMoney } from "./format.js";
+import { formatCount, formatMoney, plural } from "./format.js";
 
 const label = (s) => s.replace(/_/g, " ");
 
@@ -19,8 +19,8 @@ export function Procurement({ data }) {
         <div><dt>Distributions</dt><dd>{formatCount(data.stockReceived.distributionCount)}</dd></div>
         {data.scope === "all" && (
           <>
-            <div><dt>Procurement spend</dt><dd>{formatMoney(data.spend.value)} ({formatCount(data.spend.poCount)} POs)</dd></div>
-            <div><dt>Awaiting distribution</dt><dd>{formatCount(data.awaiting.count)} POs · {formatMoney(data.awaiting.value)}</dd></div>
+            <div><dt>Procurement spend</dt><dd>{formatMoney(data.spend.value)} ({formatCount(data.spend.poCount)} {plural(data.spend.poCount, "PO", "POs")})</dd></div>
+            <div><dt>Awaiting distribution</dt><dd>{formatCount(data.awaiting.count)} {plural(data.awaiting.count, "PO", "POs")} · {formatMoney(data.awaiting.value)}</dd></div>
           </>
         )}
       </dl>

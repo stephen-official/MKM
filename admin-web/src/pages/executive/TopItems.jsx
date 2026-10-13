@@ -1,5 +1,5 @@
 import { DataTable } from "../../components/ui/index.jsx";
-import { formatMoney, formatQty } from "./format.js";
+import { formatMoney, formatQty, plural } from "./format.js";
 
 export function TopItems({ data }) {
   return (
@@ -17,7 +17,7 @@ export function TopItems({ data }) {
           ))}
         </tbody>
       </DataTable>
-      {data.tiedBeyondLimit > 0 && <p className="exec-section__note">{data.tiedBeyondLimit} more item(s) tie with #10 and are not shown.</p>}
+      {data.tiedBeyondLimit > 0 && <p className="exec-section__note">{data.tiedBeyondLimit} more {plural(data.tiedBeyondLimit, "item ties", "items tie")} with #10 and {plural(data.tiedBeyondLimit, "is", "are")} not shown.</p>}
     </>
   );
 }

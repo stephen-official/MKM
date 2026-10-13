@@ -8,11 +8,14 @@ export const formatMoney = (n) => (isNum(n) ? money.format(n) : "—");
 export const formatCount = (n) => (isNum(n) ? count.format(n) : "—");
 export const formatQty = (n) => (isNum(n) ? qty.format(n) : "—");
 export const formatPct = (n) => (isNum(n) ? `${n > 0 ? "+" : ""}${n.toFixed(1)}%` : "—");
+/** The singular form for exactly one, the plural otherwise (including zero). */
+export const plural = (n, one, many) => (n === 1 ? one : many);
+
 export const formatDays = (n) => {
   if (!isNum(n)) return "—";
   if (n < 1) return "under 1 day";
   const days = Math.floor(n);
-  return `${days} day${days === 1 ? "" : "s"}`;
+  return `${days} ${plural(days, "day", "days")}`;
 };
 
 export const filenameFromDisposition = (header) => {

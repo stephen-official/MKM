@@ -1,6 +1,6 @@
 import { Badge } from "../../components/ui/index.jsx";
 import { InfoTip } from "./InfoTip.jsx";
-import { formatCount, formatDays, formatMoney, formatPct, formatQty } from "./format.js";
+import { formatCount, formatDays, formatMoney, formatPct, formatQty, plural } from "./format.js";
 
 const valueText = (kpi) => (kpi.format === "money" ? formatMoney(kpi.value) : formatCount(kpi.value));
 
@@ -8,19 +8,19 @@ const detailLine = (kpi) => {
   const d = kpi.details || {};
   switch (kpi.id) {
     case "stockValue":
-      return d.unpricedItemCount ? `${formatCount(d.unpricedItemCount)} items without a price (${formatQty(d.unpricedQty)} base units) excluded` : "All stocked items priced";
+      return d.unpricedItemCount ? `${formatCount(d.unpricedItemCount)} ${plural(d.unpricedItemCount, "item", "items")} without a price (${formatQty(d.unpricedQty)} base units) excluded` : "All stocked items priced";
     case "consumptionValue":
       return [
         d.deltaPct === null ? "No previous-period value to compare" : `${formatPct(d.deltaPct)} vs previous period (${formatMoney(d.previousValue)})`,
-        d.unvaluedLineCount ? `${formatCount(d.unvaluedLineCount)} unvalued lines not included` : null
+        d.unvaluedLineCount ? `${formatCount(d.unvaluedLineCount)} unvalued ${plural(d.unvaluedLineCount, "line", "lines")} not included` : null
       ].filter(Boolean).join(" · ");
     case "pendingRequests":
     case "openTransfers":
       return d.oldestAgeDays === null || d.oldestAgeDays === undefined ? "None waiting" : `Oldest waiting ${formatDays(d.oldestAgeDays)}`;
     case "stockReceivedValue":
-      return d.unpricedAllocationCount ? `${formatCount(d.unpricedAllocationCount)} unpriced allocations excluded` : `${formatCount(d.distributionCount)} distributions`;
+      return d.unpricedAllocationCount ? `${formatCount(d.unpricedAllocationCount)} unpriced ${plural(d.unpricedAllocationCount, "allocation", "allocations")} excluded` : `${formatCount(d.distributionCount)} ${plural(d.distributionCount, "distribution", "distributions")}`;
     case "procurementSpend":
-      return `${formatCount(d.poCount)} purchase orders`;
+      return `${formatCount(d.poCount)} ${plural(d.poCount, "purchase order", "purchase orders")}`;
     case "poAwaitingDistribution":
       return `${formatMoney(d.value)} awaiting distribution`;
     default:

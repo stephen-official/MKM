@@ -82,12 +82,12 @@ On a physical Android phone, `localhost` means the phone. Set `VITE_API_URL` to 
 ## Super-admin, feature visibility and executive report
 
 ### Creating the first super-admin
-Credentials are never committed. Run once per environment (safe to re-run):
+Production credentials are never committed. The only committed credentials are the dev-seed ones below, which are local-only: `backend/src/jobs/seed-dev.js` refuses to run unless `MONGODB_URI` points at localhost. Run once per environment (safe to re-run):
 
     SUPER_ADMIN_EMAIL=you@example.com SUPER_ADMIN_NAME="Your Name" SUPER_ADMIN_PASSWORD='a long password' \
       npm --prefix backend run create-super-admin
 
-Flags: `--promote` turns an existing account with that email into a super-admin and keeps its existing password (re-run with `--reset-password` afterwards to set the new password); `--reset-password` replaces the password of an existing super-admin. Local dev seed (`seed-dev.js`) creates `superadmin@example.com` / `Super@123`.
+Flags: `--promote` turns an existing account with that email into a super-admin and keeps its existing password (re-run with `--reset-password` afterwards to set the new password); `--reset-password` replaces the password of an existing super-admin. Local dev seed (`seed-dev.js`, local databases only) creates `superadmin@example.com` / `Super@123`; never use it against a shared or production database.
 
 ### Invitation emails
 Invitation and password-reset emails link to `FRONTEND_URL`, which points at the admin console. Admins and super-admins can use the link directly. Kitchen users cannot use that link: they should open the kitchen app, choose "Forgot password?", request a reset for their email, then paste the token from the email into the reset-token screen and choose a password.

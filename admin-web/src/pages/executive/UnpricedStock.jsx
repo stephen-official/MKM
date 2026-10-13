@@ -11,7 +11,7 @@ export function UnpricedStock({ data, onPage }) {
           {data.rows.map((r) => <tr key={r.id}><td>{r.kitchen}</td><td>{r.item}</td><td className="num">{formatQty(r.qty)} {r.unit}</td></tr>)}
         </tbody>
       </DataTable>
-      <Pager page={data.page} pages={data.pages} total={data.total} label="unpriced items" onPage={onPage} />
+      <Pager page={data.page} pages={data.pages} total={data.total} label="unpriced items" singular="unpriced item" onPage={onPage} />
     </>
   );
 }

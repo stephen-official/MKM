@@ -20,7 +20,7 @@ export function StockHealth({ data, onPage }) {
           ))}
         </tbody>
       </DataTable>
-      <Pager page={data.page} pages={data.pages} total={data.total} label="items" onPage={onPage} />
+      <Pager page={data.page} pages={data.pages} total={data.total} label="items" singular="item" onPage={onPage} />
     </>
   );
 }

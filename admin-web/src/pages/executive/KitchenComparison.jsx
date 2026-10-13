@@ -30,7 +30,7 @@ export function KitchenComparison({ data, onSelectKitchen, onPage }) {
           ))}
         </tbody>
       </DataTable>
-      <Pager page={data.page} pages={data.pages} total={data.total} label="kitchens" onPage={onPage} />
+      <Pager page={data.page} pages={data.pages} total={data.total} label="kitchens" singular="kitchen" onPage={onPage} />
     </>
   );
 }
