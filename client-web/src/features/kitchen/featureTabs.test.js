@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { canOpenView, featureForView, hiddenTabs, isFeatureOn, isViewHidden, sameFlags, shouldToastFeature, tabTarget } from "./featureTabs.js";
+import { canOpenView, draftFeature, featureForView, hiddenTabs, isDraftBlocked, isFeatureOn, isViewHidden, sameFlags, shouldToastFeature, tabTarget } from "./featureTabs.js";
 
 describe("kitchen features", () => {
   it("hides tabs whose feature is off; unknown flags mean on", () => {
@@ -43,6 +43,25 @@ describe("canOpenView", () => {
     assert.equal(canOpenView(flags, "request-builder", "transfer"), true);
     assert.equal(canOpenView(flags, "stock"), true);
     assert.equal(canOpenView(null, "usage"), true);
+  });
+});
+
+describe("draft ownership", () => {
+  it("maps each transaction type to the feature its draft belongs to", () => {
+    assert.equal(draftFeature("usage"), "consumption");
+    assert.equal(draftFeature("indent"), "indent");
+    assert.equal(draftFeature("transfer"), "transfer-stock");
+    assert.equal(draftFeature("request"), "requests");
+    assert.equal(draftFeature("other"), null);
+  });
+
+  it("blocks a draft only when its own feature is off", () => {
+    const flags = { consumption: false, indent: true, "transfer-stock": false };
+    assert.equal(isDraftBlocked(flags, "usage"), true);
+    assert.equal(isDraftBlocked(flags, "transfer"), true);
+    assert.equal(isDraftBlocked(flags, "indent"), false);
+    assert.equal(isDraftBlocked(flags, "other"), false);
+    assert.equal(isDraftBlocked(null, "usage"), false);
   });
 });
 

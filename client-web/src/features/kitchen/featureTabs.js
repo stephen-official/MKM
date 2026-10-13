@@ -24,6 +24,17 @@ export const isViewHidden = (flags, view, transactionType) => {
 /** False when the feature behind `view` is off, i.e. the navigation guard would bounce the user back to home. */
 export const canOpenView = (flags, view, transactionType) => !isViewHidden(flags, view, transactionType);
 
+const DRAFT_FEATURES = Object.freeze({ usage: "consumption", request: "requests", indent: "indent", transfer: "transfer-stock" });
+
+/** The feature a draft of the given transaction type (usage | request | indent | transfer) belongs to. */
+export const draftFeature = (transactionType) => DRAFT_FEATURES[transactionType] ?? null;
+
+/** True when the feature a draft belongs to has been switched off, so the draft can no longer be submitted. */
+export const isDraftBlocked = (flags, transactionType) => {
+  const key = draftFeature(transactionType);
+  return key !== null && !isFeatureOn(flags, key);
+};
+
 export const sameFlags = (a, b) => {
   if (a === b) return true;
   if (!a || !b) return false;

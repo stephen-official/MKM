@@ -21,7 +21,7 @@ import KitchenMore from "./kitchen/KitchenMore";
 import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../utils/date";
 import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../features/kitchen/workflows";
 import { clearSession } from "../utils/session";
-import { FEATURE_DISABLED_EVENT, canOpenView, featureForView, fetchKitchenFlags, hiddenTabs as computeHidden, isFeatureOn, isViewHidden, sameFlags, tabTarget } from "../features.js";
+import { FEATURE_DISABLED_EVENT, canOpenView, draftFeature, featureForView, fetchKitchenFlags, hiddenTabs as computeHidden, isDraftBlocked, isFeatureOn, isViewHidden, sameFlags, tabTarget } from "../features.js";
 import { toastFeatureDisabled } from "../featureToast.js";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
@@ -292,17 +292,31 @@ setItems(formatted);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- applyFlags only touches refs and state setters
   }, []);
 
-  // A view can become hidden after load (deep link, or flags changed on focus): fall back to home.
-  useEffect(() => {
-    if (!isViewHidden(flags, activeTab, activeTransactionType)) return;
-    toastFeatureDisabled(featureForView(activeTab, activeTransactionType));
-    setActiveTabState("home");
-    window.history.replaceState({ kitchenView: "home" }, "", `${window.location.pathname}${window.location.search}#/home`);
-  }, [flags, activeTab, activeTransactionType]);
-
   const hasDraft = cart.some((item) =>
     Number(mode === "daily" ? item.qtyBaseUnit : item.requestedQty) > 0
   );
+
+  // A view can become hidden after load (deep link, or flags changed on focus): fall back to home.
+  // A draft whose feature was switched off is dropped silently (nothing visible to discard) so it cannot
+  // trigger "Discard your unfinished draft?" prompts or the beforeunload warning. applyFlags feeds this via `flags`.
+  useEffect(() => {
+    const viewHidden = isViewHidden(flags, activeTab, activeTransactionType);
+    const draftBlocked = hasDraft && isDraftBlocked(flags, activeTransactionType);
+    if (!viewHidden && !draftBlocked) return;
+    toastFeatureDisabled(viewHidden ? featureForView(activeTab, activeTransactionType) : draftFeature(activeTransactionType));
+    if (draftBlocked) {
+      setCart([]);
+      setRequestReason("");
+      setEditIndentId(null);
+      setTransferDestination("");
+      setMode("stock");
+      setActiveTransactionType("usage");
+    }
+    if (viewHidden) {
+      setActiveTabState("home");
+      window.history.replaceState({ kitchenView: "home" }, "", `${window.location.pathname}${window.location.search}#/home`);
+    }
+  }, [flags, activeTab, activeTransactionType, hasDraft]);
 
   useEffect(() => {
     const warnBeforeLeaving = (event) => {
