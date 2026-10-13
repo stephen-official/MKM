@@ -36,6 +36,9 @@ reportScheduleRoutes.post("/", async (req, res) => {
 reportScheduleRoutes.patch("/:id", async (req, res) => {
   try {
     const current = await findOr404(req.params.id);
+    if (!Number.isInteger(req.body?.expectedVersion)) {
+      return res.status(400).json({ code: "INVALID_SCHEDULE", message: "Check the highlighted fields.", fields: { expectedVersion: "Reload the schedule and try again." } });
+    }
     const { value } = validateSchedule({ ...current, ...req.body });
     const updated = await ReportSchedule.findOneAndUpdate(
       { _id: current._id, version: req.body?.expectedVersion },
@@ -58,6 +61,7 @@ reportScheduleRoutes.delete("/:id", async (req, res) => {
 reportScheduleRoutes.post("/:id/run", async (req, res) => {
   try {
     const current = await findOr404(req.params.id);
+    if (!current.active) return res.status(409).json({ code: "SCHEDULE_INACTIVE", message: "Activate this schedule before running it." });
     await ReportSchedule.updateOne({ _id: current._id }, { $set: { nextRunAt: new Date() } });
     return res.status(202).json({ queued: true, message: "The report will be sent within a minute." });
   } catch (e) { return sendError(res, e); }

@@ -6,7 +6,8 @@ export const CADENCES = Object.freeze(["daily", "weekly", "monthly"]);
 export const FORMATS = Object.freeze(["xlsx", "pdf"]);
 export const MAX_RECIPIENTS = 20;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Rejects separators/quoting so one entry cannot expand into several addresses.
+const EMAIL = /^[^\s@,;<>"()[\]\\]+@[^\s@,;<>"()[\]\\]+\.[^\s@,;<>"()[\]\\]+$/;
 
 const weekday = (dateStr) => new Date(`${dateStr}T00:00:00Z`).getUTCDay();
 

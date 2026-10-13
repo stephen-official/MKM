@@ -75,6 +75,43 @@ test("a lock left by a crashed run expires", async () => {
   assert.equal((await runDueSchedules({ now: NOW, mailer: fakeMailer })).ran, 1);
 });
 
+test("mail failure still advances nextRunAt and releases the lock", async () => {
+  const s = await schedule();
+  await runDueSchedules({ now: NOW, mailer: { sendReportEmail: async () => { throw new Error("smtp"); } } });
+  const doc = await ReportSchedule.findById(s._id).lean();
+  assert.equal(doc.nextRunAt.toISOString(), "2026-10-14T02:00:00.000Z");
+  assert.equal(doc.lockedUntil, null);
+  assert.equal(doc.lastStatus, "failed");
+  assert.equal((await runDueSchedules({ now: NOW, mailer: fakeMailer })).ran, 0, "not retried");
+  assert.equal(sent.length, 0);
+});
+
+test("a schedule whose next run cannot be computed is deactivated without sending", async () => {
+  const s = await schedule({ cadence: "weekly", dayOfWeek: null });
+  await runDueSchedules({ now: NOW, mailer: fakeMailer });
+  const doc = await ReportSchedule.findById(s._id).lean();
+  assert.equal(sent.length, 0);
+  assert.equal(doc.active, false);
+  assert.equal(doc.lastStatus, "failed");
+  assert.equal(doc.lastError, "INVALID_SCHEDULE");
+  assert.equal(doc.lockedUntil, null);
+  assert.equal(await ReportRun.countDocuments({ scheduleId: s._id, status: "failed", errorCode: "INVALID_SCHEDULE" }), 1);
+  assert.equal((await runDueSchedules({ now: NOW, mailer: fakeMailer })).ran, 0);
+  assert.equal(sent.length, 0);
+});
+
+test("a bookkeeping failure after a successful send never causes a second send", async (t) => {
+  await schedule();
+  t.mock.method(ReportRun, "create", () => { throw new Error("db"); });
+  t.mock.method(console, "error", () => {});
+  assert.equal((await runDueSchedules({ now: NOW, mailer: fakeMailer })).ran, 1);
+  assert.equal(sent.length, 1);
+  assert.equal((await ReportSchedule.findOne().lean()).lockedUntil, null);
+  assert.equal((await runDueSchedules({ now: NOW, mailer: fakeMailer })).ran, 0);
+  assert.equal((await runDueSchedules({ now: new Date(NOW.getTime() + 20 * 60_000), mailer: fakeMailer })).ran, 0, "still not due after the lock window");
+  assert.equal(sent.length, 1);
+});
+
 test("HTTP: create, conflict, run-now, history (super-admin only)", async () => {
   const { app } = await import("../app.js");
   const request = (await import("supertest")).default;
@@ -92,6 +129,13 @@ test("HTTP: create, conflict, run-now, history (super-admin only)", async () => 
   const edited = await as(root, "patch", `/api/report-schedules/${created.body._id}`).send({ expectedVersion: 1, name: "Daily 2" });
   assert.equal(edited.status, 200);
   assert.equal((await as(root, "patch", `/api/report-schedules/${created.body._id}`).send({ expectedVersion: 1, name: "x" })).status, 409);
+  const noVersion = await as(root, "patch", `/api/report-schedules/${created.body._id}`).send({ name: "y" });
+  assert.equal(noVersion.status, 400);
+  assert.ok(noVersion.body.fields.expectedVersion);
   assert.equal((await as(root, "post", `/api/report-schedules/${created.body._id}/run`)).status, 202);
+  await ReportSchedule.updateOne({ _id: created.body._id }, { $set: { active: false } });
+  const inactive = await as(root, "post", `/api/report-schedules/${created.body._id}/run`);
+  assert.equal(inactive.status, 409);
+  assert.equal(inactive.body.code, "SCHEDULE_INACTIVE");
   assert.equal((await as(root, "get", `/api/report-schedules/${created.body._id}/runs`)).body.total, 0);
 });

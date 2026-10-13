@@ -37,4 +37,6 @@ test("validation", () => {
   assert.deepEqual(fields({ ...good, cadence: "monthly", dayOfMonth: 31 }), ["dayOfMonth"]);
   assert.deepEqual(fields({ ...good, recipients: Array.from({ length: 21 }, (_, i) => `u${i}@x.io`) }), ["recipients"]);
   assert.deepEqual(fields({ ...good, godownId: "nope" }), ["godownId"]);
+  assert.deepEqual(fields({ ...good, recipients: ["a,b@x.io"] }), ["recipients"]);
+  assert.deepEqual(fields({ ...good, recipients: ["<a@x.io>", "a@x.io;b@x.io"] }), ["recipients"]);
 });

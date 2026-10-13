@@ -38,8 +38,37 @@ const runOne = async (schedule, now, mailer) => {
     return { ...run, status: "success", filename, errorCode: null };
   } catch (error) {
     const code = typeof error?.code === "string" ? error.code : "RUN_FAILED";
-    console.error(`[schedules] ${schedule._id} failed: ${code} ${error.message}`);
+    console.error(`[schedules] ${schedule._id} failed: ${code}`);
     return { ...run, status: "failed", filename: null, errorCode: code };
+  }
+};
+
+/** Persists the next occurrence before sending, so delivery is at-most-once even if later bookkeeping fails. */
+const advanceOrDeactivate = async (schedule, now) => {
+  try {
+    const next = computeNextRun(schedule, now);
+    await ReportSchedule.updateOne({ _id: schedule._id }, { $set: { nextRunAt: next } });
+    return true;
+  } catch (error) {
+    console.error(`[schedules] ${schedule._id} cannot be scheduled: ${error?.code || "INVALID_SCHEDULE"}`);
+    const { from, to } = rangeForPreset(schedule.rangePreset, now);
+    await safely(() => ReportRun.create({
+      scheduleId: schedule._id, startedAt: now, finishedAt: new Date(), status: "failed", errorCode: "INVALID_SCHEDULE",
+      from, to, filename: null, recipientCount: schedule.recipients.length
+    }));
+    await safely(() => ReportSchedule.updateOne({ _id: schedule._id }, {
+      $set: { active: false, lastRunAt: now, lastStatus: "failed", lastError: "INVALID_SCHEDULE", lockedUntil: null }
+    }));
+    return false;
+  }
+};
+
+/** Runs a bookkeeping write; a failure is logged by code only and never aborts the loop. */
+const safely = async (write) => {
+  try {
+    await write();
+  } catch (error) {
+    console.error(`[schedules] bookkeeping failed: ${typeof error?.code === "string" ? error.code : error?.name || "ERROR"}`);
   }
 };
 
@@ -48,15 +77,13 @@ export const runDueSchedules = async ({ now = new Date(), mailer = defaultMailer
   while (ran < limit) {
     const schedule = await claimNext(now);
     if (!schedule) break;
-    const result = await runOne(schedule, now, mailer);
-    await ReportRun.create({ ...result, finishedAt: new Date() });
-    await ReportSchedule.updateOne({ _id: schedule._id }, {
-      $set: {
-        lastRunAt: now, lastStatus: result.status, lastError: result.errorCode,
-        nextRunAt: computeNextRun(schedule, now), lockedUntil: null
-      }
-    });
     ran += 1;
+    if (!(await advanceOrDeactivate(schedule, now))) continue;
+    const result = await runOne(schedule, now, mailer);
+    await safely(() => ReportRun.create({ ...result, finishedAt: new Date() }));
+    await safely(() => ReportSchedule.updateOne({ _id: schedule._id }, {
+      $set: { lastRunAt: now, lastStatus: result.status, lastError: result.errorCode, lockedUntil: null }
+    }));
   }
   return { ran };
 };
