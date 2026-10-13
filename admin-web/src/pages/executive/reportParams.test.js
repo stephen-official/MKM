@@ -22,6 +22,13 @@ describe("sanitizeReportParams", () => {
     expect(s("from=2026-10-01&to=2026-10-05")).toMatchObject({ preset: "custom", changed: true });
     expect(s("range=yearly")).toMatchObject({ preset: "30d", changed: true });
   });
+  it("inherited Object keys are not treated as presets", () => {
+    for (const range of ["toString", "constructor", "__proto__"]) {
+      let result;
+      expect(() => { result = s(`range=${range}`); }).not.toThrow();
+      expect(result).toMatchObject({ preset: "30d", from: "2026-09-14", to: "2026-10-13", changed: true });
+    }
+  });
   it("kitchen ids are checked for shape and existence", () => {
     expect(s("godownId=not-an-id")).toMatchObject({ godownId: "all", kitchenReset: true, changed: true });
     const id = "65f0c0ffee0000000000abcd";

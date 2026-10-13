@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { Banner, ErrorState, LoadingState, PageHeader } from "../components/ui/index.jsx";
 import { formatDateTime, todayInBusinessTz } from "../businessTime.js";
@@ -12,6 +12,7 @@ import "./executive/executive.css";
 
 export function ExecutiveReportPage() {
   const [search, setSearch] = useSearchParams();
+  const location = useLocation();
   const [kitchens, setKitchens] = useState(null);
   const [kitchenError, setKitchenError] = useState(false);
   const today = todayInBusinessTz();
@@ -28,9 +29,12 @@ export function ExecutiveReportPage() {
   const state = useMemo(() => sanitizeReportParams(search, { today, kitchenIds }), [search, today, kitchenIds]);
 
   // Replace an invalid or non-canonical URL with the safe one (no extra history entry).
+  // The kitchen-reset flag rides along in location state so the banner survives the redirect;
+  // the next filter change or reset navigates without it, which clears the banner.
   useEffect(() => {
-    if (state.changed) setSearch(toSearchParams(state), { replace: true });
+    if (state.changed) setSearch(toSearchParams(state), { replace: true, state: { kitchenReset: state.kitchenReset } });
   }, [state, setSearch]);
+  const showKitchenReset = state.kitchenReset || location.state?.kitchenReset === true;
 
   const apiQuery = useMemo(() => toApiQuery(state), [state]);
   const { status, report, error, reload } = useExecutiveReport(apiQuery);
@@ -56,7 +60,7 @@ export function ExecutiveReportPage() {
         canReset={!isDefault(state)}
         disabled={false}
       />
-      {state.kitchenReset && <Banner variant="warn">The selected kitchen no longer exists, so the report shows all kitchens.</Banner>}
+      {showKitchenReset && <Banner variant="warn">The selected kitchen no longer exists, so the report shows all kitchens.</Banner>}
       {kitchenError && <Banner variant="warn">The kitchen list could not be loaded. You can still view all kitchens.</Banner>}
       {status === "error" && error?.code === "KITCHEN_NOT_FOUND" && (
         <Banner variant="warn">That kitchen was removed. Choose another kitchen or reset the filters.</Banner>

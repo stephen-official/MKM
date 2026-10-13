@@ -38,7 +38,7 @@ export const sanitizeReportParams = (search, { today, kitchenIds } = {}) => {
   let range;
   const customValid = isIsoDate(from) && isIsoDate(to) && from <= to && to <= today && span(from, to) <= MAX_SPAN_DAYS;
 
-  if (preset && PRESETS[preset]) {
+  if (preset && Object.hasOwn(PRESETS, preset)) {
     range = presetRange(preset, today);
     if (from || to) changed = true;
   } else if ((preset === "custom" || (!preset && (from || to))) && customValid) {
