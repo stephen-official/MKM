@@ -17,3 +17,22 @@ export const describeScope = ({ scope, targetId }, names = {}) => {
   if (scope === "user") return `User: ${name}`;
   return `${scope} ${targetId}`;
 };
+
+const SCOPE_NOTES = {
+  global: "Changes apply to administrators within a minute (immediately on their next action). Super-admins always see every module. Shared reference data (stock items, kitchens, units, stock levels) stays available to the modules that depend on it.",
+  kitchen: "A kitchen override applies to everyone using that kitchen in the kitchen app and takes priority over the general setting. Changes apply within a minute. Choose Inherit to remove an override.",
+  user: "A user override applies to one person and takes priority over their kitchen's override and the general setting. Super-admins are never restricted. Changes apply within a minute. Choose Inherit to remove an override."
+};
+
+/** Explains what the active settings tab does. */
+export const scopeNote = (scope) => SCOPE_NOTES[scope] || SCOPE_NOTES.global;
+
+/**
+ * Which override-target lists (kitchens, users) the page needs: those whose tab was opened, plus any whose
+ * names appear in the change history (so audit rows show names rather than ids).
+ */
+export const neededTargetScopes = (visitedScopes, auditItems = []) => {
+  const seen = new Set(visitedScopes);
+  for (const row of auditItems) seen.add(row.scope);
+  return { kitchen: seen.has("kitchen"), user: seen.has("user") };
+};

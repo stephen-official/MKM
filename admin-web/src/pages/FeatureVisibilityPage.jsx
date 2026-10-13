@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { Banner, Button, Card, ConfirmDialog, ErrorState, LoadingState, PageHeader, Tabs } from "../components/ui/index.jsx";
 import { useToast } from "../useToast.js";
@@ -8,7 +8,7 @@ import { formatDateTime } from "../businessTime.js";
 import { FeatureToggleTable } from "./features/FeatureToggleTable.jsx";
 import { FeatureAuditList } from "./features/FeatureAuditList.jsx";
 import { OverridesPanel } from "./features/OverridesPanel.jsx";
-import { applyEdits, describeChange, pendingChanges, pruneEdits } from "./features/diff.js";
+import { applyEdits, describeChange, neededTargetScopes, pendingChanges, pruneEdits, scopeNote } from "./features/diff.js";
 
 const SCOPE_TABS = [{ value: "global", label: "All admins" }, { value: "kitchen", label: "Per kitchen" }, { value: "user", label: "Per user" }];
 
@@ -25,6 +25,9 @@ export function FeatureVisibilityPage() {
   const [scope, setScope] = useState("global");
   const [kitchens, setKitchens] = useState([]);
   const [users, setUsers] = useState([]);
+  const [reloading, setReloading] = useState(false);
+  const [visited, setVisited] = useState(() => new Set(["global"]));
+  const requested = useRef({ kitchen: false, user: false });
 
   // Resolves true when the latest settings were loaded, so callers can tell a failed reload apart.
   const loadAdmin = useCallback(async () => {
@@ -54,13 +57,29 @@ export function FeatureVisibilityPage() {
     loadAudit(1);
   }, [loadAdmin, loadAudit]);
 
+  // Target lists load when their tab is first opened (or when the change history needs their names).
+  const need = neededTargetScopes(visited, audit?.items);
   useEffect(() => {
-    api.get("/inventory/godowns").then(({ data }) => setKitchens(data)).catch(() => setKitchens([]));
-  }, []);
+    if (need.kitchen && !requested.current.kitchen) {
+      requested.current.kitchen = true;
+      api.get("/inventory/godowns").then(({ data }) => setKitchens(data)).catch(() => {
+        requested.current.kitchen = false;
+        setKitchens([]);
+      });
+    }
+    if (need.user && !requested.current.user) {
+      requested.current.user = true;
+      api.get("/users", { params: { pageSize: "all" } }).then(({ data }) => setUsers(data.items)).catch(() => {
+        requested.current.user = false;
+        setUsers([]);
+      });
+    }
+  }, [need.kitchen, need.user]);
 
-  useEffect(() => {
-    api.get("/users", { params: { pageSize: "all" } }).then(({ data }) => setUsers(data.items)).catch(() => setUsers([]));
-  }, []);
+  const changeScope = (next) => {
+    setScope(next);
+    setVisited((prev) => (prev.has(next) ? prev : new Set(prev).add(next)));
+  };
 
   const userTargets = useMemo(
     () => users.filter((u) => !isSuperAdmin(u.role)).map((u) => ({
@@ -107,8 +126,15 @@ export function FeatureVisibilityPage() {
   };
 
   const reload = async () => {
-    if (await loadAdmin()) setConflict(null);
-    else showToast("Could not reload feature settings. Try again.", "error");
+    if (reloading) return;
+    setReloading(true);
+    try {
+      const [loaded] = await Promise.all([loadAdmin(), loadAudit(1)]);
+      if (loaded) setConflict(null);
+      else showToast("Could not reload feature settings. Try again.", "error");
+    } finally {
+      setReloading(false);
+    }
   };
 
   if (loadError && !admin) return <ErrorState message={loadError} onRetry={loadAdmin} />;
@@ -125,20 +151,17 @@ export function FeatureVisibilityPage() {
           <>
             <Button variant="ghost" disabled={!changeCount || saving} onClick={() => setEdits({})}>Discard</Button>
             <Button disabled={!changeCount || saving || conflict !== null} onClick={() => setConfirming(true)}>
-              Save {changeCount ? `(${changeCount})` : ""}
+              {changeCount ? `Save (${changeCount})` : "Save"}
             </Button>
           </>
         )}
       />
-      <Banner variant="info">
-        Changes apply to administrators within a minute (immediately on their next action). Super-admins always see every module.
-        Shared reference data (stock items, kitchens, units, stock levels) stays available to the modules that depend on it.
-      </Banner>
-      <Tabs items={SCOPE_TABS} value={scope} onChange={setScope} label="Settings scope" />
+      <Banner variant="info">{scopeNote(scope)}</Banner>
+      <Tabs items={SCOPE_TABS} value={scope} onChange={changeScope} label="Settings scope" />
       {scope === "global" && conflict !== null && (
         <Banner variant="warn">
           Someone else saved changes (now version {conflict}). Reload to see them — your unsaved edits are kept where they still differ.
-          {" "}<Button size="sm" variant="ghost" onClick={reload}>Reload</Button>
+          {" "}<Button size="sm" variant="ghost" disabled={reloading} onClick={reload}>{reloading ? "Reloading…" : "Reload"}</Button>
         </Banner>
       )}
       {scope === "global" && (
