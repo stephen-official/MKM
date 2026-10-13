@@ -17,19 +17,36 @@ export function ReportSchedulesPage() {
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [history, setHistory] = useState(null);
+  const [runningId, setRunningId] = useState(null);
 
+  // Resolves to the loaded rows, or null when the load failed.
   const load = useCallback(async () => {
     try {
-      setSchedules((await api.get("/report-schedules")).data);
+      const { data } = await api.get("/report-schedules");
+      setSchedules(data);
       setError(null);
+      return data;
     } catch (e) {
       setError(e.response?.data?.message || "Could not load schedules.");
+      return null;
     }
   }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { api.get("/inventory/godowns").then(({ data }) => setKitchens(data)).catch(() => setKitchens([])); }, []);
 
   const kitchenName = (id) => (id === "all" ? "All kitchens" : kitchens.find((k) => String(k._id) === id)?.name || "Removed kitchen");
+
+  // Someone else changed the schedule: reload and show the form again on the current values.
+  const reopenFresh = async (id) => {
+    const rows = await load();
+    const fresh = rows?.find((row) => row._id === id);
+    setServerErrors({});
+    setEditing(fresh || null);
+    showToast(
+      fresh ? "Someone else changed this schedule. The latest values are shown; review them and save again." : "Someone else changed this schedule. The list has been reloaded.",
+      "error"
+    );
+  };
 
   const save = async (body) => {
     setBusy(true);
@@ -43,7 +60,7 @@ export function ReportSchedulesPage() {
     } catch (e) {
       const res = e.response?.data;
       if (res?.code === "INVALID_SCHEDULE") setServerErrors(res.fields || {});
-      else if (res?.code === "VERSION_CONFLICT") { showToast("Someone else changed this schedule. The list has been reloaded.", "error"); setEditing(null); load(); }
+      else if (res?.code === "VERSION_CONFLICT") await reopenFresh(editing._id);
       else showToast(res?.message || "Could not save the schedule.", "error");
     } finally {
       setBusy(false);
@@ -51,11 +68,16 @@ export function ReportSchedulesPage() {
   };
 
   const runNow = async (s) => {
+    if (runningId) return;
+    setRunningId(s._id);
     try {
       const { data } = await api.post(`/report-schedules/${s._id}/run`);
       showToast(data.message, "success");
     } catch (e) {
       showToast(e.response?.data?.message || "Could not queue the run.", "error");
+    } finally {
+      setRunningId(null);
+      load();
     }
   };
 
@@ -108,7 +130,7 @@ export function ReportSchedulesPage() {
                     <td>
                       <div className="row-actions">
                       <Button size="sm" variant="ghost" onClick={() => { setServerErrors({}); setEditing(s); }}>Edit</Button>
-                      <Button size="sm" variant="ghost" onClick={() => runNow(s)} disabled={!s.active}>Run now</Button>
+                      <Button size="sm" variant="ghost" onClick={() => runNow(s)} disabled={!s.active || runningId !== null}>{runningId === s._id ? "Queuing…" : "Run now"}</Button>
                       <Button size="sm" variant="ghost" onClick={() => openHistory(s)}>History</Button>
                       <Button size="sm" variant="danger" onClick={() => setDeleting(s)}>Delete</Button>
                       </div>
@@ -121,7 +143,7 @@ export function ReportSchedulesPage() {
         </Card>
       )}
       {editing && (
-        <ScheduleForm title={editing._id ? `Edit ${editing.name}` : "New schedule"} initial={editing} kitchens={kitchens}
+        <ScheduleForm key={`${editing._id || "new"}:${editing.version ?? 0}`} title={editing._id ? `Edit ${editing.name}` : "New schedule"} initial={editing} kitchens={kitchens}
           busy={busy} serverErrors={serverErrors} onCancel={() => setEditing(null)} onSubmit={save} />
       )}
       {deleting && (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeSchedule, parseRecipients } from "./scheduleText.js";
+import { buildSchedulePayload, describeSchedule, isRemovedKitchen, parseRecipients } from "./scheduleText.js";
 
 describe("schedule text", () => {
   it("describes cadence, time, period, format and recipients", () => {
@@ -12,5 +12,28 @@ describe("schedule text", () => {
   });
   it("parses recipient lists", () => {
     expect(parseRecipients("a@x.io, b@x.io;c@x.io\n d@x.io  ")).toEqual(["a@x.io", "b@x.io", "c@x.io", "d@x.io"]);
+  });
+  describe("buildSchedulePayload", () => {
+    const base = { name: "Weekly", godownId: "all", rangePreset: "last-7-days", cadence: "weekly", dayOfWeek: "2", dayOfMonth: 5, time: "08:00", format: "xlsx", active: true, recipientsText: "a@x.io, b@x.io\nb2@x.io" };
+    it("parses recipients, drops the text field and keeps only the weekly day", () => {
+      const body = buildSchedulePayload(base);
+      expect(body.recipients).toEqual(["a@x.io", "b@x.io", "b2@x.io"]);
+      expect(body).not.toHaveProperty("recipientsText");
+      expect(body).toMatchObject({ dayOfWeek: 2, dayOfMonth: null, name: "Weekly", active: true });
+    });
+    it("keeps only the monthly day for monthly and neither for daily", () => {
+      expect(buildSchedulePayload({ ...base, cadence: "monthly", dayOfMonth: "15" })).toMatchObject({ dayOfWeek: null, dayOfMonth: 15 });
+      expect(buildSchedulePayload({ ...base, cadence: "daily" })).toMatchObject({ dayOfWeek: null, dayOfMonth: null });
+    });
+    it("sends no recipients for blank text", () => {
+      expect(buildSchedulePayload({ ...base, recipientsText: " \n " }).recipients).toEqual([]);
+    });
+  });
+  it("detects a schedule whose kitchen was removed", () => {
+    const kitchens = [{ _id: "k1" }, { _id: "k2" }];
+    expect(isRemovedKitchen("all", kitchens)).toBe(false);
+    expect(isRemovedKitchen("k2", kitchens)).toBe(false);
+    expect(isRemovedKitchen("gone", kitchens)).toBe(true);
+    expect(isRemovedKitchen("k1", [])).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button, Field, Modal } from "../../components/ui/index.jsx";
-import { EMPTY_SCHEDULE, parseRecipients } from "./scheduleText.js";
+import { EMPTY_SCHEDULE, buildSchedulePayload, isRemovedKitchen } from "./scheduleText.js";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -25,13 +25,7 @@ export function ScheduleForm({ title, initial, kitchens, busy, serverErrors = {}
   const otherErrors = Object.entries(serverErrors).filter(([key]) => !FIELD_KEYS.includes(key));
   const submit = (event) => {
     event.preventDefault();
-    const { recipientsText, ...rest } = form;
-    onSubmit({
-      ...rest,
-      recipients: parseRecipients(recipientsText),
-      dayOfWeek: rest.cadence === "weekly" ? Number(rest.dayOfWeek) : null,
-      dayOfMonth: rest.cadence === "monthly" ? Number(rest.dayOfMonth) : null
-    });
+    onSubmit(buildSchedulePayload(form));
   };
   const active = kitchens.filter((k) => k.active !== false);
   const inactive = kitchens.filter((k) => k.active === false);
@@ -48,6 +42,7 @@ export function ScheduleForm({ title, initial, kitchens, busy, serverErrors = {}
         <Field label="Kitchen">
           <select value={form.godownId} onChange={(e) => set({ godownId: e.target.value })}>
             <option value="all">All kitchens</option>
+            {isRemovedKitchen(form.godownId, kitchens) && <option value={form.godownId} disabled>Removed kitchen</option>}
             {active.length > 0 && <optgroup label="Active">{active.map((k) => <option key={k._id} value={k._id}>{k.name}</option>)}</optgroup>}
             {inactive.length > 0 && <optgroup label="Inactive">{inactive.map((k) => <option key={k._id} value={k._id}>{k.name}</option>)}</optgroup>}
           </select>

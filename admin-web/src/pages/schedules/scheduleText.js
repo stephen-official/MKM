@@ -14,3 +14,18 @@ export const EMPTY_SCHEDULE = {
   name: "", godownId: "all", rangePreset: "last-7-days", cadence: "weekly", dayOfWeek: 1, dayOfMonth: 1,
   time: "08:00", format: "xlsx", recipients: [], active: true
 };
+
+/** The form's editable fields as the API body (recipients parsed; only the cadence's own day is sent). */
+export const buildSchedulePayload = (form) => {
+  const { recipientsText, ...rest } = form;
+  return {
+    ...rest,
+    recipients: parseRecipients(recipientsText),
+    dayOfWeek: rest.cadence === "weekly" ? Number(rest.dayOfWeek) : null,
+    dayOfMonth: rest.cadence === "monthly" ? Number(rest.dayOfMonth) : null
+  };
+};
+
+/** True when a schedule points at a specific kitchen that is no longer in the kitchen list. */
+export const isRemovedKitchen = (godownId, kitchens) =>
+  godownId !== "all" && !kitchens.some((k) => String(k._id) === String(godownId));
