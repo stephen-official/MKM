@@ -49,13 +49,17 @@ const offsetMinutes = (instantMs, tz) => {
   return Math.round((asUtc - Math.floor(instantMs / 1000) * 1000) / 60_000);
 };
 
-/** UTC instant of 00:00 on dateStr in tz (second pass corrects across DST changes). */
-export const startOfBusinessDay = (dateStr, tz = BUSINESS_TZ) => {
+/** UTC instant of wall-clock dateStr + "HH:mm" in tz (second pass corrects across DST changes). */
+export const zonedInstant = (dateStr, time, tz = BUSINESS_TZ) => {
   const [y, m, d] = dateStr.split("-").map(Number);
-  const naive = Date.UTC(y, m - 1, d);
+  const [hh, mm] = time.split(":").map(Number);
+  const naive = Date.UTC(y, m - 1, d, hh, mm);
   const guess = naive - offsetMinutes(naive, tz) * 60_000;
   return new Date(naive - offsetMinutes(guess, tz) * 60_000);
 };
+
+/** UTC instant of 00:00 on dateStr in tz. */
+export const startOfBusinessDay = (dateStr, tz = BUSINESS_TZ) => zonedInstant(dateStr, "00:00", tz);
 
 export const windowFor = (from, to, tz = BUSINESS_TZ) => ({
   start: startOfBusinessDay(from, tz),

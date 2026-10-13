@@ -52,11 +52,16 @@ io.on("connection", (socket) => {
 });
 
 connectDB()
-  .then(() => {
+  .then(async () => {
     const PORT = env.port || 5000;
     server.listen(PORT, () => {
       console.log(`Backend running with authenticated realtime updates on port ${PORT}`);
     });
+    if (env.reportSchedulerEnabled) {
+      const { startReportScheduler } = await import("./jobs/reportScheduler.js");
+      startReportScheduler();
+      console.log("Report scheduler started");
+    }
   })
   .catch((error) => {
     console.error("❌ DB connection failed:", error);

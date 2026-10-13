@@ -23,8 +23,9 @@ export const mailer = {
       html: `<p>Hello ${escapeHtml(name)},</p><p>An account was created for you. Set your password within 24 hours using token <strong>${escapeHtml(token)}</strong> or <a href="${resetLink(token)}">this link</a>.</p>`
     });
   },
-  async sendReportEmail() {
-    throw new Error("sendReportEmail is implemented in Task 33");
+  /** Scheduled report: recipients in Bcc so they do not see each other. */
+  async sendReportEmail({ bcc, subject, text, attachment }) {
+    await createTransport().sendMail({ from: from(), to: env.emailUser, bcc, subject, text, attachments: [attachment] });
   }
 };
 

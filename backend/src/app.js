@@ -19,6 +19,7 @@ import { dailyUsageRoutes } from "./routes/dailyUsageRoutes.js";
 import { productLedgerRoutes } from "./routes/productLedgerRoutes.js";
 import { executiveRoutes } from "./routes/executiveRoutes.js";
 import { userRoutes } from "./routes/userRoutes.js";
+import { reportScheduleRoutes } from "./routes/reportScheduleRoutes.js";
 
 const app = express();
 
@@ -132,7 +133,8 @@ export const PROTECTED_MOUNTS = [
   ["/api/product-ledger", productLedgerRoutes],
   ["/api/features", featureRoutes],
   ["/api/executive", executiveRoutes],
-  ["/api/users", userRoutes]
+  ["/api/users", userRoutes],
+  ["/api/report-schedules", reportScheduleRoutes]
 ];
 
 app.use("/api/auth", authLimiter, authRoutes);
