@@ -112,7 +112,7 @@ Definitions of every figure are in `backend/src/executive/definitions.js` and in
 - Build the new indexes before deploying on large collections (see `backend/src/models/FlowModels.js`, "Executive report indexes"), e.g. `db.consumptions.createIndex({ godownId: 1, date: 1 })`, during a quiet period.
 - The database must be a replica set (already required by existing transactions).
 - Run `create-super-admin` once after deploying.
-- Performance check: `npm --prefix backend run test:perf` seeds a production-sized fixture covering one year of history and asserts report latency targets. Real latency with more history will be somewhat higher; re-run with larger counts (`PRODUCTION_SIZE` in the test helpers) if production data exceeds the fixture.
+- Performance check: `npm --prefix backend run test:perf` seeds a production-sized fixture covering one year of history and asserts report latency targets. Real latency with more history will be somewhat higher; re-run with larger counts (`PRODUCTION_SIZE` in `backend/src/tests/helpers/perfFixture.js`) if production data exceeds the fixture.
 - Scheduled report emails need working SMTP (`EMAIL_USER` / `EMAIL_PASS`); without it, runs are recorded with status `EMAIL_FAILED`.
 
 ## Common commands
