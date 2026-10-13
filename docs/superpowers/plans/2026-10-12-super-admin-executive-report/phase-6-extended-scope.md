@@ -740,6 +740,14 @@ test("two super-admins demoting each other at the same time leaves one super-adm
   assert.equal(await User.countDocuments({ role: "super_admin", active: true }), 1);
 });
 
+test("audit rows record before/after without secrets", async () => {
+  await as("root", "post", "/api/users").send({ name: "A2", email: "a2@x.io", role: "admin" });
+  const audit = await as("root", "get", "/api/users/audit");
+  assert.equal(audit.body.items[0].action, "create");
+  assert.equal(JSON.stringify(audit.body.items[0]).includes("passwordHash"), false);
+});
+```
+
 - [ ] **Step 2: Run** — FAIL.
 
 - [ ] **Step 3: Mailer refactor**
