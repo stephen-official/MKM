@@ -72,6 +72,15 @@ test("request approval prices lines, normalises the date, and nets returns", asy
   assert.equal(rows[1].items[0].amountAtIssue, -45);
 });
 
+test("request approval converts an ISO-instant targetDate into the business date", async () => {
+  // client-web sends local midnight as toISOString(): IST 12 Oct 00:00 = 11 Oct 18:30 UTC
+  const req = await Request.create({ godownId: f.A._id, userId: f.cook.user._id, targetDate: "2026-10-11T18:30:00.000Z", reason: "r",
+    items: [{ stockItemId: f.items.Rice._id, qtyBaseUnit: 3 }] });
+  assert.equal((await as("admin", "post", `/api/requests/${req._id}/approve`)).status, 200);
+  const row = await Consumption.findOne().lean();
+  assert.equal(row.date, "2026-10-12");
+});
+
 test("daily-usage approvals store an ISO date and no price", async () => {
   const daily = await Request.create({ godownId: f.A._id, userId: f.cook.user._id, requestType: "daily_usage", targetDate: "2026-10-11T09:00:00.000Z", reason: "r",
     items: [{ stockItemId: f.items.Dal._id, qtyBaseUnit: 1 }] });

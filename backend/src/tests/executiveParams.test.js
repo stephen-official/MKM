@@ -44,9 +44,14 @@ test("DST zones still get correct midnights", () => {
   assert.equal(startOfBusinessDay("2026-03-30", "Europe/London").toISOString(), "2026-03-29T23:00:00.000Z");
 });
 
-test("normalizeBusinessDate keeps ISO prefixes and falls back to the instant's business date", () => {
+test("normalizeBusinessDate keeps plain dates, converts instants to the business date and falls back", () => {
   assert.equal(normalizeBusinessDate("2026-10-12", NOW), "2026-10-12");
-  assert.equal(normalizeBusinessDate("2026-10-12T22:00:00.000Z", NOW), "2026-10-12");
+  // client-web sends local midnight as an ISO instant: IST 12 Oct 00:00 is 11 Oct 18:30 UTC
+  assert.equal(normalizeBusinessDate("2026-10-11T18:30:00.000Z", NOW), "2026-10-12");
+  assert.equal(normalizeBusinessDate("2026-10-12T22:00:00.000Z", NOW), "2026-10-13");
+  assert.equal(normalizeBusinessDate(new Date("2026-10-11T18:30:00.000Z"), NOW), "2026-10-12");
+  assert.equal(normalizeBusinessDate("next Monday", NOW, undefined), "2026-10-13");
+  assert.equal(normalizeBusinessDate("next Monday", new Date("nope")), businessDateOf(new Date()));
   assert.equal(normalizeBusinessDate("next Monday", NOW), "2026-10-13");
   assert.equal(normalizeBusinessDate(null, NOW), "2026-10-13");
 });

@@ -66,9 +66,19 @@ export const windowFor = (from, to, tz = BUSINESS_TZ) => ({
   end: startOfBusinessDay(addDays(to, 1), tz)
 });
 
+/**
+ * Business date (YYYY-MM-DD) for a stored target date. A plain calendar date is kept as-is; any other
+ * parseable instant (e.g. a client's local-midnight ISO timestamp) is converted into the business zone.
+ * Unparseable values fall back to the fallback instant's business date (or now if that is invalid too).
+ */
 export const normalizeBusinessDate = (value, fallbackInstant, tz = BUSINESS_TZ) => {
-  const prefix = typeof value === "string" ? value.slice(0, 10) : "";
-  return isIsoDate(prefix) ? prefix : businessDateOf(fallbackInstant, tz);
+  if (isIsoDate(value)) return value;
+  if (typeof value === "string" || value instanceof Date) {
+    const instant = new Date(value);
+    if (!Number.isNaN(instant.getTime())) return businessDateOf(instant, tz);
+  }
+  const fallback = new Date(fallbackInstant);
+  return businessDateOf(Number.isNaN(fallback.getTime()) ? new Date() : fallback, tz);
 };
 
 const pageParam = (value) => {
