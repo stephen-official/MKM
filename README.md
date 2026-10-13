@@ -90,7 +90,7 @@ Credentials are never committed. Run once per environment (safe to re-run):
 Flags: `--promote` turns an existing account with that email into a super-admin and keeps its existing password (re-run with `--reset-password` afterwards to set the new password); `--reset-password` replaces the password of an existing super-admin. Local dev seed (`seed-dev.js`) creates `superadmin@example.com` / `Super@123`.
 
 ### Invitation emails
-Invitation and password-reset emails link to `FRONTEND_URL`, which points at the admin console. Admins and super-admins can use the link directly. Kitchen users cannot use that link: they should open the kitchen app, choose "Forgot password?", request a reset for their email, then paste the token from the email into the reset-token screen and choose a password (the invitation token works there too, within its 24 hours).
+Invitation and password-reset emails link to `FRONTEND_URL`, which points at the admin console. Admins and super-admins can use the link directly. Kitchen users cannot use that link: they should open the kitchen app, choose "Forgot password?", request a reset for their email, then paste the token from the email into the reset-token screen and choose a password.
 
 ### Roles
 - `super_admin` - everything an admin can do, never feature-gated, plus Executive Report, Feature Visibility, Users and Report Schedules.
