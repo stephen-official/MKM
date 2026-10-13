@@ -3,6 +3,8 @@ import { Distribution, PurchaseOrder } from "../models/FlowModels.js";
 
 // Excludes null, strings, NaN (Mongo sorts NaN below every number), zero, negatives and Infinity.
 export const PRICE_RANGE = Object.freeze({ $gt: 0, $lte: Number.MAX_VALUE });
+/** The same rule as PRICE_RANGE as an aggregation expression over `field` (e.g. "$price"); keep the two in step. */
+export const validPriceExpr = (field) => ({ $and: [{ $isNumber: field }, { $gt: [field, 0] }, { $lte: [field, Number.MAX_VALUE] }] });
 export const isValidPrice = (price) => typeof price === "number" && Number.isFinite(price) && price > 0;
 
 const toIds = (ids) => ids?.map((id) => new mongoose.Types.ObjectId(String(id)));

@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import { startDb, clearDb, stopDb } from "./helpers/db.js";
 import { distribution, kitchen, purchaseOrder, seedCatalog } from "./helpers/fixtures.js";
-import { kitchenDistributionPrices, pricesForKitchen, purchaseOrderPrices, resolvePrice } from "../executive/valuation.js";
+import mongoose from "mongoose";
+import {
+  PRICE_RANGE, isValidPrice, kitchenDistributionPrices, pricesForKitchen, purchaseOrderPrices, resolvePrice, validPriceExpr
+} from "../executive/valuation.js";
 
 let f;
 before(startDb);
@@ -52,4 +55,38 @@ test("filters by kitchen and item", async () => {
   const prices = await pricesForKitchen(String(f.A._id), [f.items.Rice._id, f.items.Dal._id]);
   assert.deepEqual(prices.get(String(f.items.Rice._id)), { price: 45, source: "kitchen-distribution" });
   assert.deepEqual(prices.get(String(f.items.Dal._id)), { price: null, source: null });
+});
+
+test("purchaseOrderPrices honours a stockItemIds filter and still takes the latest valid price per item", async () => {
+  await purchaseOrder("2026-09-28T05:00:00Z", [[f.items.Dal, 10, 70]]);
+  const onlyDal = await purchaseOrderPrices({ stockItemIds: [f.items.Dal._id] });
+  assert.deepEqual([...onlyDal.entries()], [[String(f.items.Dal._id), 70]]);
+  const onlyRice = await purchaseOrderPrices({ stockItemIds: [String(f.items.Rice._id)] });
+  assert.deepEqual([...onlyRice.entries()], [[String(f.items.Rice._id), 41]]);
+  assert.equal((await purchaseOrderPrices({ stockItemIds: [f.items.Oil._id] })).size, 0);
+});
+
+test("an item whose only purchase-order prices are invalid stays unpriced", async () => {
+  await purchaseOrder("2026-09-26T05:00:00Z", [[f.items.Oil, 10, 0]]);
+  await purchaseOrder("2026-09-27T05:00:00Z", [[f.items.Oil, 10, -4]]);
+  await purchaseOrder("2026-09-28T05:00:00Z", [[f.items.Oil, 10, null]]);
+  const map = await purchaseOrderPrices({});
+  assert.equal(map.has(String(f.items.Oil._id)), false);
+  assert.equal(map.get(String(f.items.Rice._id)), 41, "other items unaffected");
+  const filtered = await purchaseOrderPrices({ stockItemIds: [f.items.Oil._id] });
+  assert.equal(filtered.size, 0);
+  assert.deepEqual(resolvePrice(new Map(), map, f.B._id, f.items.Oil._id), { price: null, source: null });
+});
+
+test("the $match range, the aggregation expression and isValidPrice agree on what a valid price is", async () => {
+  const values = [0.01, 45, Number.MAX_VALUE, 0, -3, NaN, Infinity, -Infinity, null, "45", true];
+  const coll = mongoose.connection.db.collection("price_rule_check");
+  await coll.deleteMany({});
+  await coll.insertMany(values.map((price, index) => ({ index, price })));
+  const ids = async (stage) => (await coll.aggregate([stage]).toArray()).map((row) => row.index).sort((a, b) => a - b);
+  const expected = values.map((v, i) => (isValidPrice(v) ? i : null)).filter((i) => i !== null);
+  assert.deepEqual(await ids({ $match: { price: PRICE_RANGE } }), expected);
+  assert.deepEqual(await ids({ $match: { $expr: validPriceExpr("$price") } }), expected);
+  assert.deepEqual(expected, [0, 1, 2]);
+  await coll.drop();
 });

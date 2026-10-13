@@ -3,6 +3,7 @@ import { DailyUsage } from "../../models/DailyUsageModel.js";
 import { StockItem } from "../../models/InventoryModels.js";
 import { round2, round3 } from "../../utils/money.js";
 import { addDays } from "../params.js";
+import { compareIds } from "../paginate.js";
 
 export const TOP_LIMIT = 10;
 const ISO_DAY = "^\\d{4}-\\d{2}-\\d{2}$";
@@ -31,7 +32,9 @@ export const consumptionRangeMatch = ({ scopeIds, from, to, window }) => ({
   ]
 });
 
-const VALUED = { $isNumber: "$items.amountAtIssue" };
+// Finite numbers only: NaN sorts below -MAX_VALUE and ±Infinity lies outside it, so all three are unvalued.
+const AMOUNT = "$items.amountAtIssue";
+const VALUED = { $and: [{ $isNumber: AMOUNT }, { $gte: [AMOUNT, -Number.MAX_VALUE] }, { $lte: [AMOUNT, Number.MAX_VALUE] }] };
 const SUMS = {
   value: { $sum: "$amount" },
   unvaluedLines: { $sum: { $cond: ["$valued", 0, 1] } },
@@ -85,10 +88,10 @@ const countDailyUseLines = async ({ scopeIds, from, to, window, tz, options = {}
 
 export const rankTopItems = (rows, limit = TOP_LIMIT) => {
   const ranked = rows
-    .map((r) => ({ ...r, stockItemId: String(r._id), shown: round2(r.value) }))
+    .map((r) => ({ ...r, stockItemId: r._id == null ? null : String(r._id), shown: round2(r.value) }))
     .sort((a, b) =>
-      b.shown - a.shown || b.qty - a.qty || collator.compare(a.name, b.name) ||
-      (a.stockItemId < b.stockItemId ? -1 : a.stockItemId > b.stockItemId ? 1 : 0));
+      b.shown - a.shown || round3(b.qty) - round3(a.qty) || collator.compare(a.name, b.name) ||
+      compareIds(a.stockItemId ?? "", b.stockItemId ?? ""));
   const top = ranked.slice(0, limit);
   const cutoff = top.length === limit ? top[limit - 1].shown : null;
   return {
@@ -102,10 +105,12 @@ export const rankTopItems = (rows, limit = TOP_LIMIT) => {
 };
 
 const joinItemNames = async (byItem, options) => {
-  const docs = await StockItem.find({ _id: { $in: byItem.map((r) => r._id) } })
+  const docs = await StockItem.find({ _id: { $in: byItem.map((r) => r._id).filter((id) => id != null) } })
     .select("name unitId").populate("unitId", "symbol").lean().maxTimeMS(options.maxTimeMS || 0);
   const meta = new Map(docs.map((d) => [String(d._id), { name: d.name, unit: d.unitId?.symbol || "" }]));
-  return byItem.map((r) => ({ ...r, ...(meta.get(String(r._id)) || { name: "Deleted item", unit: "" }) }));
+  // A line with no stockItemId (all such lines share one group) is unknown, not a deleted item.
+  const fallback = (id) => (id == null ? { name: "Unknown item", unit: "" } : { name: "Deleted item", unit: "" });
+  return byItem.map((r) => ({ ...r, ...(meta.get(String(r._id)) || fallback(r._id)) }));
 };
 
 export const consumptionSection = async (ctx) => {
@@ -125,7 +130,8 @@ export const consumptionSection = async (ctx) => {
   }
 
   const prevValue = previous.totals.value;
-  const deltaPct = prevValue === 0 ? null : round2(((current.totals.value - prevValue) / Math.abs(prevValue)) * 100);
+  // Zero at display precision counts as zero: a sub-cent previous total would give an absurd percentage.
+  const deltaPct = round2(prevValue) === 0 ? null : round2(((current.totals.value - prevValue) / Math.abs(prevValue)) * 100);
   const total = round2(current.totals.value);
   const topItems = rankTopItems(await joinItemNames(current.byItem, options));
 

@@ -74,7 +74,14 @@ select: "name stockGroupId unitId imageUrl itemType"
 // --- 2. ORDERS & CONSUMPTIONS LOGIC (DIRECT PROCESSING) ---
 /** Adds unitPriceAtIssue/amountAtIssue to lines; `keep` maps stockItemId → an already-captured price. */
 const priceLines = async (godownId, lines, keep = new Map()) => {
-  const prices = await pricesForKitchen(godownId, lines.filter((l) => !keep.has(String(l.stockItemId))).map((l) => l.stockItemId));
+  let prices = new Map();
+  try {
+    prices = await pricesForKitchen(godownId, lines.filter((l) => !keep.has(String(l.stockItemId))).map((l) => l.stockItemId));
+  } catch (error) {
+    // Valuation is a nice-to-have at issue time: recording the consumption must not depend on it.
+    // Lines are stored unpriced (null) and show up as unvalued lines in the report.
+    console.error(`[consumption] PRICE_LOOKUP_FAILED godown=${godownId}: ${error.message}`);
+  }
   return lines.map((line) => {
     const id = String(line.stockItemId);
     const unitPrice = keep.has(id) ? keep.get(id) : prices.get(id)?.price ?? null;
@@ -372,9 +379,13 @@ operationsRoutes.patch(
         // Save new consumption items
         // ----------------------------------------------------
         // Every pre-existing line keeps its stored price, including null (legacy/unpriced lines are never backfilled).
-        const keptPrices = new Map(
-          oldItems.map((old) => [String(old.stockItemId), old.unitPriceAtIssue ?? null])
-        );
+        // Duplicate legacy lines for one item keep the first non-null price (document order), else null.
+        const keptPrices = new Map();
+        for (const old of oldItems) {
+          const id = String(old.stockItemId);
+          const price = old.unitPriceAtIssue ?? null;
+          if (!keptPrices.has(id) || (keptPrices.get(id) === null && price !== null)) keptPrices.set(id, price);
+        }
         consumption.items = await priceLines(
           godownId,
           items

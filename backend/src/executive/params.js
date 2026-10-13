@@ -66,18 +66,22 @@ export const windowFor = (from, to, tz = BUSINESS_TZ) => ({
   end: startOfBusinessDay(addDays(to, 1), tz)
 });
 
+// YYYY-MM-DDTHH:mm… — loose strings ("2026", "Oct 5") parse differently per engine and are not trusted.
+const ISO_INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
 /**
- * Business date (YYYY-MM-DD) for a stored target date. A plain calendar date is kept as-is; any other
- * parseable instant (e.g. a client's local-midnight ISO timestamp) is converted into the business zone.
- * Unparseable values fall back to the fallback instant's business date (or now if that is invalid too).
+ * Business date (YYYY-MM-DD) for a stored target date. A plain calendar date is kept as-is; an ISO-8601
+ * instant string (YYYY-MM-DDTHH:mm…, e.g. a client's local-midnight timestamp) or a Date is converted into
+ * the business zone. Anything else (loose strings, null, invalid dates) falls back to the fallback
+ * instant's business date, or now if that is invalid too.
  */
 export const normalizeBusinessDate = (value, fallbackInstant, tz = BUSINESS_TZ) => {
   if (isIsoDate(value)) return value;
-  if (typeof value === "string" || value instanceof Date) {
+  if ((typeof value === "string" && ISO_INSTANT_RE.test(value)) || value instanceof Date) {
     const instant = new Date(value);
     if (!Number.isNaN(instant.getTime())) return businessDateOf(instant, tz);
   }
-  const fallback = new Date(fallbackInstant);
+  const fallback = fallbackInstant == null ? new Date(NaN) : new Date(fallbackInstant); // new Date(null) would be 1970
   return businessDateOf(Number.isNaN(fallback.getTime()) ? new Date() : fallback, tz);
 };
 
@@ -101,7 +105,9 @@ export const parseReportParams = (query = {}, { now = new Date(), tz = BUSINESS_
   }
   const today = businessDateOf(now, tz);
   const to = query.to || today;
-  const from = query.from || addDays(to, -(DEFAULT_SPAN_DAYS - 1));
+  // An explicit `to` close to MIN_DATE would default `from` below it; clamp instead of failing.
+  const defaultFrom = addDays(to, -(DEFAULT_SPAN_DAYS - 1));
+  const from = query.from || (defaultFrom < MIN_DATE && to >= MIN_DATE ? MIN_DATE : defaultFrom);
   if (from < MIN_DATE || to < MIN_DATE) fail("INVALID_DATE", `Dates must be on or after ${MIN_DATE}.`);
   if (to > today) fail("FUTURE_DATE", "The range cannot end after today.");
   if (from > to) fail("INVALID_RANGE", "The start date must be on or before the end date.");

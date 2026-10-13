@@ -8,7 +8,7 @@ export function TopItems({ data }) {
         <thead><tr><th scope="col">#</th><th scope="col">Item</th><th scope="col" className="num">Value</th><th scope="col" className="num">Quantity</th></tr></thead>
         <tbody>
           {data.items.map((i) => (
-            <tr key={i.stockItemId}>
+            <tr key={i.stockItemId ?? `unknown-${i.rank}`}>
               <td>{i.rank}</td>
               <td>{i.name}{i.unvaluedLines > 0 && <small className="exec-muted"> · {i.unvaluedLines} unvalued</small>}</td>
               <td className="num">{formatMoney(i.value)}</td>

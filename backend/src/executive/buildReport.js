@@ -48,6 +48,64 @@ export const attachLoaders = (ctx) => {
   return ctx;
 };
 
+const errorKpi = (base) => ({ ...base, status: "error", value: null, details: null });
+const errorSection = () => ({ status: "error", code: "SECTION_FAILED" });
+
+/**
+ * Builds the response from the per-source results. A source that succeeded but lacks a KPI or section
+ * it should own (a bug, not a data problem) degrades just that entry to status "error" and is recorded
+ * in `failures`, so the report still renders and exports refuse to ship it.
+ */
+export const assembleReport = ({ params, kitchen, now, sources, comparison, failures }) => {
+  const kpis = KPI_ORDER
+    .filter((id) => params.godownId === "all" || !ALL_ONLY.has(id))
+    .map((id) => {
+      const def = DEFINITION_BY_ID[id];
+      const source = sources[KPI_SOURCE[id]];
+      const base = { id, label: def.label, kind: def.kind, format: def.format, estimated: id === "stockValue" };
+      if (source?.status !== "ok") return errorKpi(base);
+      const kpi = source.kpis?.[id];
+      if (!kpi) {
+        failures.push({ section: `kpi:${id}`, code: "SECTION_FAILED" });
+        console.error(`[executive] ${KPI_SOURCE[id]} result is missing KPI ${id}`);
+        return errorKpi(base);
+      }
+      return { ...base, status: "ok", value: kpi.value, details: kpi.details || null };
+    });
+
+  const section = (name, source = sources[SECTION_SOURCE[name]]) => {
+    if (source?.status !== "ok") return errorSection();
+    const data = source.sections?.[name];
+    if (data === undefined) {
+      failures.push({ section: name, code: "SECTION_FAILED" });
+      console.error(`[executive] result is missing section ${name}`);
+      return errorSection();
+    }
+    return { status: "ok", data };
+  };
+
+  return {
+    meta: {
+      kitchen, from: params.from, to: params.to, days: params.days,
+      previous: { from: params.previous.from, to: params.previous.to },
+      timezone: params.tz, currency: "INR", generatedAt: now.toISOString(),
+      definitions: DEFINITIONS,
+      notes: { historicalStock: HISTORICAL_STOCK_NOTE, unvaluedConsumption: UNVALUED_CONSUMPTION_NOTE }
+    },
+    kpis,
+    sections: {
+      consumptionTrend: section("consumptionTrend"),
+      topItems: section("topItems"),
+      stockHealth: section("stockHealth"),
+      unpricedStock: section("unpricedStock"),
+      procurement: section("procurement"),
+      requestsTransfers: section("requestsTransfers"),
+      kitchenComparison: comparison === null ? null : section("kitchenComparison", comparison)
+    },
+    failures
+  };
+};
+
 const isTimeout = (error) => error?.code === 50 || error?.codeName === "MaxTimeMSExpired";
 
 export const buildExecutiveReport = async (params, { now = new Date(), limits = UI_LIMITS, maxTimeMS } = {}) => {
@@ -73,43 +131,5 @@ export const buildExecutiveReport = async (params, { now = new Date(), limits = 
     run("requestsTransfers", requestsTransfersSection)
   ]);
   const comparison = params.godownId === "all" ? await run("comparison", comparisonSection) : null;
-  const sources = { consumption, stock, procurement, flow };
-
-  const kpis = KPI_ORDER
-    .filter((id) => params.godownId === "all" || !ALL_ONLY.has(id))
-    .map((id) => {
-      const def = DEFINITION_BY_ID[id];
-      const source = sources[KPI_SOURCE[id]];
-      const base = { id, label: def.label, kind: def.kind, format: def.format, estimated: id === "stockValue" };
-      if (source.status !== "ok") return { ...base, status: "error", value: null, details: null };
-      const kpi = source.kpis[id];
-      return { ...base, status: "ok", value: kpi.value, details: kpi.details || null };
-    });
-
-  const section = (name) => {
-    const source = sources[SECTION_SOURCE[name]];
-    return source.status === "ok" ? { status: "ok", data: source.sections[name] } : { status: "error", code: "SECTION_FAILED" };
-  };
-
-  return {
-    meta: {
-      kitchen, from: params.from, to: params.to, days: params.days,
-      previous: { from: params.previous.from, to: params.previous.to },
-      timezone: params.tz, currency: "INR", generatedAt: now.toISOString(),
-      definitions: DEFINITIONS,
-      notes: { historicalStock: HISTORICAL_STOCK_NOTE, unvaluedConsumption: UNVALUED_CONSUMPTION_NOTE }
-    },
-    kpis,
-    sections: {
-      consumptionTrend: section("consumptionTrend"),
-      topItems: section("topItems"),
-      stockHealth: section("stockHealth"),
-      unpricedStock: section("unpricedStock"),
-      procurement: section("procurement"),
-      requestsTransfers: section("requestsTransfers"),
-      kitchenComparison: comparison === null ? null
-        : comparison.status === "ok" ? { status: "ok", data: comparison.sections.kitchenComparison } : { status: "error", code: "SECTION_FAILED" }
-    },
-    failures
-  };
+  return assembleReport({ params, kitchen, now, sources: { consumption, stock, procurement, flow }, comparison, failures });
 };

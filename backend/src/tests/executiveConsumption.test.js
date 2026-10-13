@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import { startDb, clearDb, stopDb } from "./helpers/db.js";
 import { consumption, dailyUsage, kitchen, makeCtx, seedCatalog } from "./helpers/fixtures.js";
+import { Consumption } from "../models/FlowModels.js";
 import { memo } from "../executive/context.js";
 import { aggregateConsumption, consumptionSection, rankTopItems } from "../executive/sections/consumption.js";
 
@@ -82,12 +83,75 @@ test("top items ranked by value, then qty, then name", async () => {
 
 test("previous period with zero value gives deltaPct null", async () => {
   const { kpis } = await consumptionSection(await ctxFor({ from: "2026-10-05", to: "2026-10-10" }));
-  // previous = 2026-09-29..2026-10-04: has A 09-30 (40), B 10-01 Dal unvalued, B 10-03 -10, A 10-01 150 → not zero
-  assert.notEqual(kpis.consumptionValue.details.deltaPct, null);
+  // current 05..10 Oct = Oil 30 (B, 05 Oct) + 50.25 (A, 10 Oct) + 7 (B, garbage date, 23:59:59 IST 10 Oct) = 87.25
+  // previous 29 Sep..04 Oct = A 40 (30 Sep) + A 150 (01 Oct) + B Dal unvalued + B -10 (03 Oct) = 180
+  assert.equal(kpis.consumptionValue.value, 87.25);
+  assert.equal(kpis.consumptionValue.details.previousValue, 180);
+  assert.equal(kpis.consumptionValue.details.deltaPct, -51.53, "(87.25 - 180) / 180 × 100");
   const empty = await consumptionSection(await ctxFor({ from: "2026-08-01", to: "2026-08-02" }));
   assert.equal(empty.kpis.consumptionValue.value, 0);
   assert.equal(empty.kpis.consumptionValue.details.deltaPct, null);
   assert.equal(empty.sections.topItems.items.length, 0);
+});
+
+test("a previous period that rounds to zero gives deltaPct null instead of an absurd percentage", async () => {
+  await clearDb();
+  const { items } = await seedCatalog(["Rice"]);
+  const A = await kitchen("Kitchen A");
+  await consumption(A, { date: "2026-09-29", createdAt: "2026-09-29T05:00:00Z", lines: [[items.Rice, 1, 0.004]] });
+  await consumption(A, { date: "2026-10-05", createdAt: "2026-10-05T05:00:00Z", lines: [[items.Rice, 1, 10]] });
+  const { kpis } = await consumptionSection(await ctxFor({ from: "2026-10-05", to: "2026-10-10" }));
+  assert.equal(kpis.consumptionValue.value, 10);
+  assert.equal(kpis.consumptionValue.details.previousValue, 0);
+  assert.equal(kpis.consumptionValue.details.deltaPct, null);
+});
+
+test("the recorded ISO date wins over createdAt: backdated lines count on their date, forward-dated lines are excluded", async () => {
+  // Entered on 12 Oct (outside the 1-10 Oct window) but dated 2 Oct → counted on 2 Oct.
+  await consumption(f.A, { date: "2026-10-02", createdAt: "2026-10-12T05:00:00Z", lines: [[f.items.Dal, 1, 11]] });
+  // Entered on 4 Oct (inside the window) but dated 20 Oct → excluded.
+  await consumption(f.A, { date: "2026-10-20", createdAt: "2026-10-04T05:00:00Z", lines: [[f.items.Dal, 1, 13]] });
+  const { kpis, sections } = await consumptionSection(await ctxFor({}));
+  assert.equal(kpis.consumptionValue.value, 238.25, "227.25 + 11, without the forward-dated 13");
+  const byDate = Object.fromEntries(sections.consumptionTrend.points.map((p) => [p.date, p.value]));
+  assert.equal(byDate["2026-10-02"], 11);
+  assert.equal(byDate["2026-10-04"], 0);
+});
+
+test("NaN and infinite amounts are unvalued lines, never added to the value", async () => {
+  await clearDb();
+  const { items } = await seedCatalog(["Rice"]);
+  const A = await kitchen("Kitchen A");
+  // Raw insert: Mongoose would refuse to cast NaN.
+  await Consumption.collection.insertOne({
+    godownId: A._id, userId: A._id, date: "2026-10-05", createdAt: new Date("2026-10-05T05:00:00Z"), updatedAt: new Date("2026-10-05T05:00:00Z"),
+    items: [
+      { stockItemId: items.Rice._id, qtyBaseUnit: 1, amountAtIssue: NaN },
+      { stockItemId: items.Rice._id, qtyBaseUnit: 2, amountAtIssue: Infinity },
+      { stockItemId: items.Rice._id, qtyBaseUnit: 4, amountAtIssue: -Infinity },
+      { stockItemId: items.Rice._id, qtyBaseUnit: 8, amountAtIssue: 25 }
+    ]
+  });
+  const { kpis, sections } = await consumptionSection(await ctxFor({}));
+  assert.equal(kpis.consumptionValue.value, 25);
+  assert.equal(kpis.consumptionValue.details.unvaluedLineCount, 3);
+  assert.equal(kpis.consumptionValue.details.unvaluedQty, 7);
+  assert.equal(sections.consumptionTrend.total, 25);
+});
+
+test("lines without a stock item are grouped as one 'Unknown item', not 'Deleted item'", async () => {
+  await Consumption.collection.insertOne({
+    godownId: f.A._id, userId: f.A._id, date: "2026-10-04", createdAt: new Date("2026-10-04T05:00:00Z"), updatedAt: new Date("2026-10-04T05:00:00Z"),
+    items: [{ qtyBaseUnit: 1, amountAtIssue: 500 }, { qtyBaseUnit: 2, amountAtIssue: 100 }]
+  });
+  const { sections } = await consumptionSection(await ctxFor({}));
+  const unknown = sections.topItems.items.filter((i) => i.name === "Unknown item");
+  assert.equal(unknown.length, 1);
+  assert.equal(unknown[0].rank, 1);
+  assert.equal(unknown[0].value, 600);
+  assert.equal(unknown[0].qty, 3);
+  assert.equal(unknown[0].stockItemId, null);
+  assert.ok(!sections.topItems.items.some((i) => i.name === "Deleted item"));
 });
 
 test("rankTopItems: exactly ten, deterministic ties, tiedBeyondLimit", () => {
@@ -105,4 +169,9 @@ test("rankTopItems: exactly ten, deterministic ties, tiedBeyondLimit", () => {
     { _id: "c", value: 10.004, qty: 1, unvaluedLines: 0, name: "Z", unit: "" }
   ]);
   assert.deepEqual(byQty.items.map((r) => r.name), ["Y", "X", "Z"], "values equal at 2 dp tie-break on qty");
+  const byRoundedQty = rankTopItems([
+    { _id: "a", value: 10, qty: 5.0004, unvaluedLines: 0, name: "Alpha", unit: "" },
+    { _id: "b", value: 10, qty: 5.0001, unvaluedLines: 0, name: "Beta", unit: "" }
+  ]);
+  assert.deepEqual(byRoundedQty.items.map((r) => r.name), ["Alpha", "Beta"], "quantities equal at 3 dp fall through to the name");
 });

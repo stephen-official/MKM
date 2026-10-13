@@ -7,7 +7,7 @@ import { createUser } from "./helpers/auth.js";
 import { consumption, distribution, kitchen, seedCatalog, stockRequest, stockRow } from "./helpers/fixtures.js";
 import { GodownStock } from "../models/FlowModels.js";
 import { Godown } from "../models/InventoryModels.js";
-import { buildExecutiveReport, KPI_ORDER } from "../executive/buildReport.js";
+import { assembleReport, buildExecutiveReport, KPI_ORDER } from "../executive/buildReport.js";
 import { parseReportParams } from "../executive/params.js";
 
 let app;
@@ -33,7 +33,8 @@ beforeEach(async () => {
   await stockRequest(B, { status: "pending", createdAt: "2026-10-12T06:00:00Z" });
   const superAdmin = await createUser({ role: "super_admin" });
   const admin = await createUser({ role: "admin" });
-  f = { items, A, B, C, ghost, superAdmin, admin };
+  const kitchenUser = await createUser({ role: "user", godownId: A._id });
+  f = { items, A, B, C, ghost, superAdmin, admin, kitchenUser };
 });
 
 const report = (query) => buildExecutiveReport(parseReportParams({ from: "2026-10-01", to: "2026-10-10", ...query }, { now: NOW }), { now: NOW });
@@ -65,6 +66,17 @@ test("comparison: inactive and deleted kitchens appear with history; stock only 
   assert.equal(rows.find((x) => x.kitchen === "Beta Kitchen").pendingRequests, 1);
 });
 
+test("comparison keeps a row for a kitchen whose only activity is a current pending request", async () => {
+  const quiet = await kitchen("Quiet Closed Kitchen", false);
+  await stockRequest(quiet, { status: "pending", createdAt: "2026-08-01T06:00:00Z" }); // long before the period
+  const rows = (await report({})).sections.kitchenComparison.data.rows;
+  const row = rows.find((x) => x.kitchen === "Quiet Closed Kitchen");
+  assert.ok(row, "pending requests are a snapshot, so they keep the kitchen visible");
+  assert.equal(row.pendingRequests, 1);
+  assert.equal(row.consumptionValue, 0);
+  assert.equal(row.stockReceivedValue, 0);
+});
+
 test("comparison rows sum to the consumption KPI up to rounding", async () => {
   const r = await report({});
   const kpi = r.kpis.find((k) => k.id === "consumptionValue").value;
@@ -82,6 +94,7 @@ test("single kitchen: no comparison, no all-only KPIs", async () => {
 
 test("a failing section does not take the report down", async (t) => {
   t.mock.method(GodownStock, "find", () => { throw new Error("boom"); });
+  const errors = t.mock.method(console, "error", () => {});
   const r = await report({});
   assert.equal(r.sections.stockHealth.status, "error");
   assert.equal(r.sections.stockHealth.code, "SECTION_FAILED");
@@ -89,6 +102,34 @@ test("a failing section does not take the report down", async (t) => {
   assert.equal(r.sections.consumptionTrend.status, "ok");
   assert.equal(r.sections.kitchenComparison.status, "error", "comparison depends on stock");
   assert.deepEqual(r.failures.map((x) => x.section).sort(), ["comparison", "stock"]);
+  assert.equal(errors.mock.callCount(), 2);
+  assert.deepEqual(errors.mock.calls.map((c) => c.arguments[0]).sort(), ["[executive] section comparison failed:", "[executive] section stock failed:"]);
+  assert.ok(errors.mock.calls.every((c) => c.arguments[1] === "boom"));
+});
+
+test("assembleReport: a source missing a KPI or section key degrades only that entry", (t) => {
+  const errors = t.mock.method(console, "error", () => {});
+  const params = parseReportParams({ from: "2026-10-01", to: "2026-10-10" }, { now: NOW });
+  const ok = (kpis, sections) => ({ status: "ok", kpis, sections });
+  const sources = {
+    consumption: ok({ consumptionValue: { value: 5 } /* dailyUseLines missing */ }, { consumptionTrend: { points: [] } /* topItems missing */ }),
+    stock: ok({ stockValue: { value: 1 }, lowStock: { value: 0 }, outOfStock: { value: 0 } }, { stockHealth: {}, unpricedStock: {} }),
+    procurement: ok({ stockReceivedValue: { value: 2 }, procurementSpend: { value: 3 }, poAwaitingDistribution: { value: 4 } }, { procurement: {} }),
+    flow: ok({ pendingRequests: { value: 0 }, pendingSupplyRequests: { value: 0 }, openTransfers: { value: 0 } }, { requestsTransfers: {} })
+  };
+  const failures = [];
+  const r = assembleReport({ params, kitchen: { id: "all", name: "All kitchens", active: null }, now: NOW, sources, comparison: null, failures });
+  const kpi = (id) => r.kpis.find((k) => k.id === id);
+  assert.equal(kpi("dailyUseLines").status, "error");
+  assert.equal(kpi("dailyUseLines").value, null);
+  assert.equal(kpi("consumptionValue").status, "ok");
+  assert.equal(kpi("consumptionValue").value, 5);
+  assert.equal(r.sections.topItems.status, "error");
+  assert.equal(r.sections.topItems.code, "SECTION_FAILED");
+  assert.equal(r.sections.consumptionTrend.status, "ok");
+  assert.equal(r.sections.kitchenComparison, null);
+  assert.deepEqual(failures.map((x) => x.section).sort(), ["kpi:dailyUseLines", "topItems"]);
+  assert.equal(errors.mock.callCount(), 2);
 });
 
 test("empty database still produces a complete report", async () => {
@@ -103,6 +144,8 @@ const get = (who, query) => request(app).get("/api/executive/summary").query(que
 
 test("HTTP: super-admin only", async () => {
   assert.equal((await get("admin", {})).status, 403);
+  assert.equal((await get("kitchenUser", {})).status, 403);
+  assert.equal((await request(app).get("/api/executive/summary")).status, 401);
   const ok = await get("superAdmin", {});
   assert.equal(ok.status, 200);
   assert.equal(ok.headers["cache-control"], "no-store");

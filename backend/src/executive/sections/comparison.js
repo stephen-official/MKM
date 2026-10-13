@@ -7,6 +7,8 @@ export const comparisonSection = async (ctx) => {
     ctx.consumption(), ctx.stock(), ctx.distributions(), ctx.pendingRequestsByKitchen()
   ]);
   const consumptionBy = new Map(consumption.byKitchen.map((r) => [String(r._id), r]));
+  // Pending requests are a current snapshot, not period activity: a kitchen (even inactive or deleted)
+  // that only has requests waiting for a decision still needs a row so they are not overlooked.
   const ids = new Set([
     ...ctx.activeIds.map(String),
     ...consumptionBy.keys(),

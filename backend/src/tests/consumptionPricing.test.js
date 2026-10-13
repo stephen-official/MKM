@@ -4,7 +4,7 @@ import request from "supertest";
 import { startDb, clearDb, stopDb } from "./helpers/db.js";
 import { createUser } from "./helpers/auth.js";
 import { distribution, kitchen, seedCatalog, stockRow } from "./helpers/fixtures.js";
-import { Consumption, Request } from "../models/FlowModels.js";
+import { Consumption, Distribution, GodownStock, Request } from "../models/FlowModels.js";
 import { DailyUsage as DailyUsageModel } from "../models/DailyUsageModel.js";
 
 let app;
@@ -112,4 +112,41 @@ test("editing a legacy unpriced line keeps it unvalued; lines added in the edit 
   assert.equal(rice.amountAtIssue, null);
   assert.equal(dal.unitPriceAtIssue, 80);
   assert.equal(dal.amountAtIssue, 160);
+});
+
+test("a valuation failure does not block recording consumption: lines are stored unpriced and a code is logged", async (t) => {
+  t.mock.method(Distribution, "aggregate", () => { throw new Error("valuation read failed"); });
+  const errors = t.mock.method(console, "error", () => {});
+  const res = await as("cook", "post", "/api/consumptions").send({
+    date: "2026-10-12",
+    items: [{ stockRecordId: f.rice._id, qtyBaseUnit: 2 }]
+  });
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  const saved = await Consumption.findById(res.body._id).lean();
+  assert.equal(saved.items.length, 1);
+  assert.equal(saved.items[0].qtyBaseUnit, 2);
+  assert.equal(saved.items[0].unitPriceAtIssue, null);
+  assert.equal(saved.items[0].amountAtIssue, null);
+  assert.equal(errors.mock.callCount(), 1);
+  assert.match(errors.mock.calls[0].arguments[0], /PRICE_LOOKUP_FAILED.*valuation read failed/);
+  assert.equal((await GodownStock.findById(f.rice._id).lean()).qtyBaseUnit, 48, "stock was still deducted");
+});
+
+test("duplicate legacy lines for one item keep the first non-null price when the record is edited", async () => {
+  const { insertedId } = await Consumption.collection.insertOne({
+    godownId: f.A._id, userId: f.cook.user._id, date: "2026-09-01", createdAt: new Date("2026-09-01T05:00:00Z"), updatedAt: new Date("2026-09-01T05:00:00Z"),
+    items: [
+      { stockItemId: f.items.Rice._id, qtyBaseUnit: 1, unitPriceAtIssue: null },
+      { stockItemId: f.items.Rice._id, qtyBaseUnit: 1, unitPriceAtIssue: 40, amountAtIssue: 40 },
+      { stockItemId: f.items.Rice._id, qtyBaseUnit: 2, unitPriceAtIssue: 55, amountAtIssue: 110 },
+      { stockItemId: f.items.Rice._id, qtyBaseUnit: 2, unitPriceAtIssue: null }
+    ]
+  });
+  const res = await as("admin", "patch", `/api/consumptions/${insertedId}`).send({
+    items: [{ stockItemId: f.items.Rice._id, stockRecordId: f.rice._id, qtyBaseUnit: 2 }]
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const [line] = (await Consumption.findById(insertedId).lean()).items;
+  assert.equal(line.unitPriceAtIssue, 40, "first non-null price wins, not the last (null) one and not today's 45");
+  assert.equal(line.amountAtIssue, 80);
 });

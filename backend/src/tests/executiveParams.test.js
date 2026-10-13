@@ -56,6 +56,22 @@ test("normalizeBusinessDate keeps plain dates, converts instants to the business
   assert.equal(normalizeBusinessDate(null, NOW), "2026-10-13");
 });
 
+test("normalizeBusinessDate only trusts ISO-8601 strings and Date objects", () => {
+  // Date-time strings with and without zone/seconds are parsed.
+  assert.equal(normalizeBusinessDate("2026-10-12T22:00Z", NOW), "2026-10-13");
+  assert.equal(normalizeBusinessDate("2026-10-11T18:30:00+00:00", NOW), "2026-10-12");
+  // Loose strings that Date.parse would happily accept fall back instead.
+  assert.equal(normalizeBusinessDate("2026", NOW), "2026-10-13");
+  assert.equal(normalizeBusinessDate("Oct 5", NOW), "2026-10-13");
+  assert.equal(normalizeBusinessDate("Oct 5 2026", NOW), "2026-10-13");
+  assert.equal(normalizeBusinessDate("2026-10", NOW), "2026-10-13");
+  assert.equal(normalizeBusinessDate(1760000000000, NOW), "2026-10-13");
+  assert.equal(normalizeBusinessDate(new Date("nope"), NOW), "2026-10-13");
+  // null / invalid fallback uses now.
+  assert.equal(normalizeBusinessDate(null, null), businessDateOf(new Date()));
+  assert.equal(normalizeBusinessDate("Oct 5", "garbage"), businessDateOf(new Date()));
+});
+
 test("defaults: last 30 days including today, previous period of equal length", () => {
   const p = parseReportParams({}, { now: NOW });
   assert.equal(p.godownId, "all");
@@ -78,10 +94,28 @@ test("parameter errors carry codes", () => {
   assert.equal(code({ from: "2025-10-13", to: "2026-10-13" }), null, "366 days inclusive is allowed");
 });
 
+test("an explicit `to` near the minimum date clamps the default `from` instead of failing", () => {
+  const near = parseReportParams({ to: "2000-01-10" }, { now: NOW });
+  assert.equal(near.from, "2000-01-01");
+  assert.equal(near.days, 10);
+  assert.equal(parseReportParams({ to: "2000-01-30" }, { now: NOW }).from, "2000-01-01");
+  assert.equal(parseReportParams({ to: "2000-01-31" }, { now: NOW }).from, "2000-01-02", "no clamp needed once 30 days fit");
+  assert.throws(() => parseReportParams({ to: "1999-12-31" }, { now: NOW }), (e) => e.code === "INVALID_DATE");
+  assert.throws(() => parseReportParams({ from: "1999-12-31", to: "2000-01-05" }, { now: NOW }), (e) => e.code === "INVALID_DATE");
+});
+
 test("page params are lenient", () => {
   const p = parseReportParams({ healthPage: "3", unpricedPage: "-1", comparisonPage: "abc", godownId: "65F0C0FFEE0000000000ABCD" }, { now: NOW });
   assert.deepEqual(p.pages, { health: 3, unpriced: 1, comparison: 1 });
   assert.equal(p.godownId, "65f0c0ffee0000000000abcd");
+});
+
+test("definitions state the normative date rules", () => {
+  const text = (id) => DEFINITIONS.find((d) => d.id === id).text;
+  assert.match(text("procurementSpend"), /received date/);
+  assert.match(text("consumptionValue"), /recorded date/);
+  assert.match(text("consumptionValue"), /business date it was created/);
+  assert.match(text("dailyUseLines"), /business date of creation/);
 });
 
 test("every definition has id, label, kind, format and text", () => {

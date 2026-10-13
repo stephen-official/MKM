@@ -22,7 +22,7 @@ beforeEach(async () => {
   // PO for 100 rice @ 40 received in range.
   await purchaseOrder("2026-10-02T05:00:00Z", [[items.Rice, 100, 40]], { status: "distributed" });
   // Original distribution: 60 to A, 40 left over.
-  const first = await distribution("2026-10-02T06:00:00Z", [[A, items.Rice, 60, 40]], { leftovers: [{ stockItemId: items.Rice._id, qtyBaseUnit: 0 }] });
+  const first = await distribution("2026-10-02T06:00:00Z", [[A, items.Rice, 60, 40]], { leftovers: [{ stockItemId: items.Rice._id, qtyBaseUnit: 40 }] });
   // Leftover redistribution: the 40 go to B. Must not double count.
   await distribution("2026-10-05T06:00:00Z", [[B, items.Rice, 40, 40]], { leftoverSourceId: first._id });
   // Unpriced allocation and a zero-qty allocation (ignored entirely).

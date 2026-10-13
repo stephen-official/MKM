@@ -1,9 +1,10 @@
 import { Distribution, Indent, IndentRequest, PurchaseOrder } from "../../models/FlowModels.js";
 import { round2 } from "../../utils/money.js";
 import { addDays } from "../params.js";
+import { validPriceExpr } from "../valuation.js";
 import { INDENT_STATUSES, SUPPLY_STATUSES, orderStatuses } from "../statuses.js";
 
-const priced = { $and: [{ $isNumber: "$price" }, { $gt: ["$price", 0] }, { $lte: ["$price", Number.MAX_VALUE] }] };
+const priced = validPriceExpr("$price");
 
 /** Every Distribution document counts once; Distribution.leftovers are never summed. */
 export const aggregateDistributions = async (ctx) => {

@@ -20,9 +20,9 @@ export const DEFINITIONS = Object.freeze([
   { id: "outOfStock", label: "Out of stock", kind: "snapshot", format: "count",
     text: "Kitchen items whose current quantity is zero or less." },
   { id: "consumptionValue", label: "Consumption value", kind: "period", format: "money",
-    text: "Sum of the value recorded at the time of issue for consumption lines dated in the period (inclusive). Returns net off. Lines without a recorded value are counted as unvalued, never re-priced. Compared with the previous period of equal length." },
+    text: "Sum of the value recorded at the time of issue for consumption lines dated in the period (inclusive). A line is dated by the consumption's recorded date; when that is not a YYYY-MM-DD date, by the business date it was created. Returns net off. Lines without a recorded value are counted as unvalued, never re-priced. Compared with the previous period of equal length." },
   { id: "dailyUseLines", label: "Daily-use issues", kind: "period", format: "count",
-    text: "Number of daily-use item lines dated in the period. Daily-use items carry no price, so they are counted rather than valued." },
+    text: "Number of daily-use item lines dated in the period (recorded date, falling back to the business date of creation when it is not a YYYY-MM-DD date). Daily-use items carry no price, so they are counted rather than valued." },
   { id: "pendingRequests", label: "Pending requests", kind: "snapshot", format: "count",
     text: "Kitchen stock and daily-use requests currently waiting for an admin decision." },
   { id: "pendingSupplyRequests", label: "Supply requests awaiting confirmation", kind: "snapshot", format: "count",
@@ -32,7 +32,7 @@ export const DEFINITIONS = Object.freeze([
   { id: "stockReceivedValue", label: "Stock received value", kind: "period", format: "money",
     text: "Quantity × unit price of stock distributed to the kitchen(s) during the period. Allocations without a valid price are excluded and counted. Leftover redistributions count once, as their own movements." },
   { id: "procurementSpend", label: "Procurement spend (received value)", kind: "period", format: "money",
-    text: "Total of purchase orders received in the period (received quantity, or ordered quantity when none recorded, × unit price). All kitchens only." },
+    text: "Total of purchase orders whose received date falls in the period (received quantity, or ordered quantity when none recorded, × unit price). All kitchens only." },
   { id: "poAwaitingDistribution", label: "POs awaiting distribution", kind: "snapshot", format: "count",
     text: "Purchase orders received but not yet distributed to kitchens. All kitchens only." }
 ]);

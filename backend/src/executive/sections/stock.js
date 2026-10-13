@@ -59,8 +59,10 @@ export const stockSections = async (ctx) => {
   const byNames = (a, b) => collator.compare(a.item, b.item) || collator.compare(a.kitchen, b.kitchen) || compareIds(a.id, b.id);
 
   const outRows = snap.out.map((r) => ({ ...describe(r), threshold: round3(r.threshold), state: "out", ratio: null })).sort(byNames);
-  const lowRows = snap.low.map((r) => ({ ...describe(r), threshold: round3(r.threshold), state: "low", ratio: round3(r.qty / r.threshold) }))
-    .sort((a, b) => a.ratio - b.ratio || byNames(a, b));
+  // Sort on the raw ratio; rounding is for display only (rounded ratios would tie and fall through to names).
+  const lowRows = snap.low.map((r) => ({ row: { ...describe(r), threshold: round3(r.threshold), state: "low", ratio: round3(r.qty / r.threshold) }, rawRatio: r.qty / r.threshold }))
+    .sort((a, b) => a.rawRatio - b.rawRatio || byNames(a.row, b.row))
+    .map(({ row }) => row);
   const unpricedRows = snap.unpriced.map(describe)
     .sort((a, b) => collator.compare(a.kitchen, b.kitchen) || collator.compare(a.item, b.item) || compareIds(a.id, b.id));
   const unpricedQty = round3(snap.unpriced.reduce((sum, r) => sum + r.qty, 0));
