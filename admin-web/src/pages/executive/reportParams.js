@@ -29,6 +29,8 @@ export const sanitizeReportParams = (search, { today, kitchenIds } = {}) => {
     kitchenReset = true;
     changed = true;
   }
+  // A canonical URL has a lower-case id and omits "all".
+  if (search.has("godownId") && !kitchenReset && (godownId !== godownId.toLowerCase() || godownId === "all")) changed = true;
   godownId = godownId.toLowerCase();
 
   const rawPreset = search.get("range");
@@ -40,7 +42,8 @@ export const sanitizeReportParams = (search, { today, kitchenIds } = {}) => {
 
   if (preset && Object.hasOwn(PRESETS, preset)) {
     range = presetRange(preset, today);
-    if (from || to) changed = true;
+    // The default preset is implied by an absent `range`, so an explicit one is not canonical.
+    if (from || to || preset === DEFAULT_PRESET) changed = true;
   } else if ((preset === "custom" || (!preset && (from || to))) && customValid) {
     if (!preset) changed = true;
     preset = "custom";
@@ -78,3 +81,24 @@ export const toApiQuery = (state) => ({
 });
 
 export const isDefault = (state) => toSearchParams(state).toString() === "";
+
+/** Pickable dates for a custom range so an invalid (over-long or future) span cannot be chosen. */
+export const customRangeBounds = ({ from, to, today }) => {
+  const furthest = addDays(from, MAX_SPAN_DAYS - 1);
+  return {
+    fromMin: addDays(to, -(MAX_SPAN_DAYS - 1)),
+    fromMax: to,
+    toMin: from,
+    toMax: furthest < today ? furthest : today
+  };
+};
+
+/** With a kitchen selected, the first fetch waits until the kitchen list has loaded (or failed) so a stale id is caught first. */
+export const canFetchReport = ({ godownId, kitchensSettled }) => godownId === "all" || kitchensSettled;
+
+/**
+ * The reset notice rides along in location state across the redirect. A POP navigation
+ * (browser reload or back/forward) re-delivers the old state, so it must not re-show the notice.
+ */
+export const shouldShowKitchenReset = ({ resetNow, locationState, navigationType }) =>
+  resetNow || (navigationType !== "POP" && locationState?.kitchenReset === true);

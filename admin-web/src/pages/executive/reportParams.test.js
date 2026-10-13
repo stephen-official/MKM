@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isDefault, sanitizeReportParams, toApiQuery, toSearchParams } from "./reportParams.js";
+import { canFetchReport, customRangeBounds, isDefault, sanitizeReportParams, shouldShowKitchenReset, toApiQuery, toSearchParams } from "./reportParams.js";
 
 const today = "2026-10-13";
 const s = (q) => sanitizeReportParams(new URLSearchParams(q), { today });
@@ -48,5 +48,57 @@ describe("serialisation", () => {
   });
   it("builds the API query", () => {
     expect(toApiQuery(s("range=7d"))).toEqual({ godownId: "all", from: "2026-10-07", to: "2026-10-13", healthPage: 1, unpricedPage: 1, comparisonPage: 1 });
+  });
+});
+
+describe("canonical URLs", () => {
+  const id = "65f0c0ffee0000000000abcd";
+  it("lower-cases an upper-case kitchen id and flags the URL as changed", () => {
+    const r = sanitizeReportParams(new URLSearchParams(`godownId=${id.toUpperCase()}`), { today });
+    expect(r).toMatchObject({ godownId: id, kitchenReset: false, changed: true });
+    expect(toSearchParams(r).toString()).toBe(`godownId=${id}`);
+  });
+  it("an already lower-case id is canonical", () => {
+    expect(sanitizeReportParams(new URLSearchParams(`godownId=${id}`), { today }).changed).toBe(false);
+  });
+  it("an explicit range=30d and godownId=all are redirected to the bare URL", () => {
+    expect(s("range=30d")).toMatchObject({ preset: "30d", changed: true });
+    expect(s("godownId=all")).toMatchObject({ godownId: "all", changed: true, kitchenReset: false });
+    expect(toSearchParams(s("range=30d&godownId=all")).toString()).toBe("");
+  });
+  it("other presets stay as they are", () => {
+    expect(s("range=90d").changed).toBe(false);
+  });
+});
+
+describe("customRangeBounds", () => {
+  it("limits the pickable dates to a 366-day span ending no later than today", () => {
+    expect(customRangeBounds({ from: "2026-10-01", to: "2026-10-05", today })).toEqual({
+      fromMin: "2025-10-05", fromMax: "2026-10-05", toMin: "2026-10-01", toMax: "2026-10-13"
+    });
+  });
+  it("every pickable endpoint combination is a valid span", () => {
+    const b = customRangeBounds({ from: "2026-01-01", to: "2026-03-01", today });
+    expect(s(`range=custom&from=${b.fromMin}&to=2026-03-01`).preset).toBe("custom");
+    expect(s(`range=custom&from=2026-01-01&to=${b.toMax}`).preset).toBe("custom");
+    expect(customRangeBounds({ from: "2025-10-14", to: "2025-10-20", today }).toMax).toBe(today);
+    expect(customRangeBounds({ from: "2025-01-01", to: "2025-01-02", today }).toMax).toBe("2026-01-01");
+  });
+});
+
+describe("canFetchReport", () => {
+  it("all kitchens fetch immediately; a chosen kitchen waits for the list or its failure", () => {
+    expect(canFetchReport({ godownId: "all", kitchensSettled: false })).toBe(true);
+    expect(canFetchReport({ godownId: "65f0c0ffee0000000000abcd", kitchensSettled: false })).toBe(false);
+    expect(canFetchReport({ godownId: "65f0c0ffee0000000000abcd", kitchensSettled: true })).toBe(true);
+  });
+});
+
+describe("shouldShowKitchenReset", () => {
+  it("shows for a fresh reset and after the redirect, but not after a reload (POP)", () => {
+    expect(shouldShowKitchenReset({ resetNow: true, locationState: null, navigationType: "POP" })).toBe(true);
+    expect(shouldShowKitchenReset({ resetNow: false, locationState: { kitchenReset: true }, navigationType: "REPLACE" })).toBe(true);
+    expect(shouldShowKitchenReset({ resetNow: false, locationState: { kitchenReset: true }, navigationType: "POP" })).toBe(false);
+    expect(shouldShowKitchenReset({ resetNow: false, locationState: null, navigationType: "PUSH" })).toBe(false);
   });
 });

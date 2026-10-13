@@ -17,3 +17,18 @@ export const linePath = (points, { width, height, max, min }) => {
   const x = (i) => Math.round(((i / (points.length - 1)) * width) * 100) / 100;
   return points.map((p, i) => `${i === 0 ? "M" : "L"}${x(i)},${y(p.value)}`).join(" ");
 };
+
+/**
+ * Y-axis labels to draw. The maximum is always labelled; when the data goes negative the zero line and the
+ * minimum are labelled too. `fraction` is the distance from the top of the plot (0 = top, 1 = bottom).
+ */
+export const axisTicks = ({ min, max }) => {
+  const range = max - min || 1;
+  const at = (value) => (max - value) / range;
+  const ticks = [{ kind: "max", value: max, fraction: 0 }];
+  if (min < 0) {
+    ticks.push({ kind: "zero", value: 0, fraction: at(0) });
+    ticks.push({ kind: "min", value: min, fraction: 1 });
+  }
+  return ticks;
+};

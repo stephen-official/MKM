@@ -1,4 +1,4 @@
-import { linePath, niceMax, niceMin } from "./chartScale.js";
+import { axisTicks, linePath, niceMax, niceMin } from "./chartScale.js";
 import { formatMoney, formatPct } from "./format.js";
 
 const W = 640;
@@ -10,6 +10,7 @@ export function TrendChart({ data }) {
   const min = niceMin(Math.min(0, ...values));
   const pointY = (v) => H - ((v - min) / (max - min)) * H;
   const zeroY = pointY(0);
+  const hasNegatives = min < 0;
   const unvalued = data.points.reduce((s, p) => s + p.unvaluedLines, 0);
   return (
     <figure className="exec-chart">
@@ -17,9 +18,10 @@ export function TrendChart({ data }) {
         Total {formatMoney(data.total)}{data.deltaPct !== null && ` · ${formatPct(data.deltaPct)} vs previous period`}
         {unvalued > 0 && ` · ${unvalued} unvalued lines not plotted`}
       </figcaption>
+      <div className="exec-chart__plot">
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="exec-chart__svg" role="img"
         aria-label={`Daily consumption value from ${data.points[0]?.date} to ${data.points.at(-1)?.date}`}>
-        <line x1="0" x2={W} y1={zeroY} y2={zeroY} className="exec-chart__axis" />
+        <line x1="0" x2={W} y1={zeroY} y2={zeroY} className={`exec-chart__axis${hasNegatives ? " exec-chart__axis--zero" : ""}`} />
         {data.points.length === 1 ? (
           // A single point has no line to draw: a zero-length round-capped stroke renders a dot that stays circular under the stretched viewBox.
           <line x1={W / 2} x2={W / 2} y1={pointY(data.points[0].value)} y2={pointY(data.points[0].value)} className="exec-chart__dot" vectorEffect="non-scaling-stroke" />
@@ -27,8 +29,16 @@ export function TrendChart({ data }) {
           <path d={linePath(data.points, { width: W, height: H, max, min })} className="exec-chart__line" fill="none" vectorEffect="non-scaling-stroke" />
         )}
       </svg>
+      <div className="exec-chart__ticks" aria-hidden="true">
+        {axisTicks({ min, max }).map((tick) => (
+          <span key={tick.kind} className={`exec-chart__tick exec-chart__tick--${tick.kind}`} style={{ top: `${tick.fraction * 100}%` }}>
+            {formatMoney(tick.value)}
+          </span>
+        ))}
+      </div>
+      </div>
       <div className="exec-chart__scale" aria-hidden="true">
-        <span>{formatMoney(max)}</span><span>{data.points[0]?.date}</span><span>{data.points.at(-1)?.date}</span>
+        <span>{data.points[0]?.date}</span><span>{data.points.at(-1)?.date}</span>
       </div>
       <details className="exec-chart__table">
         <summary>Show the daily values</summary>

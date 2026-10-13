@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigationType, useSearchParams } from "react-router-dom";
 import { api } from "../api.js";
 import { Banner, ErrorState, LoadingState, PageHeader } from "../components/ui/index.jsx";
 import { formatDateTime, todayInBusinessTz } from "../businessTime.js";
 import { ReportFilters } from "./executive/ReportFilters.jsx";
-import { isDefault, sanitizeReportParams, toApiQuery, toSearchParams } from "./executive/reportParams.js";
+import { canFetchReport, isDefault, sanitizeReportParams, shouldShowKitchenReset, toApiQuery, toSearchParams } from "./executive/reportParams.js";
 import { useExecutiveReport } from "./executive/useExecutiveReport.js";
 import { ReportBody } from "./executive/ReportBody.jsx";
 import { ExportButtons } from "./executive/ExportButtons.jsx";
@@ -13,6 +13,7 @@ import "./executive/executive.css";
 export function ExecutiveReportPage() {
   const [search, setSearch] = useSearchParams();
   const location = useLocation();
+  const navigationType = useNavigationType();
   const [kitchens, setKitchens] = useState(null);
   const [kitchenError, setKitchenError] = useState(false);
   const today = todayInBusinessTz();
@@ -34,10 +35,13 @@ export function ExecutiveReportPage() {
   useEffect(() => {
     if (state.changed) setSearch(toSearchParams(state), { replace: true, state: { kitchenReset: state.kitchenReset } });
   }, [state, setSearch]);
-  const showKitchenReset = state.kitchenReset || location.state?.kitchenReset === true;
+  const showKitchenReset = shouldShowKitchenReset({ resetNow: state.kitchenReset, locationState: location.state, navigationType });
 
   const apiQuery = useMemo(() => toApiQuery(state), [state]);
-  const { status, report, error, reload } = useExecutiveReport(apiQuery);
+  // A chosen kitchen is validated against the list first, so a stale id never costs a failing request.
+  const { status, report, error, reload } = useExecutiveReport(apiQuery, {
+    enabled: canFetchReport({ godownId: state.godownId, kitchensSettled: kitchens !== null || kitchenError })
+  });
 
   // Any filter change returns every list to page 1.
   const update = (patch) => setSearch(toSearchParams({ ...state, ...patch, pages: { health: 1, unpriced: 1, comparison: 1 } }));

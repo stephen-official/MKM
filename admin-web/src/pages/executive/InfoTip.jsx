@@ -3,7 +3,8 @@ import { Info } from "lucide-react";
 
 /**
  * Definition tooltip. Opens on hover, keyboard focus and tap; closes on blur,
- * Escape, mouse leave, or a pointer press outside it. A click/tap only ever
+ * Escape (even when opened by hover), mouse leave (unless the button has focus),
+ * or a pointer press outside it. A click/tap only ever
  * opens it, because touch browsers fire an emulated mouseenter before click
  * and a toggle would immediately close it again.
  */
@@ -17,8 +18,15 @@ export function InfoTip({ label, text }) {
     const onPointerDown = (event) => {
       if (!rootRef.current?.contains(event.target)) setOpen(false);
     };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setOpen(false);
+    };
     document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
   return (
@@ -32,9 +40,8 @@ export function InfoTip({ label, text }) {
         onClick={() => setOpen(true)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
         onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
+        onMouseLeave={(event) => { if (document.activeElement !== event.currentTarget) setOpen(false); }}
       >
         <Info size={14} aria-hidden="true" />
       </button>

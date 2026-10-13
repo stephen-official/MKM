@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { linePath, niceMax, niceMin } from "./chartScale.js";
+import { axisTicks, linePath, niceMax, niceMin } from "./chartScale.js";
 
 describe("chart scale", () => {
   it("rounds the axis maximum up to a readable number", () => {
@@ -17,5 +17,15 @@ describe("chart scale", () => {
     const d = linePath([{ value: 0 }, { value: 10 }], { width: 100, height: 50, max: 10, min: 0 });
     expect(d).toBe("M0,50 L100,0");
     expect(linePath([{ value: 5 }], { width: 100, height: 50, max: 10, min: 0 })).toBe("M50,25");
+  });
+  it("labels only the maximum when nothing is negative", () => {
+    expect(axisTicks({ min: 0, max: 100 })).toEqual([{ kind: "max", value: 100, fraction: 0 }]);
+  });
+  it("labels the zero line and the minimum when values go negative", () => {
+    expect(axisTicks({ min: -50, max: 150 })).toEqual([
+      { kind: "max", value: 150, fraction: 0 },
+      { kind: "zero", value: 0, fraction: 0.75 },
+      { kind: "min", value: -50, fraction: 1 }
+    ]);
   });
 });

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../../api.js";
 import { createRequestTracker } from "./requestTracker.js";
 
-export const useExecutiveReport = (apiQuery) => {
+/** `enabled=false` holds the first fetch (status stays "loading") until the caller is ready. */
+export const useExecutiveReport = (apiQuery, { enabled = true } = {}) => {
   const key = JSON.stringify(apiQuery);
   // useState initialiser (not a ref read during render) keeps the react-hooks v7 rules happy.
   const [tracker] = useState(createRequestTracker);
@@ -21,9 +22,10 @@ export const useExecutiveReport = (apiQuery) => {
   }, [key, tracker]);
 
   useEffect(() => {
+    if (!enabled) return undefined;
     load();
     return () => tracker.cancel();
-  }, [load, tracker]);
+  }, [enabled, load, tracker]);
 
   return { ...state, reload: load };
 };
