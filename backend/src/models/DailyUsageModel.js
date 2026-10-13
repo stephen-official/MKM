@@ -38,6 +38,7 @@ const dailyUsageSchema = new mongoose.Schema(
 );
 
 dailyUsageSchema.index({ godownId: 1, date: 1 });
+dailyUsageSchema.index({ date: 1 }); // all-kitchens report range prefilter (OR of date / createdAt)
 dailyUsageSchema.index({ createdAt: 1 });
 
 export const DailyUsage =
