@@ -21,7 +21,7 @@ import KitchenMore from "./kitchen/KitchenMore";
 import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../utils/date";
 import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../features/kitchen/workflows";
 import { clearSession } from "../utils/session";
-import { FEATURE_DISABLED_EVENT, featureForView, fetchKitchenFlags, hiddenTabs as computeHidden, isFeatureOn, isViewHidden, sameFlags, tabTarget } from "../features.js";
+import { FEATURE_DISABLED_EVENT, canOpenView, featureForView, fetchKitchenFlags, hiddenTabs as computeHidden, isFeatureOn, isViewHidden, sameFlags, tabTarget } from "../features.js";
 import { toastFeatureDisabled } from "../featureToast.js";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
@@ -90,6 +90,13 @@ const [dailyItems, setDailyItems] = useState([]);
   const hidden = useMemo(() => computeHidden(flags), [flags]);
 
   const navigate = useNavigate();
+
+  // True (after toasting) when the feature behind the view is off, so open* helpers can refuse before changing any state.
+  const isBlocked = (view, transactionType) => {
+    if (canOpenView(flags, view, transactionType)) return false;
+    toastFeatureDisabled(featureForView(view, transactionType));
+    return true;
+  };
 
   const setActiveTab = (nextView, options = {}) => {
     // "request-builder" is exempt: its feature depends on the transaction type, which settles after this call,
@@ -662,6 +669,7 @@ setEditIndentId(indent._id);
   };
 
   const openUsage = (skipDraftCheck = false) => {
+    if (isBlocked("usage")) return false;
     if (skipDraftCheck !== true && hasDraft && activeTab !== "usage" && !window.confirm("Discard your unfinished draft?")) return false;
     setActiveTab("usage");
     setActiveTransactionType("usage");
@@ -673,6 +681,7 @@ setEditIndentId(indent._id);
   };
 
   const openSupplyRequest = () => {
+    if (isBlocked("request-builder", "indent")) return false;
     if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
     setActiveTab("request-builder");
     setActiveTransactionType("indent");
@@ -685,6 +694,7 @@ setEditIndentId(indent._id);
   };
 
   const openDeliveries = () => {
+    if (isBlocked("requests")) return false;
     if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
     setCart([]);
     setSupplyInitialTab("deliveries");
@@ -693,6 +703,7 @@ setEditIndentId(indent._id);
   };
 
   const openActivity = () => {
+    if (isBlocked("activity")) return false;
     if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
     setCart([]);
     setIsReceiveView(false);
@@ -770,6 +781,7 @@ setEditIndentId(indent._id);
           onSearchChange={setSearchQuery}
           filter={stockFilter}
           onFilterChange={setStockFilter}
+          hidden={hidden}
           onRefresh={() => fetchItems(false)}
           onRecordUsage={(item) => {
             if (openUsage()) addToCart(item, 1);

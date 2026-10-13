@@ -29,6 +29,7 @@
 .kh-metric--delivery { border-color:#bfdbd4; background:#f4faf8; }
 .kh-metric--request { background:#f3f6f4; }
 .kh-actions { display:grid; gap:var(--layout-gap); margin-bottom:var(--section-space); }
+.kh-metric:only-child, .kh-action:last-child:nth-child(odd) { grid-column:1/-1; }
 .kh-action { display:flex; align-items:center; width:100%; min-height:68px; padding:11px 13px; text-align:left; border:1px solid #dde5e0; border-radius:16px; color:var(--ink); background:white; cursor:pointer; }
 .kh-action__icon { display:grid; flex:0 0 42px; height:42px; place-items:center; margin-right:12px; border-radius:12px; color:var(--green); background:var(--pale); }
 .kh-action__copy { flex:1; min-width:0; }

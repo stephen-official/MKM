@@ -18,6 +18,8 @@ const formatQuantity = (value) =>
 
 const stockKey = (item, index) => item?._id || item?.stockRecordId || item?.stockItemId?._id || `${itemName(item)}-${index}`;
 
+const NO_HIDDEN = new Set();
+
 /** Mobile-first stock list for one kitchen. Search and health filter are controlled by the parent. */
 export default function KitchenStock({
   items = [],
@@ -28,7 +30,9 @@ export default function KitchenStock({
   onFilterChange,
   onRecordUsage,
   onRefresh,
+  hidden = NO_HIDDEN,
 }) {
+  const canRecordUsage = !hidden.has("usage");
   const counts = useMemo(() => {
     const result = { all: items.length, low: 0, out: 0 };
     items.forEach((item) => {
@@ -137,9 +141,11 @@ export default function KitchenStock({
                   </div>
                   <div className="ks-card__footer">
                     <p>{health.threshold > 0 ? `Low-stock level: ${formatQuantity(health.threshold)} ${unit}` : "No low-stock level set"}</p>
-                    <button type="button" onClick={() => onRecordUsage?.(item)} disabled={health.key === "out"}>
-                      <Utensils size={17} aria-hidden="true" /> Record usage
-                    </button>
+                    {canRecordUsage && (
+                      <button type="button" onClick={() => onRecordUsage?.(item)} disabled={health.key === "out"}>
+                        <Utensils size={17} aria-hidden="true" /> Record usage
+                      </button>
+                    )}
                   </div>
                 </div>
               </li>

@@ -90,6 +90,7 @@ export default function KitchenHome({
 }) {
   // Views whose feature is off for this kitchen are not offered at all (rather than toasting on tap).
   const canRecordUsage = !hidden.has("usage");
+  const canUseRequests = !hidden.has("requests");
   const canOpenActivity = !hidden.has("activity");
   const today = toLocalDateKey();
   void userInfo;
@@ -137,16 +138,16 @@ export default function KitchenHome({
             <strong>{attentionItems.length}</strong><span>Stock alerts</span>
             <small>{outOfStock.length} out of stock</small>
           </button>
-          <button type="button" className="kh-metric kh-metric--delivery" onClick={onReceiveDelivery} aria-label={`${deliveries.length} deliveries are ready to receive.`}>
+          {canUseRequests && <button type="button" className="kh-metric kh-metric--delivery" onClick={onReceiveDelivery} aria-label={`${deliveries.length} deliveries are ready to receive.`}>
             <PackageCheck size={22} aria-hidden="true" />
             <strong>{deliveries.length}</strong><span>To receive</span>
             <small>{deliveries.length ? "Check delivered items" : "Nothing waiting"}</small>
-          </button>
-          <button type="button" className="kh-metric kh-metric--request" onClick={onRequestSupplies} aria-label={`${pendingRequests.length} supply requests are in progress.`}>
+          </button>}
+          {canUseRequests && <button type="button" className="kh-metric kh-metric--request" onClick={onRequestSupplies} aria-label={`${pendingRequests.length} supply requests are in progress.`}>
             <Clock3 size={22} aria-hidden="true" />
             <strong>{pendingRequests.length}</strong><span>In progress</span>
             <small>Supply requests</small>
-          </button>
+          </button>}
         </div>
       </section>
 
@@ -155,8 +156,8 @@ export default function KitchenHome({
         <div className="kh-actions">
           {canRecordUsage && <ActionButton icon={Utensils} title="Record usage" description="Enter supplies used today" onClick={onRecordUsage} tone="primary" />}
           <ActionButton icon={Boxes} title="View kitchen stock" description={`${items.length} items in this kitchen`} onClick={onViewStock} />
-          <ActionButton icon={Plus} title="Request supplies" description="Ask the central store for items" onClick={onRequestSupplies} />
-          <ActionButton icon={PackageCheck} title="Receive a delivery" description={deliveries.length ? `${deliveries.length} waiting for confirmation` : "Check incoming supplies"} onClick={onReceiveDelivery} />
+          {canUseRequests && <ActionButton icon={Plus} title="Request supplies" description="Ask the central store for items" onClick={onRequestSupplies} />}
+          {canUseRequests && <ActionButton icon={PackageCheck} title="Receive a delivery" description={deliveries.length ? `${deliveries.length} waiting for confirmation` : "Check incoming supplies"} onClick={onReceiveDelivery} />}
         </div>
       </section>
 

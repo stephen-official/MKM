@@ -21,6 +21,9 @@ export const isViewHidden = (flags, view, transactionType) => {
   return key !== null && !isFeatureOn(flags, key);
 };
 
+/** False when the feature behind `view` is off, i.e. the navigation guard would bounce the user back to home. */
+export const canOpenView = (flags, view, transactionType) => !isViewHidden(flags, view, transactionType);
+
 export const sameFlags = (a, b) => {
   if (a === b) return true;
   if (!a || !b) return false;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { featureForView, hiddenTabs, isFeatureOn, isViewHidden, sameFlags, shouldToastFeature, tabTarget } from "./featureTabs.js";
+import { canOpenView, featureForView, hiddenTabs, isFeatureOn, isViewHidden, sameFlags, shouldToastFeature, tabTarget } from "./featureTabs.js";
 
 describe("kitchen features", () => {
   it("hides tabs whose feature is off; unknown flags mean on", () => {
@@ -31,6 +31,18 @@ describe("kitchen features", () => {
     assert.equal(sameFlags({ a: true }, { a: true, b: true }), false);
     assert.equal(sameFlags(null, null), true);
     assert.equal(sameFlags(null, {}), false);
+  });
+});
+
+describe("canOpenView", () => {
+  it("is false only for views whose feature is off", () => {
+    const flags = { consumption: false, indent: false, "transfer-stock": true };
+    assert.equal(canOpenView(flags, "usage"), false);
+    assert.equal(canOpenView(flags, "requests"), false);
+    assert.equal(canOpenView(flags, "request-builder", "indent"), false);
+    assert.equal(canOpenView(flags, "request-builder", "transfer"), true);
+    assert.equal(canOpenView(flags, "stock"), true);
+    assert.equal(canOpenView(null, "usage"), true);
   });
 });
 
