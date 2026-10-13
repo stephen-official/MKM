@@ -3,7 +3,8 @@ import { authorize } from "../middleware/auth.js";
 import { User } from "../models/User.js";
 import { FEATURES, describeFeature } from "../features/registry.js";
 import {
-  DEFAULT_FLAGS, FeatureFlagError, listAudit, loadGlobalFlags, resolveEffectiveFlags, updateGlobalFlags
+  DEFAULT_FLAGS, FeatureFlagError, listAudit, listOverrides, loadFlagsDoc, loadGlobalFlags, overrideId,
+  resolveEffectiveFlags, updateGlobalFlags, updateOverride
 } from "../features/featureFlagService.js";
 import { isAdminRole, isSuperAdmin } from "../utils/roles.js";
 
@@ -56,6 +57,43 @@ featureRoutes.get("/audit", superAdminOnly, async (req, res) => {
     const scope = ["global", "kitchen", "user"].includes(req.query.scope) ? req.query.scope : undefined;
     const targetId = typeof req.query.targetId === "string" ? req.query.targetId : undefined;
     return res.json(await listAudit({ page: req.query.page, scope, targetId }));
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+const isOverrideScope = (scope) => ["kitchen", "user"].includes(scope);
+const invalidScope = (res) => res.status(400).json({ code: "INVALID_SCOPE", message: 'scope must be "kitchen" or "user".' });
+
+featureRoutes.get("/overrides", superAdminOnly, async (req, res) => {
+  try {
+    if (!isOverrideScope(req.query.scope)) return invalidScope(res);
+    return res.json(await listOverrides(req.query.scope));
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+featureRoutes.get("/overrides/:scope/:targetId", superAdminOnly, async (req, res) => {
+  try {
+    if (!isOverrideScope(req.params.scope)) return invalidScope(res);
+    return res.json(await loadFlagsDoc(overrideId(req.params.scope, req.params.targetId)));
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+featureRoutes.put("/overrides/:scope/:targetId", superAdminOnly, async (req, res) => {
+  try {
+    const me = await User.findById(req.user.sub).select("name email").lean();
+    const { state, changed } = await updateOverride({
+      actor: { id: req.user.sub, name: me?.name, email: me?.email },
+      scope: req.params.scope,
+      targetId: req.params.targetId,
+      expectedVersion: req.body?.expectedVersion,
+      changes: req.body?.changes
+    });
+    return res.json({ ...state, changed });
   } catch (error) {
     return sendError(res, error);
   }

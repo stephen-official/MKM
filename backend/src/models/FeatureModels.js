@@ -6,16 +6,19 @@ export const GLOBAL_FLAGS_ID = "global";
 const featureFlagsSchema = new mongoose.Schema(
   {
     _id: { type: String, required: true },
+    scope: { type: String, enum: ["global", "kitchen", "user"], default: "global" },
+    targetId: { type: String, default: null },
     flags: { type: Map, of: Boolean, default: () => new Map() },
     version: { type: Number, default: 0, min: 0 }
   },
   { timestamps: true, versionKey: false }
 );
+featureFlagsSchema.index({ scope: 1, targetId: 1 });
 
 export const FeatureFlags = mongoose.model("FeatureFlags", featureFlagsSchema, "featureflags");
 
 const changeSchema = new mongoose.Schema(
-  { key: { type: String, required: true }, previous: { type: Boolean, required: true }, next: { type: Boolean, required: true } },
+  { key: { type: String, required: true }, previous: { type: Boolean, default: null }, next: { type: Boolean, default: null } },
   { _id: false }
 );
 

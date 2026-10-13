@@ -128,9 +128,9 @@ test("unknown keys stored in the DB are ignored on read", async () => {
   assert.equal(state.flags.reports, false);
 });
 
-test("effective flags: super_admin and kitchen users are not gated; admins get global", async () => {
+test("effective flags: super_admin is not gated; kitchen users get flags; admins get global", async () => {
   await updateGlobalFlags({ actor, expectedVersion: 0, changes: { reports: false } });
   assert.equal(await resolveEffectiveFlags({ role: "super_admin" }), null);
-  assert.equal(await resolveEffectiveFlags({ role: "user", godownId: "g" }), null);
+  assert.equal((await resolveEffectiveFlags({ role: "user", godownId: "65f0c0ffee0000000000abcd" })).reports, true);
   assert.equal((await resolveEffectiveFlags({ role: "admin" })).reports, false);
 });
