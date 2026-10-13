@@ -61,3 +61,33 @@ test("renders a real PDF over HTTP", async () => {
   const direct = await renderPdf([{ type: "title", text: "x" }]);
   assert.equal(direct.subarray(0, 5).toString(), "%PDF-");
 });
+
+// Uncompressed render so page objects and drawn text can be read back from the bytes.
+const inspectPdf = async (blocks) => {
+  const raw = (await renderPdf(blocks, { compress: false })).toString("latin1");
+  const pages = (raw.match(/\/Type \/Page\b(?!s)/g) || []).length;
+  const texts = [...raw.matchAll(/\[([^\]]*)\] TJ/g)]
+    .map((m) => [...m[1].matchAll(/<([0-9a-f]*)>/g)].map((x) => Buffer.from(x[1], "hex").toString("latin1")).join(""));
+  return { pages, texts, footers: texts.filter((t) => /^Page \d+ of \d+$/.test(t)) };
+};
+
+test("a small report renders exactly one numbered page", async () => {
+  const { pages, footers } = await inspectPdf([
+    { type: "title", text: "Executive Report" },
+    { type: "table", title: "Stock health", columns: ["A", "B"], rows: [["x", "y"]], note: null }
+  ]);
+  assert.equal(pages, 1);
+  assert.deepEqual(footers, ["Page 1 of 1"]);
+});
+
+test("a long table spans pages, numbers each, repeats the header and truncates long cells", async () => {
+  const rows = Array.from({ length: 130 }, (_, i) => ["Out", `Kitchen ${i}`, `A very long item name that goes on and on and on and on forever ${i}`, "1 kg", "2 kg"]);
+  const { pages, footers, texts } = await inspectPdf([
+    { type: "title", text: "x" },
+    { type: "table", title: "Stock health", columns: ["Status", "Kitchen", "Item", "Qty", "Threshold"], rows, note: null }
+  ]);
+  assert.ok(pages > 1);
+  assert.deepEqual(footers, Array.from({ length: pages }, (_, i) => `Page ${i + 1} of ${pages}`));
+  assert.equal(texts.filter((t) => t === "Status").length, pages, "header row repeated on every page");
+  assert.ok(!texts.some((t) => t.includes("forever")), "long cells are cut to one line");
+});

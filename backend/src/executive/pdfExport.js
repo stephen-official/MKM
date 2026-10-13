@@ -49,8 +49,8 @@ export const pdfBlocks = ({ meta, kpis, sections }) => {
   return blocks;
 };
 
-export const renderPdf = (blocks) => new Promise((resolve, reject) => {
-  const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true, info: { Title: "Executive Report" } });
+export const renderPdf = (blocks, { compress = true } = {}) => new Promise((resolve, reject) => {
+  const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true, compress, info: { Title: "Executive Report" } });
   const chunks = [];
   doc.on("data", (c) => chunks.push(c));
   doc.on("end", () => resolve(Buffer.concat(chunks)));
@@ -72,9 +72,12 @@ export const renderPdf = (blocks) => new Promise((resolve, reject) => {
       if (block.note) doc.font("Helvetica-Oblique").fontSize(9).text(block.note);
       const colW = width / block.columns.length;
       const row = (cells, bold) => {
-        if (doc.y > doc.page.height - 80) doc.addPage();
+        if (doc.y > doc.page.height - 80) {
+          doc.addPage();
+          if (!bold) row(block.columns, true);
+        }
         const y = doc.y;
-        cells.forEach((cell, i) => doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(8.5).text(String(cell), 48 + i * colW, y, { width: colW - 4, ellipsis: true, lineBreak: false }));
+        cells.forEach((cell, i) => doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(8.5).text(String(cell), 48 + i * colW, y, { width: colW - 4, height: 11, ellipsis: true }));
         doc.y = y + 13;
       };
       row(block.columns, true);
@@ -85,6 +88,7 @@ export const renderPdf = (blocks) => new Promise((resolve, reject) => {
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i += 1) {
     doc.switchToPage(i);
+    doc.page.margins.bottom = 0; // footer sits inside the bottom margin; without this pdfkit paginates
     doc.font("Helvetica").fontSize(8).fillColor("#666").text(`Page ${i + 1} of ${range.count}`, 48, doc.page.height - 36, { width, align: "center", lineBreak: false });
   }
   doc.end();
