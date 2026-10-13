@@ -32,6 +32,7 @@
 .exec-chart { margin: 0; }
 .exec-chart__svg { width: 100%; height: 180px; display: block; }
 .exec-chart__line { stroke: var(--primary); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.exec-chart__dot { stroke: var(--primary); stroke-width: 8; stroke-linecap: round; }
 .exec-chart__axis { stroke: var(--border-strong); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .exec-chart__scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .exec-chart__caption { font-size: 13px; color: var(--ink-soft); margin-bottom: 6px; }

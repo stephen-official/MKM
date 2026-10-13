@@ -8,7 +8,8 @@ export function TrendChart({ data }) {
   const values = data.points.map((p) => p.value);
   const max = niceMax(Math.max(0, ...values));
   const min = niceMin(Math.min(0, ...values));
-  const zeroY = H - ((0 - min) / (max - min)) * H;
+  const pointY = (v) => H - ((v - min) / (max - min)) * H;
+  const zeroY = pointY(0);
   const unvalued = data.points.reduce((s, p) => s + p.unvaluedLines, 0);
   return (
     <figure className="exec-chart">
@@ -19,7 +20,12 @@ export function TrendChart({ data }) {
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="exec-chart__svg" role="img"
         aria-label={`Daily consumption value from ${data.points[0]?.date} to ${data.points.at(-1)?.date}`}>
         <line x1="0" x2={W} y1={zeroY} y2={zeroY} className="exec-chart__axis" />
-        <path d={linePath(data.points, { width: W, height: H, max, min })} className="exec-chart__line" fill="none" vectorEffect="non-scaling-stroke" />
+        {data.points.length === 1 ? (
+          // A single point has no line to draw: a zero-length round-capped stroke renders a dot that stays circular under the stretched viewBox.
+          <line x1={W / 2} x2={W / 2} y1={pointY(data.points[0].value)} y2={pointY(data.points[0].value)} className="exec-chart__dot" vectorEffect="non-scaling-stroke" />
+        ) : (
+          <path d={linePath(data.points, { width: W, height: H, max, min })} className="exec-chart__line" fill="none" vectorEffect="non-scaling-stroke" />
+        )}
       </svg>
       <div className="exec-chart__scale" aria-hidden="true">
         <span>{formatMoney(max)}</span><span>{data.points[0]?.date}</span><span>{data.points.at(-1)?.date}</span>

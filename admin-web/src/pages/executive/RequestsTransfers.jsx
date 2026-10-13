@@ -3,7 +3,9 @@ import { formatCount, formatDays } from "./format.js";
 
 const Ageing = ({ title, ageing }) => (
   <DataTable>
-    <caption className="exec-caption">{title} — oldest {formatDays(ageing.oldestAgeDays)}</caption>
+    <caption className="exec-caption">
+      {title} — {ageing.oldestAgeDays === null || ageing.oldestAgeDays === undefined ? "none waiting" : `oldest ${formatDays(ageing.oldestAgeDays)}`}
+    </caption>
     <thead><tr><th scope="col">Waiting</th><th scope="col" className="num">Count</th></tr></thead>
     <tbody>{ageing.buckets.map((b) => <tr key={b.id}><td>{b.label}</td><td className="num">{formatCount(b.count)}</td></tr>)}</tbody>
   </DataTable>

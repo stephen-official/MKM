@@ -53,7 +53,7 @@ export function KpiGrid({ kpis, definitions }) {
             {kpi.estimated && <Badge variant="info">Estimated</Badge>}
             {hasMissingData(kpi) && <Badge variant="warn">Missing prices</Badge>}
           </div>
-          {kpi.status === "ok" && <p className="exec-kpi__detail">{detailLine(kpi)}</p>}
+          {kpi.status === "ok" && detailLine(kpi) && <p className="exec-kpi__detail">{detailLine(kpi)}</p>}
         </li>
       ))}
     </ul>
