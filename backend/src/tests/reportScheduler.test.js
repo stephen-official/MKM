@@ -4,7 +4,10 @@ import mongoose from "mongoose";
 import { startDb, clearDb, stopDb, syncAllIndexes } from "./helpers/db.js";
 import { consumption, kitchen, seedCatalog } from "./helpers/fixtures.js";
 import { ReportRun, ReportSchedule } from "../models/ReportScheduleModels.js";
+import nodemailer from "nodemailer";
 import { runDueSchedules } from "../jobs/reportScheduler.js";
+import { mailer } from "../utils/mailer.js";
+import { env } from "../config/env.js";
 
 const NOW = new Date("2026-10-13T02:00:00Z");
 let sent;
@@ -48,20 +51,91 @@ test("two concurrent ticks never send twice", async () => {
   assert.equal(sent.length, 1);
 });
 
-test("failures are recorded and the schedule still advances", async () => {
+test("a run whose kitchen no longer exists is recorded and deactivates the schedule", async (t) => {
+  const errors = t.mock.method(console, "error", () => {});
   const s = await schedule({ godownId: "65f0c0ffee0000000000abcd" });
   await runDueSchedules({ now: NOW, mailer: fakeMailer });
   const doc = await ReportSchedule.findById(s._id).lean();
   assert.equal(doc.lastStatus, "failed");
   assert.equal(doc.lastError, "KITCHEN_NOT_FOUND");
-  assert.ok(doc.nextRunAt > NOW);
+  assert.equal(doc.active, false, "it would only fail again tomorrow");
+  assert.equal(doc.lockedUntil, null);
   assert.equal(sent.length, 0);
+  assert.equal(await ReportRun.countDocuments({ scheduleId: s._id, status: "failed", errorCode: "KITCHEN_NOT_FOUND" }), 1);
+  assert.equal((await runDueSchedules({ now: new Date(NOW.getTime() + 86_400_000), mailer: fakeMailer })).ran, 0, "not retried");
+  assert.deepEqual(errors.mock.calls.map((c) => c.arguments[0]), [`[schedules] ${s._id} failed: KITCHEN_NOT_FOUND`]);
 });
 
-test("mail failure is a failed run", async () => {
+test("other failures leave the schedule active and advancing", async (t) => {
+  t.mock.method(console, "error", () => {});
+  const s = await schedule();
+  await runDueSchedules({ now: NOW, mailer: { sendReportEmail: async () => { throw new Error("smtp"); } } });
+  const doc = await ReportSchedule.findById(s._id).lean();
+  assert.equal(doc.active, true);
+  assert.equal(doc.lastError, "EMAIL_FAILED");
+  assert.ok(doc.nextRunAt > NOW);
+});
+
+test("mail failure is a failed run", async (t) => {
+  const errors = t.mock.method(console, "error", () => {});
   await schedule();
   await runDueSchedules({ now: NOW, mailer: { sendReportEmail: async () => { throw new Error("smtp"); } } });
   assert.equal((await ReportRun.findOne().lean()).errorCode, "EMAIL_FAILED");
+  assert.equal(errors.mock.callCount(), 1);
+});
+
+test("a PDF schedule attaches a real PDF with the right name and type", async () => {
+  const s = await schedule({ format: "pdf" });
+  await runDueSchedules({ now: NOW, mailer: fakeMailer });
+  assert.equal(sent.length, 1);
+  const { attachment } = sent[0];
+  assert.equal(attachment.contentType, "application/pdf");
+  assert.match(attachment.filename, /^MKM-Executive-Report_All-Kitchens_2026-10-06_to_2026-10-12_.*\.pdf$/);
+  assert.equal(attachment.content.subarray(0, 5).toString(), "%PDF-");
+  assert.equal((await ReportSchedule.findById(s._id).lean()).lastStatus, "success");
+  assert.match((await ReportRun.findOne().lean()).filename, /\.pdf$/);
+});
+
+test("an attachment over 10 MB is not sent and the run fails with ATTACHMENT_TOO_LARGE", async (t) => {
+  const errors = t.mock.method(console, "error", () => {});
+  const huge = Buffer.alloc(10 * 1024 * 1024 + 1);
+  for (const format of ["pdf", "xlsx"]) {
+    await ReportSchedule.deleteMany({});
+    await ReportRun.deleteMany({});
+    const s = await schedule({ format });
+    await runDueSchedules({ now: NOW, mailer: fakeMailer, renderers: { [format]: async () => huge } });
+    assert.equal(sent.length, 0, format);
+    const doc = await ReportSchedule.findById(s._id).lean();
+    assert.equal(doc.lastStatus, "failed", format);
+    assert.equal(doc.lastError, "ATTACHMENT_TOO_LARGE", format);
+    assert.equal(doc.active, true, format);
+    assert.equal((await ReportRun.findOne({ scheduleId: s._id }).lean()).errorCode, "ATTACHMENT_TOO_LARGE", format);
+  }
+  assert.equal(errors.mock.callCount(), 2);
+  // exactly at the limit is still sent
+  await ReportSchedule.deleteMany({});
+  await schedule({ format: "pdf" });
+  await runDueSchedules({ now: NOW, mailer: fakeMailer, renderers: { pdf: async () => Buffer.alloc(10 * 1024 * 1024) } });
+  assert.equal(sent.length, 1);
+});
+
+test("the real mailer puts recipients in bcc and the service address in to", async (t) => {
+  const original = env.emailUser;
+  env.emailUser = "service@mkm.test";
+  t.after(() => { env.emailUser = original; });
+  const outbox = [];
+  const create = t.mock.method(nodemailer, "createTransport", () => ({ sendMail: async (message) => { outbox.push(message); } }));
+  const attachment = { filename: "r.xlsx", content: Buffer.from("x"), contentType: "application/octet-stream" };
+  await mailer.sendReportEmail({ bcc: ["a@x.io", "b@x.io"], subject: "S", text: "T", attachment });
+  assert.equal(create.mock.callCount(), 1);
+  assert.equal(outbox.length, 1);
+  assert.equal(outbox[0].to, "service@mkm.test");
+  assert.deepEqual(outbox[0].bcc, ["a@x.io", "b@x.io"]);
+  assert.equal(outbox[0].from, '"Montessori Kitchen" <service@mkm.test>');
+  assert.equal(outbox[0].subject, "S");
+  assert.deepEqual(outbox[0].attachments, [attachment]);
+  assert.ok(!JSON.stringify(outbox[0].to).includes("a@x.io"), "recipients are never visible in To");
+  assert.equal("cc" in outbox[0], false);
 });
 
 test("inactive and locked schedules are skipped", async () => {
@@ -75,7 +149,8 @@ test("a lock left by a crashed run expires", async () => {
   assert.equal((await runDueSchedules({ now: NOW, mailer: fakeMailer })).ran, 1);
 });
 
-test("mail failure still advances nextRunAt and releases the lock", async () => {
+test("mail failure still advances nextRunAt and releases the lock", async (t) => {
+  t.mock.method(console, "error", () => {});
   const s = await schedule();
   await runDueSchedules({ now: NOW, mailer: { sendReportEmail: async () => { throw new Error("smtp"); } } });
   const doc = await ReportSchedule.findById(s._id).lean();
@@ -86,7 +161,8 @@ test("mail failure still advances nextRunAt and releases the lock", async () => 
   assert.equal(sent.length, 0);
 });
 
-test("a schedule whose next run cannot be computed is deactivated without sending", async () => {
+test("a schedule whose next run cannot be computed is deactivated without sending", async (t) => {
+  t.mock.method(console, "error", () => {});
   const s = await schedule({ cadence: "weekly", dayOfWeek: null });
   await runDueSchedules({ now: NOW, mailer: fakeMailer });
   const doc = await ReportSchedule.findById(s._id).lean();
@@ -161,4 +237,22 @@ test("HTTP: create, conflict, run-now, history (super-admin only)", async () => 
   assert.equal(inactive.body.code, "SCHEDULE_INACTIVE");
   assert.equal((await as(root, "get", `/api/report-schedules/${created.body._id}/runs`)).body.total, 0);
   assert.equal((await as(root, "get", `/api/report-schedules/${created.body._id}/runs?page=100000000000000000000`)).status, 200);
+});
+
+test("HTTP: deleting a schedule also deletes its run history, and only its own", async () => {
+  const { app } = await import("../app.js");
+  const request = (await import("supertest")).default;
+  const { createUser } = await import("./helpers/auth.js");
+  const root = await createUser({ role: "super_admin" });
+  const keep = await schedule();
+  const doomed = await schedule({ name: "Doomed" });
+  const run = (scheduleId) => ({ scheduleId, startedAt: NOW, finishedAt: NOW, status: "success", from: "2026-10-06", to: "2026-10-12", recipientCount: 2 });
+  await ReportRun.create([run(doomed._id), run(doomed._id), run(keep._id)]);
+  const res = await request(app).delete(`/api/report-schedules/${doomed._id}`).set("Authorization", `Bearer ${root.token}`);
+  assert.equal(res.status, 204);
+  assert.equal(await ReportSchedule.countDocuments({ _id: doomed._id }), 0);
+  assert.equal(await ReportRun.countDocuments({ scheduleId: doomed._id }), 0);
+  assert.equal(await ReportRun.countDocuments({ scheduleId: keep._id }), 1);
+  const again = await request(app).delete(`/api/report-schedules/${doomed._id}`).set("Authorization", `Bearer ${root.token}`);
+  assert.equal(again.status, 404);
 });

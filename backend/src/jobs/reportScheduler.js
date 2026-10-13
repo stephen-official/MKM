@@ -15,14 +15,17 @@ const claimNext = (now, skip = []) => ReportSchedule.findOneAndUpdate(
   { sort: { nextRunAt: 1 }, new: true }
 );
 
-const runOne = async (schedule, now, mailer) => {
+const defaultRenderers = {
+  pdf: (report) => renderPdf(pdfBlocks(report)),
+  xlsx: (report) => buildExcelWorkbook(report).xlsx.writeBuffer()
+};
+
+const runOne = async (schedule, now, mailer, renderers) => {
   const { from, to } = rangeForPreset(schedule.rangePreset, now);
   const run = { scheduleId: schedule._id, startedAt: new Date(), from, to, recipientCount: schedule.recipients.length };
   try {
     const report = await buildExportReport({ godownId: schedule.godownId, from, to }, { now });
-    const content = schedule.format === "pdf"
-      ? await renderPdf(pdfBlocks(report))
-      : Buffer.from(await buildExcelWorkbook(report).xlsx.writeBuffer());
+    const content = await renderers[schedule.format](report);
     if (content.length > MAX_ATTACHMENT_BYTES) throw Object.assign(new Error("Attachment too large"), { code: "ATTACHMENT_TOO_LARGE" });
     const filename = exportFilename({ kitchen: report.meta.kitchen, from, to, generatedAt: report.meta.generatedAt, tz: report.meta.timezone, ext: schedule.format });
     try {
@@ -83,7 +86,8 @@ const safely = async (write) => {
   }
 };
 
-export const runDueSchedules = async ({ now = new Date(), mailer = defaultMailer, limit = 10 } = {}) => {
+export const runDueSchedules = async ({ now = new Date(), mailer = defaultMailer, limit = 10, renderers: overrides = {} } = {}) => {
+  const renderers = { ...defaultRenderers, ...overrides };
   let ran = 0;
   const skipped = [];
   while (ran < limit) {
@@ -94,10 +98,12 @@ export const runDueSchedules = async ({ now = new Date(), mailer = defaultMailer
       skipped.push(schedule._id);
       continue;
     }
-    const result = await runOne(schedule, now, mailer);
+    const result = await runOne(schedule, now, mailer, renderers);
     await safely(() => ReportRun.create({ ...result, finishedAt: new Date() }));
+    // A deleted kitchen will never come back: stop the schedule instead of failing every day.
+    const kitchenGone = result.errorCode === "KITCHEN_NOT_FOUND";
     await safely(() => ReportSchedule.updateOne({ _id: schedule._id }, {
-      $set: { lastRunAt: now, lastStatus: result.status, lastError: result.errorCode, lockedUntil: null }
+      $set: { lastRunAt: now, lastStatus: result.status, lastError: result.errorCode, lockedUntil: null, ...(kitchenGone ? { active: false } : {}) }
     }));
   }
   return { ran };

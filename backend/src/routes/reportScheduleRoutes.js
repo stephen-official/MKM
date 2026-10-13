@@ -54,7 +54,16 @@ reportScheduleRoutes.patch("/:id", async (req, res) => {
 reportScheduleRoutes.delete("/:id", async (req, res) => {
   try {
     const current = await findOr404(req.params.id);
-    await ReportSchedule.deleteOne({ _id: current._id });
+    // The schedule and its run history go together; no orphaned history rows.
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await ReportSchedule.deleteOne({ _id: current._id }, { session });
+        await ReportRun.deleteMany({ scheduleId: current._id }, { session });
+      });
+    } finally {
+      await session.endSession();
+    }
     return res.status(204).end();
   } catch (e) { return sendError(res, e); }
 });
