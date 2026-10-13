@@ -21,7 +21,7 @@ import KitchenMore from "./kitchen/KitchenMore";
 import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../utils/date";
 import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../features/kitchen/workflows";
 import { clearSession } from "../utils/session";
-import { fetchKitchenFlags, hiddenTabs as computeHidden, isFeatureOn } from "../features.js";
+import { fetchKitchenFlags, hiddenTabs as computeHidden, isFeatureOn, isViewHidden, sameFlags } from "../features.js";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
   <button
@@ -92,7 +92,9 @@ const [dailyItems, setDailyItems] = useState([]);
   const navigate = useNavigate();
 
   const setActiveTab = (nextView, options = {}) => {
-    if (hidden.has(nextView)) {
+    // "request-builder" is exempt: its feature depends on the transaction type, which settles after this call,
+    // so the redirect effect below evaluates it with current state.
+    if (nextView !== "request-builder" && hidden.has(nextView)) {
       toast.error(FEATURE_DISABLED_MESSAGE);
       setActiveTabState("home");
       window.history.replaceState({ kitchenView: "home" }, "", `${window.location.pathname}${window.location.search}#/home`);
@@ -230,6 +232,7 @@ setItems(formatted);
   // Applies freshly loaded flags: empties lists of newly disabled features, fetches newly enabled ones.
   const applyFlags = (nextFlags) => {
     const previous = flagsRef.current;
+    if (sameFlags(previous, nextFlags)) return;
     flagsRef.current = nextFlags;
     setFlags(nextFlags);
     const newlyOff = (key) => isFeatureOn(previous, key) && !isFeatureOn(nextFlags, key);
@@ -271,10 +274,11 @@ setItems(formatted);
 
   // A view can become hidden after load (deep link, or flags changed on focus): fall back to home.
   useEffect(() => {
-    if (!hidden.has(activeTab)) return;
+    if (!isViewHidden(flags, activeTab, activeTransactionType)) return;
+    toast.error(FEATURE_DISABLED_MESSAGE);
     setActiveTabState("home");
     window.history.replaceState({ kitchenView: "home" }, "", `${window.location.pathname}${window.location.search}#/home`);
-  }, [hidden, activeTab]);
+  }, [flags, activeTab, activeTransactionType]);
 
   const hasDraft = cart.some((item) =>
     Number(mode === "daily" ? item.qtyBaseUnit : item.requestedQty) > 0
