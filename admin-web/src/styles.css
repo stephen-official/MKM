@@ -307,7 +307,7 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
 .confirm-message { font-size: 14px; line-height: 1.6; color: var(--muted); }
 
-.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); }
+.table-wrap { position: relative; overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); }
 .table-wrap > .table { margin-top: 0; }
 
 /* ---- tabs ----------------------------------------------------------------- */
