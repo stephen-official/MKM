@@ -23,7 +23,10 @@ const audienceOf = (role) => (isSuperAdmin(role) ? "super_admin" : isAdminRole(r
 featureRoutes.get("/", async (req, res) => {
   try {
     const effective = await resolveEffectiveFlags(req.user);
-    const version = isAdminRole(req.user.role) ? (await loadGlobalFlags()).version : 0;
+    const loadVersion = async () => (await loadGlobalFlags()).version;
+    // Super-admins are never gated, so a flags outage must not block them either.
+    const version = isSuperAdmin(req.user.role) ? await loadVersion().catch(() => 0)
+      : isAdminRole(req.user.role) ? await loadVersion() : 0;
     return res.json({ audience: audienceOf(req.user.role), flags: effective || { ...DEFAULT_FLAGS }, version, features: FEATURES });
   } catch (error) {
     return sendError(res, error);

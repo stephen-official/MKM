@@ -103,6 +103,15 @@ test("GET /api/features is a 503 for an admin when the flags cannot be read", as
   assert.equal(warn.mock.callCount(), 0, "no stale copy existed, so nothing to warn about");
 });
 
+test("GET /api/features still works for a super-admin when the flags cannot be read", async (t) => {
+  t.mock.method(FeatureFlags, "findById", () => ({ lean: async () => { throw new Error("db down"); } }));
+  t.mock.method(console, "warn", () => {});
+  const res = await as(superAdmin, "get", "/api/features");
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.audience, "super_admin");
+  assert.ok(Object.values(res.body.flags).every((on) => on === true));
+});
+
 test("PUT rejects non-boolean values and empty change sets with their own codes", async () => {
   const invalid = await as(superAdmin, "put", "/api/features").send({ expectedVersion: 0, changes: { reports: "no" } });
   assert.equal(invalid.status, 400);
