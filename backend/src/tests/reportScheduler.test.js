@@ -247,6 +247,22 @@ test("HTTP: create, conflict, run-now, history (super-admin only)", async () => 
   assert.equal((await as(root, "get", `/api/report-schedules/${created.body._id}/runs?page=100000000000000000000`)).status, 200);
 });
 
+test("HTTP: editing a schedule keeps a queued run-now; reactivating a paused one does not run it at once", async () => {
+  const { app } = await import("../app.js");
+  const request = (await import("supertest")).default;
+  const { createUser } = await import("./helpers/auth.js");
+  const root = await createUser({ role: "super_admin" });
+  const as = (method, url) => request(app)[method](url).set("Authorization", `Bearer ${root.token}`);
+  const created = await as("post", "/api/report-schedules").send({ name: "Daily", godownId: "all", rangePreset: "last-7-days", cadence: "daily", time: "07:30", recipients: ["a@x.io"], format: "pdf" });
+  assert.equal((await as("post", `/api/report-schedules/${created.body._id}/run`)).status, 202);
+  assert.equal((await as("patch", `/api/report-schedules/${created.body._id}`).send({ expectedVersion: 1, name: "Daily renamed" })).status, 200);
+  assert.equal((await runDueSchedules({ now: new Date(), mailer: fakeMailer })).ran, 1, "the queued run still happens");
+
+  await ReportSchedule.updateOne({ _id: created.body._id }, { $set: { active: false, nextRunAt: new Date(Date.now() - 86_400_000) } });
+  assert.equal((await as("patch", `/api/report-schedules/${created.body._id}`).send({ expectedVersion: 2, active: true })).status, 200);
+  assert.equal((await runDueSchedules({ now: new Date(), mailer: fakeMailer })).ran, 0, "reactivation waits for the next slot");
+});
+
 test("HTTP: deleting a schedule also deletes its run history, and only its own", async () => {
   const { app } = await import("../app.js");
   const request = (await import("supertest")).default;

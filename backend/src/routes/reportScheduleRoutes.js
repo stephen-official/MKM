@@ -41,9 +41,13 @@ reportScheduleRoutes.patch("/:id", async (req, res) => {
       return res.status(400).json({ code: "INVALID_SCHEDULE", message: "Check the highlighted fields.", fields: { expectedVersion: "Reload the schedule and try again." } });
     }
     const { value } = validateSchedule({ ...current, ...req.body });
+    const now = new Date();
+    // A run that is already due (e.g. a queued "Run now") survives an edit; reactivating a paused
+    // schedule waits for its next regular slot instead of sending at once.
+    const keepDue = current.active && value.active && current.nextRunAt <= now;
     const updated = await ReportSchedule.findOneAndUpdate(
       { _id: current._id, version: req.body?.expectedVersion },
-      { $set: { ...value, nextRunAt: computeNextRun(value, new Date()) }, $inc: { version: 1 } },
+      { $set: { ...value, nextRunAt: keepDue ? current.nextRunAt : computeNextRun(value, now) }, $inc: { version: 1 } },
       { new: true }
     ).lean();
     if (!updated) return res.status(409).json({ code: "VERSION_CONFLICT", message: "This schedule was changed by someone else. Reload and try again." });
