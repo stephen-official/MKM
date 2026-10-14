@@ -97,10 +97,10 @@ Invitation and password-reset emails link to `FRONTEND_URL`, which points at the
 - `admin` - admin console, subject to feature visibility.
 - `user` - kitchen app, subject only to per-kitchen / per-user overrides.
 
-Role and active-status changes apply on the user's next request; socket rooms update on their next reconnect.
+Role and active-status changes apply on the user's next request. Their live connections are dropped at once on the server that made the change, and within 30 seconds on any other server; they rejoin the right rooms on reconnect.
 
 ### Feature visibility
-Global settings apply to admins; per-kitchen overrides apply to that kitchen's users (the kitchen app in `client-web` respects them); per-user overrides win over both. Changes reach other servers within 5 seconds and admin browsers within a minute (immediately on window focus or their next blocked action). Every change is recorded in an append-only history. The route-to-feature map lives in `backend/src/features/registry.js`; `featureRouteCoverage.test.js` fails if a new route is not classified there - add every new route to the registry.
+Global settings apply to admins; per-kitchen overrides apply to that kitchen's users (the kitchen app in `client-web` respects them); per-user overrides win over both. Changes reach other servers within 5 seconds and admin browsers within a minute (immediately on window focus or their next blocked action). Every change is recorded in an append-only history. The route-to-feature map lives in `backend/src/features/registry.js`; `featureRouteCoverage.test.js` fails if a new route is not classified there, and at runtime an unclassified path under a protected mount answers 404 - add every new route to the registry.
 
 ### Executive report
 Definitions of every figure are in `backend/src/executive/definitions.js` and in the export's Definitions sheet. Business timezone `Asia/Kolkata` (override with `BUSINESS_TZ`), currency INR. Stock figures are current (not historical). Consumption is valued at the price captured when it was recorded; consumption recorded before this release has no captured price and appears as "unvalued lines".
