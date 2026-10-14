@@ -6,7 +6,7 @@ import { connectDB } from "./config/db.js";
 import { env } from "./config/env.js";
 import { User } from "./models/User.js";
 import { verifyAccessToken } from "./utils/tokens.js";
-import { roomsFor, setIo } from "./realtime.js";
+import { revalidateSockets, roomsFor, setIo } from "./realtime.js";
 
 const defaultOrigins = [
   "http://localhost:5173",
@@ -57,6 +57,10 @@ connectDB()
     server.listen(PORT, () => {
       console.log(`Backend running with authenticated realtime updates on port ${PORT}`);
     });
+    // Access changes made on another instance reach this instance's sockets within this interval.
+    setInterval(() => {
+      revalidateSockets().catch((error) => console.error("[realtime] socket revalidation failed:", error.message));
+    }, 30_000).unref();
     if (env.reportSchedulerEnabled) {
       const { startReportScheduler } = await import("./jobs/reportScheduler.js");
       startReportScheduler();

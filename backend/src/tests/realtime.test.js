@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { disconnectUser, io, roomsFor, setIo } from "../realtime.js";
+import { disconnectUser, io, revalidateSockets, roomsFor, setIo } from "../realtime.js";
 
 test("admin-tier users join the admins room and their personal room", () => {
   assert.deepEqual(roomsFor({ id: "u1", role: "admin", godownId: null }), ["admins", "user:u1"]);
@@ -38,4 +38,28 @@ test("emits are no-ops before setIo and delegate after", () => {
   } finally {
     setIo(null);
   }
+});
+
+test("revalidateSockets drops sockets whose user changed role, kitchen or active flag on any instance", async () => {
+  const dropped = [];
+  const sock = (id, role, godownId = null) => ({ data: { user: { id, role, godownId } }, disconnect: () => dropped.push(id) });
+  const fake = { fetchSockets: async () => [sock("same", "admin"), sock("demoted", "admin"), sock("moved", "user", "g1"), sock("off", "user", "g1"), sock("gone", "admin")] };
+  const current = [
+    { _id: "same", role: "admin", godownId: null, active: true },
+    { _id: "demoted", role: "user", godownId: "g1", active: true },
+    { _id: "moved", role: "user", godownId: "g2", active: true },
+    { _id: "off", role: "user", godownId: "g1", active: false }
+  ];
+  setIo(fake);
+  try {
+    const result = await revalidateSockets({ findUsers: async (ids) => current.filter((u) => ids.includes(u._id)) });
+    assert.deepEqual(dropped.sort(), ["demoted", "gone", "moved", "off"]);
+    assert.deepEqual(result, { checked: 5, dropped: 4 });
+  } finally {
+    setIo(null);
+  }
+});
+
+test("revalidateSockets is a no-op before setIo", async () => {
+  assert.deepEqual(await revalidateSockets({ findUsers: async () => [] }), { checked: 0, dropped: 0 });
 });
