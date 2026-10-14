@@ -18,7 +18,7 @@ userRoutes.use(superAdminOnly);
 
 const INVITE_TTL_MS = 24 * 3_600_000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const SAFE_FIELDS = "name email role godownId active createdAt updatedAt";
+const SAFE_FIELDS = "name email role godownId active version createdAt updatedAt";
 
 class UserAdminError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -33,7 +33,7 @@ const sendError = (res, error) => {
   return res.status(500).json({ code: "INTERNAL_ERROR", message: "Something went wrong." });
 };
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const safe = (u) => u && ({ _id: u._id, name: u.name, email: u.email, role: u.role, godownId: u.godownId?._id ?? u.godownId ?? null, kitchenName: u.godownId?.name ?? null, active: u.active, createdAt: u.createdAt, updatedAt: u.updatedAt });
+const safe = (u) => u && ({ _id: u._id, name: u.name, email: u.email, role: u.role, godownId: u.godownId?._id ?? u.godownId ?? null, kitchenName: u.godownId?.name ?? null, active: u.active, version: u.version ?? 0, createdAt: u.createdAt, updatedAt: u.updatedAt });
 const snapshot = (u) => u && ({ name: u.name, email: u.email, role: u.role, godownId: u.godownId ? String(u.godownId._id ?? u.godownId) : null, active: u.active });
 
 const actorOf = async (req) => {
@@ -163,8 +163,9 @@ userRoutes.patch("/:id", async (req, res) => {
       await assertActorIsActiveSuperAdmin(session, req.user.sub);
       const user = await User.findById(req.params.id).session(session);
       if (!user) fail(404, "USER_NOT_FOUND", "No such user.");
-      const expected = body.expectedUpdatedAt ? new Date(body.expectedUpdatedAt).getTime() : NaN;
-      if (expected !== user.updatedAt.getTime()) fail(409, "VERSION_CONFLICT", "This account was changed by someone else. Reload and try again.");
+      if (!Number.isInteger(body.expectedVersion) || body.expectedVersion !== (user.version ?? 0)) {
+        fail(409, "VERSION_CONFLICT", "This account was changed by someone else. Reload and try again.");
+      }
       const before = snapshot(user);
       const self = String(user._id) === String(req.user.sub);
       const { name, role, godownId, active } = body;
@@ -200,6 +201,7 @@ userRoutes.patch("/:id", async (req, res) => {
       if (accessChanged) user.refreshToken = null;
       // A deactivated account must not keep a live invite/reset link that would work after reactivation.
       if (active === false) { user.resetToken = null; user.resetTokenExpiry = null; }
+      user.version = (user.version ?? 0) + 1;
       await user.save({ session });
       await UserAdminAudit.create([{ ...(await actorOf(req)), targetUserId: user._id, action: "update", before, after: snapshot(user) }], { session });
       result = user._id;

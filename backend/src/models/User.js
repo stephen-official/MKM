@@ -11,7 +11,10 @@ const userSchema = new mongoose.Schema(
     active: { type: Boolean, default: true },
     refreshToken: { type: String, default: null },
     resetToken: { type: String, default: null },
-    resetTokenExpiry: { type: Date, default: null }
+    resetTokenExpiry: { type: Date, default: null },
+    // Optimistic-concurrency token for admin edits. Not updatedAt: sign-in, sign-out and
+    // password resets also write the document and must not make a pending edit conflict.
+    version: { type: Number, default: 0 }
   },
   { timestamps: true }
 );

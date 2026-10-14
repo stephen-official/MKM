@@ -16,7 +16,7 @@ export const validateUserForm = ({ name, email, role, godownId, confirmSuperAdmi
 };
 
 export const patchFromForm = (original, form) => {
-  const body = { expectedUpdatedAt: original.updatedAt };
+  const body = { expectedVersion: original.version ?? 0 };
   if (form.name.trim() !== original.name) body.name = form.name.trim();
   if (form.role !== original.role) body.role = form.role;
   const nextKitchen = isKitchenRole(form.role) ? form.godownId || null : null;

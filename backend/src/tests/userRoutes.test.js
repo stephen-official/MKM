@@ -114,7 +114,7 @@ test("PATCH re-checks inside the transaction that the actor is still an active s
     (String(filter?._id) === String(ctx.root.user._id) && filter.role === "super_admin"
       ? { session: () => ({ lean: async () => null }) }
       : realFindOne(filter, ...rest)));
-  const res = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, name: "Should Not Apply" });
+  const res = await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: target.version, name: "Should Not Apply" });
   assert.equal(res.status, 403);
   assert.equal(res.body.code, "FORBIDDEN");
   assert.equal((await User.findById(target._id)).name, "Amy");
@@ -165,7 +165,7 @@ test("PATCH without a body is a version conflict, not a crash", async () => {
 test("PATCH ignores fields it does not manage (mass assignment)", async () => {
   const before = await User.findById(ctx.admin.user._id).lean();
   const res = await as("root", "patch", `/api/users/${before._id}`).send({
-    expectedUpdatedAt: before.updatedAt, name: "Amy Renamed",
+    expectedVersion: before.version, name: "Amy Renamed",
     email: "evil@x.io", passwordHash: "plain", refreshToken: "forged", resetToken: "forged", _id: String(ctx.root.user._id)
   });
   assert.equal(res.status, 200, JSON.stringify(res.body));
@@ -183,17 +183,17 @@ test("deactivating or moving a user revokes their refresh token; a rename keeps 
   assert.ok((await User.findById(ctx.cook.user._id)).refreshToken);
 
   let target = await User.findById(ctx.cook.user._id).lean();
-  await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, name: "Cook 2" });
+  await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: target.version, name: "Cook 2" });
   assert.ok((await User.findById(target._id)).refreshToken, "rename keeps the session");
 
   target = await User.findById(ctx.cook.user._id).lean();
-  const moved = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, godownId: other._id });
+  const moved = await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: target.version, godownId: other._id });
   assert.equal(moved.status, 200, JSON.stringify(moved.body));
   assert.equal((await User.findById(target._id)).refreshToken, null, "kitchen change revokes");
 
   await User.updateOne({ _id: target._id }, { refreshToken: "again" });
   target = await User.findById(ctx.cook.user._id).lean();
-  const off = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, active: false });
+  const off = await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: target.version, active: false });
   assert.equal(off.status, 200, JSON.stringify(off.body));
   assert.equal((await User.findById(target._id)).refreshToken, null, "deactivation revokes");
 });
@@ -215,7 +215,7 @@ test("deactivating a user clears any outstanding invite/reset token", async () =
   await as("root", "post", `/api/users/${ctx.cook.user._id}/send-reset`);
   const issued = await User.findById(ctx.cook.user._id).lean();
   assert.ok(issued.resetToken && issued.resetTokenExpiry);
-  const res = await as("root", "patch", `/api/users/${issued._id}`).send({ expectedUpdatedAt: issued.updatedAt, active: false });
+  const res = await as("root", "patch", `/api/users/${issued._id}`).send({ expectedVersion: issued.version, active: false });
   assert.equal(res.status, 200, JSON.stringify(res.body));
   const after = await User.findById(issued._id).lean();
   assert.equal(after.resetToken, null);
@@ -225,22 +225,22 @@ test("deactivating a user clears any outstanding invite/reset token", async () =
 test("reactivating a super-admin needs explicit confirmation; reactivating anyone else does not", async () => {
   const dormant = await createUser({ role: "super_admin", email: "dormant@x.io", active: false });
   let doc = await User.findById(dormant.user._id).lean();
-  const refused = await as("root", "patch", `/api/users/${doc._id}`).send({ expectedUpdatedAt: doc.updatedAt, active: true });
+  const refused = await as("root", "patch", `/api/users/${doc._id}`).send({ expectedVersion: doc.version, active: true });
   assert.equal(refused.status, 400);
   assert.equal(refused.body.code, "CONFIRMATION_REQUIRED");
   assert.equal((await User.findById(doc._id)).active, false);
-  const allowed = await as("root", "patch", `/api/users/${doc._id}`).send({ expectedUpdatedAt: doc.updatedAt, active: true, confirmSuperAdmin: true });
+  const allowed = await as("root", "patch", `/api/users/${doc._id}`).send({ expectedVersion: doc.version, active: true, confirmSuperAdmin: true });
   assert.equal(allowed.status, 200, JSON.stringify(allowed.body));
 
   await User.updateOne({ _id: ctx.cook.user._id }, { active: false });
   doc = await User.findById(ctx.cook.user._id).lean();
-  const cook = await as("root", "patch", `/api/users/${doc._id}`).send({ expectedUpdatedAt: doc.updatedAt, active: true });
+  const cook = await as("root", "patch", `/api/users/${doc._id}`).send({ expectedVersion: doc.version, active: true });
   assert.equal(cook.status, 200, JSON.stringify(cook.body));
 });
 
 test("role change revokes sessions and applies on the next request", async () => {
   const target = await User.findById(ctx.admin.user._id).lean();
-  const res = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, role: "user", godownId: ctx.kitchen._id });
+  const res = await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: target.version, role: "user", godownId: ctx.kitchen._id });
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.equal((await User.findById(target._id)).refreshToken, null);
   assert.equal((await as("admin", "get", "/api/consumptions")).status, 403);
@@ -248,17 +248,26 @@ test("role change revokes sessions and applies on the next request", async () =>
 
 test("concurrent edits conflict", async () => {
   const target = await User.findById(ctx.admin.user._id).lean();
-  await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, name: "Amy A" });
-  const stale = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, name: "Amy B" });
+  await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: target.version, name: "Amy A" });
+  const stale = await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: target.version, name: "Amy B" });
   assert.equal(stale.status, 409);
   assert.equal(stale.body.code, "VERSION_CONFLICT");
 });
 
+test("the user signing in or out does not make a pending edit conflict", async () => {
+  const listed = (await as("root", "get", "/api/users")).body.items.find((u) => u.email === "amy@x.io");
+  assert.equal((await request(app).post("/api/auth/login").send({ email: "amy@x.io", password: "Passw0rd!" })).status, 200);
+  assert.equal((await as("admin", "post", "/api/auth/logout")).status, 204);
+  const res = await as("root", "patch", `/api/users/${listed._id}`).send({ expectedVersion: listed.version, name: "Amy Edited" });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.user.version, listed.version + 1);
+});
+
 test("guards: you cannot demote or deactivate yourself, but can rename yourself", async () => {
   const me = await User.findById(ctx.root.user._id).lean();
-  assert.equal((await as("root", "patch", `/api/users/${me._id}`).send({ expectedUpdatedAt: me.updatedAt, role: "admin" })).body.code, "CANNOT_MODIFY_SELF");
-  assert.equal((await as("root", "patch", `/api/users/${me._id}`).send({ expectedUpdatedAt: me.updatedAt, active: false })).body.code, "CANNOT_MODIFY_SELF");
-  const renamed = await as("root", "patch", `/api/users/${me._id}`).send({ expectedUpdatedAt: me.updatedAt, name: "Root 2" });
+  assert.equal((await as("root", "patch", `/api/users/${me._id}`).send({ expectedVersion: me.version, role: "admin" })).body.code, "CANNOT_MODIFY_SELF");
+  assert.equal((await as("root", "patch", `/api/users/${me._id}`).send({ expectedVersion: me.version, active: false })).body.code, "CANNOT_MODIFY_SELF");
+  const renamed = await as("root", "patch", `/api/users/${me._id}`).send({ expectedVersion: me.version, name: "Root 2" });
   assert.equal(renamed.status, 200);
 });
 
@@ -287,9 +296,9 @@ test("two super-admins demoting each other at the same time leaves one super-adm
   const rootDoc = await User.findById(ctx.root.user._id).lean();
   const twoDoc = await User.findById(two.user._id).lean();
   const results = await Promise.all([
-    as("root", "patch", `/api/users/${two.user._id}`).send({ expectedUpdatedAt: twoDoc.updatedAt, role: "admin" }),
+    as("root", "patch", `/api/users/${two.user._id}`).send({ expectedVersion: twoDoc.version, role: "admin" }),
     request(app).patch(`/api/users/${ctx.root.user._id}`).set("Authorization", `Bearer ${two.token}`)
-      .send({ expectedUpdatedAt: rootDoc.updatedAt, role: "admin" })
+      .send({ expectedVersion: rootDoc.version, role: "admin" })
   ]);
   assert.equal(results.filter((r) => r.status === 200).length, 1, JSON.stringify(results.map((r) => r.body)));
   assert.equal(await User.countDocuments({ role: "super_admin", active: true }), 1);
@@ -305,23 +314,23 @@ test("audit rows record before/after without secrets", async () => {
 test("a kitchen user whose kitchen is inactive can still be renamed and deactivated", async () => {
   await Godown.updateOne({ _id: ctx.kitchen._id }, { $set: { active: false } });
   const target = await User.findById(ctx.cook.user._id).lean();
-  const renamed = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, name: "Cook Renamed" });
+  const renamed = await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: target.version, name: "Cook Renamed" });
   assert.equal(renamed.status, 200, JSON.stringify(renamed.body));
   assert.equal(renamed.body.user.name, "Cook Renamed");
   assert.equal(String(renamed.body.user.godownId), String(ctx.kitchen._id));
   const again = await User.findById(target._id).lean();
-  const off = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: again.updatedAt, active: false });
+  const off = await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: again.version, active: false });
   assert.equal(off.status, 200, JSON.stringify(off.body));
   assert.equal(off.body.user.active, false);
   // reactivating while keeping the (inactive) kitchen is fine: an unchanged kitchen is not re-validated
   const back = await User.findById(target._id).lean();
-  const reactivated = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: back.updatedAt, godownId: ctx.kitchen._id, role: "user", active: true });
+  const reactivated = await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: back.version, godownId: ctx.kitchen._id, role: "user", active: true });
   assert.equal(reactivated.status, 200, `unchanged kitchen is not re-validated: ${JSON.stringify(reactivated.body)}`);
   // ...but moving to an inactive kitchen is still refused
   const other = await createGodown("Kitchen B");
   await Godown.updateOne({ _id: other._id }, { $set: { active: false } });
   const last = await User.findById(target._id).lean();
-  const bad = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: last.updatedAt, godownId: other._id });
+  const bad = await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: last.version, godownId: other._id });
   assert.equal(bad.body.code, "INVALID_KITCHEN");
 });
 
@@ -330,11 +339,11 @@ test("demoting a user disconnects their live sockets; a rename does not", async 
   setIo({ in: (room) => ({ disconnectSockets: (close) => calls.push([room, close]) }) });
   try {
     const target = await User.findById(ctx.admin.user._id).lean();
-    const renamed = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: target.updatedAt, name: "Amy 2" });
+    const renamed = await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: target.version, name: "Amy 2" });
     assert.equal(renamed.status, 200);
     assert.deepEqual(calls, []);
     const fresh = await User.findById(target._id).lean();
-    const demoted = await as("root", "patch", `/api/users/${target._id}`).send({ expectedUpdatedAt: fresh.updatedAt, role: "user", godownId: ctx.kitchen._id });
+    const demoted = await as("root", "patch", `/api/users/${target._id}`).send({ expectedVersion: fresh.version, role: "user", godownId: ctx.kitchen._id });
     assert.equal(demoted.status, 200, JSON.stringify(demoted.body));
     assert.deepEqual(calls, [[`user:${target._id}`, true]]);
   } finally {
