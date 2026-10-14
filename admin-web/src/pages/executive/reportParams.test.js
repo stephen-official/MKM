@@ -22,6 +22,14 @@ describe("sanitizeReportParams", () => {
     expect(s("from=2026-10-01&to=2026-10-05")).toMatchObject({ preset: "custom", changed: true });
     expect(s("range=yearly")).toMatchObject({ preset: "30d", changed: true });
   });
+  it("flags an invalid custom range so the page can say why it fell back", () => {
+    expect(s("range=custom&from=2025-01-01&to=2026-10-01").rangeReset).toBe(true);
+    expect(s("range=custom&from=2026-10-01&to=2026-10-20").rangeReset).toBe(true);
+    expect(s("from=2026-10-05&to=2026-10-01").rangeReset).toBe(true);
+    expect(s("range=custom&from=2026-10-01&to=2026-10-05").rangeReset).toBe(false);
+    expect(s("range=7d&from=2020-01-01&to=2020-01-02").rangeReset).toBe(false);
+    expect(s("").rangeReset).toBe(false);
+  });
   it("inherited Object keys are not treated as presets", () => {
     for (const range of ["toString", "constructor", "__proto__"]) {
       let result;
@@ -100,5 +108,9 @@ describe("shouldShowKitchenReset", () => {
     expect(shouldShowKitchenReset({ resetNow: false, locationState: { kitchenReset: true }, navigationType: "REPLACE" })).toBe(true);
     expect(shouldShowKitchenReset({ resetNow: false, locationState: { kitchenReset: true }, navigationType: "POP" })).toBe(false);
     expect(shouldShowKitchenReset({ resetNow: false, locationState: null, navigationType: "PUSH" })).toBe(false);
+  });
+  it("reads another notice's flag when given its key", () => {
+    expect(shouldShowKitchenReset({ resetNow: false, locationState: { rangeReset: true }, navigationType: "REPLACE", key: "rangeReset" })).toBe(true);
+    expect(shouldShowKitchenReset({ resetNow: false, locationState: { kitchenReset: true }, navigationType: "REPLACE", key: "rangeReset" })).toBe(false);
   });
 });

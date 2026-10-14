@@ -33,9 +33,10 @@ export function ExecutiveReportPage() {
   // The kitchen-reset flag rides along in location state so the banner survives the redirect;
   // the next filter change or reset navigates without it, which clears the banner.
   useEffect(() => {
-    if (state.changed) setSearch(toSearchParams(state), { replace: true, state: { kitchenReset: state.kitchenReset } });
+    if (state.changed) setSearch(toSearchParams(state), { replace: true, state: { kitchenReset: state.kitchenReset, rangeReset: state.rangeReset } });
   }, [state, setSearch]);
   const showKitchenReset = shouldShowKitchenReset({ resetNow: state.kitchenReset, locationState: location.state, navigationType });
+  const showRangeReset = shouldShowKitchenReset({ resetNow: state.rangeReset, locationState: location.state, navigationType, key: "rangeReset" });
 
   const apiQuery = useMemo(() => toApiQuery(state), [state]);
   // A chosen kitchen is validated against the list first, so a stale id never costs a failing request.
@@ -65,6 +66,7 @@ export function ExecutiveReportPage() {
         disabled={false}
       />
       {showKitchenReset && <Banner variant="warn">The selected kitchen no longer exists, so the report shows all kitchens.</Banner>}
+      {showRangeReset && <Banner variant="warn">That date range is not valid (it must end by today and span at most 366 days), so the report shows the last 30 days.</Banner>}
       {kitchenError && <Banner variant="warn">The kitchen list could not be loaded. You can still view all kitchens.</Banner>}
       {status === "error" && error?.code === "KITCHEN_NOT_FOUND" && (
         <Banner variant="warn">That kitchen was removed. Choose another kitchen or reset the filters.</Banner>

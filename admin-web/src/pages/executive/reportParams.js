@@ -38,6 +38,7 @@ export const sanitizeReportParams = (search, { today, kitchenIds } = {}) => {
   const to = search.get("to");
   let preset = rawPreset;
   let range;
+  let rangeReset = false;
   const customValid = isIsoDate(from) && isIsoDate(to) && from <= to && to <= today && span(from, to) <= MAX_SPAN_DAYS;
 
   if (preset && Object.hasOwn(PRESETS, preset)) {
@@ -50,6 +51,8 @@ export const sanitizeReportParams = (search, { today, kitchenIds } = {}) => {
     range = { from, to };
   } else {
     if (preset || from || to) changed = true;
+    // A custom range was asked for but is invalid (reversed, too long or in the future).
+    rangeReset = preset === "custom" || (!preset && Boolean(from || to));
     preset = DEFAULT_PRESET;
     range = presetRange(preset, today);
   }
@@ -58,7 +61,7 @@ export const sanitizeReportParams = (search, { today, kitchenIds } = {}) => {
   for (const [key, value] of [["healthPage", pages.health], ["unpricedPage", pages.unpriced], ["comparisonPage", pages.comparison]]) {
     if (search.has(key) && String(value) !== search.get(key)) changed = true;
   }
-  return { godownId, preset, ...range, pages, kitchenReset, changed };
+  return { godownId, preset, ...range, pages, kitchenReset, rangeReset, changed };
 };
 
 export const toSearchParams = (state) => {
@@ -100,5 +103,5 @@ export const canFetchReport = ({ godownId, kitchensSettled }) => godownId === "a
  * The reset notice rides along in location state across the redirect. A POP navigation
  * (browser reload or back/forward) re-delivers the old state, so it must not re-show the notice.
  */
-export const shouldShowKitchenReset = ({ resetNow, locationState, navigationType }) =>
-  resetNow || (navigationType !== "POP" && locationState?.kitchenReset === true);
+export const shouldShowKitchenReset = ({ resetNow, locationState, navigationType, key = "kitchenReset" }) =>
+  resetNow || (navigationType !== "POP" && locationState?.[key] === true);
