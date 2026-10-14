@@ -33,6 +33,16 @@ after(stopDb);
 const call = (who, method, url) => request(app)[method](url).set("Authorization", `Bearer ${who.token}`);
 const DISABLED = { code: "FEATURE_DISABLED", feature: "requests", message: "This feature is currently disabled." };
 
+test("a route missing from the registry is refused, never let through ungated", async () => {
+  const { featureGate } = await import("../features/featureGate.js");
+  let status = null;
+  let nextCalled = false;
+  const res = { status(code) { status = code; return this; }, json() { return this; } };
+  await featureGate({ method: "GET", baseUrl: "/api", path: "/not-a-module/x", user: { sub: admin.user._id, role: "admin" } }, res, () => { nextCalled = true; });
+  assert.equal(nextCalled, false);
+  assert.equal(status, 404);
+});
+
 test("disabled feature blocks admin reads with the standard payload", async () => {
   await disable("requests");
   const res = await call(admin, "get", "/api/requests");
