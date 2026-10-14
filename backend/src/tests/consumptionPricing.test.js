@@ -81,6 +81,20 @@ test("request approval converts an ISO-instant targetDate into the business date
   assert.equal(row.date, "2026-10-12");
 });
 
+test("approving a request for a future date records it on the approval day, when the stock moves", async () => {
+  const { businessDateOf } = await import("../executive/params.js");
+  const today = businessDateOf(new Date());
+  const future = businessDateOf(new Date(Date.now() + 3 * 86_400_000));
+  const req = await Request.create({ godownId: f.A._id, userId: f.cook.user._id, targetDate: future, reason: "r",
+    items: [{ stockItemId: f.items.Rice._id, qtyBaseUnit: 1 }] });
+  const daily = await Request.create({ godownId: f.A._id, userId: f.cook.user._id, requestType: "daily_usage", targetDate: future, reason: "r",
+    items: [{ stockItemId: f.items.Dal._id, qtyBaseUnit: 1 }] });
+  assert.equal((await as("admin", "post", `/api/requests/${req._id}/approve`)).status, 200);
+  assert.equal((await as("admin", "post", `/api/requests/${daily._id}/approve`)).status, 200);
+  assert.equal((await Consumption.findOne().lean()).date, today);
+  assert.equal((await DailyUsageModel.findOne().lean()).date, today);
+});
+
 test("daily-usage approvals store an ISO date and no price", async () => {
   const daily = await Request.create({ godownId: f.A._id, userId: f.cook.user._id, requestType: "daily_usage", targetDate: "2026-10-11T09:00:00.000Z", reason: "r",
     items: [{ stockItemId: f.items.Dal._id, qtyBaseUnit: 1 }] });

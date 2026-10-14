@@ -8,7 +8,7 @@ import { StockItem, StockGroup, Unit } from "../models/InventoryModels.js";
 import { DailyUsage } from "../models/DailyUsageModel.js";
 import { isAdminRole, isKitchenRole } from "../utils/roles.js";
 import { pricesForKitchen } from "../executive/valuation.js";
-import { normalizeBusinessDate } from "../executive/params.js";
+import { businessDateOf, normalizeBusinessDate } from "../executive/params.js";
 import { round2 } from "../utils/money.js";
 
 export const operationsRoutes = express.Router();
@@ -913,7 +913,11 @@ operationsRoutes.post("/requests/:id/approve", authorize(["admin"]), async (req,
         if (!stock) throw new Error("Insufficient kitchen stock for one or more items");
       }
 
-      const date = normalizeBusinessDate(request.targetDate, new Date());
+      // A future target date would fall outside every valid report range; the stock moves today.
+      const approvedAt = new Date();
+      const today = businessDateOf(approvedAt);
+      const target = normalizeBusinessDate(request.targetDate, approvedAt);
+      const date = target > today ? today : target;
       const baseLines = request.items.map((item) => ({ stockItemId: item.stockItemId, qtyBaseUnit: item.qtyBaseUnit }));
       const record = {
         godownId: request.godownId,
