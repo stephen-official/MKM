@@ -7,6 +7,7 @@ import { ConsumptionPage } from "./pages/ConsumptionPage.jsx";
 import { GodownsPage } from "./pages/GodownsPage.jsx";
 import { IndentPage } from "./pages/IndentPage.jsx";
 import { InventoryPage } from "./pages/InventoryPage.jsx";
+import { ProductsPage } from "./pages/ProductsPage.jsx";
 import { ModulePage } from "./pages/ModulePage.jsx";
 import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage.jsx";
 import { ReportsPage } from "./pages/ReportsPage.jsx";
@@ -68,6 +69,7 @@ export const App = () => {
 
   const routeMap = useMemo(
     () => ({
+      "/products": <ProductsPage />,
       "/inventory-info": <InventoryPage />,
       "/indent": <IndentPage />,
       "/purchase-orders": <PurchaseOrdersPage />,

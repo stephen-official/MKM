@@ -96,7 +96,8 @@ export const IndentPage = () => {
     [indents, term]
   );
   const filteredStock = useMemo(
-    () => stockItems.filter((s) => !term || s.name?.toLowerCase().includes(term) || s.stockGroupId?.name?.toLowerCase().includes(term)),
+    // Archived products stay in stockItems (to name past indents) but cannot be ordered again.
+    () => stockItems.filter((s) => !s.archived && (!term || s.name?.toLowerCase().includes(term) || s.stockGroupId?.name?.toLowerCase().includes(term))),
     [stockItems, term]
   );
   const filteredRequests = useMemo(

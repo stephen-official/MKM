@@ -1,8 +1,9 @@
 import {
-  ArrowLeftRight, BookOpen, Boxes, CalendarClock, ChartColumn, ClipboardCheck, ClipboardList, Gauge, Share2, ShoppingCart, ToggleRight, Users, Utensils, Warehouse
+  ArrowLeftRight, BookOpen, Boxes, Package, CalendarClock, ChartColumn, ClipboardCheck, ClipboardList, Gauge, Share2, ShoppingCart, ToggleRight, Users, Utensils, Warehouse
 } from "lucide-react";
 
 export const NAV = [
+  { label: "Products", path: "/products", icon: Package, feature: "products", section: "Setup" },
   { label: "Inventory Setup", path: "/inventory-info", icon: Boxes, feature: "inventory", section: "Setup" },
   { label: "Purchase Planning", path: "/indent", icon: ClipboardList, feature: "indent", section: "Stock Operations" },
   { label: "Purchase Orders", path: "/purchase-orders", icon: ShoppingCart, feature: "purchase-orders", section: "Stock Operations" },

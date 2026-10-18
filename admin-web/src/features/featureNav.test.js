@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildSections, disabledFeatureForPath, firstAllowedPath, isPathAllowed } from "./featureNav.js";
 
-const all = { inventory: true, indent: true, "purchase-orders": true, "stock-distribution": true, godowns: true,
+const all = { products: true, inventory: true, indent: true, "purchase-orders": true, "stock-distribution": true, godowns: true,
   "transfer-stock": true, requests: true, consumption: true, reports: true, "product-ledger": true };
 
 describe("featureNav", () => {
@@ -32,8 +32,9 @@ describe("featureNav", () => {
     expect(isPathAllowed("/feature-visibility", { flags: all, role: "super_admin" })).toBe(true);
     expect(disabledFeatureForPath("/reports", { flags: { ...all, reports: false }, role: "admin" })).toBe("reports");
     expect(disabledFeatureForPath("/reports", { flags: { ...all, reports: false }, role: "super_admin" })).toBe(null);
-    expect(firstAllowedPath({ flags: { ...all, inventory: false }, role: "admin" })).toBe("/indent");
+    expect(firstAllowedPath({ flags: { ...all, inventory: false }, role: "admin" })).toBe("/products");
+    expect(firstAllowedPath({ flags: { ...all, products: false, inventory: false }, role: "admin" })).toBe("/indent");
     expect(firstAllowedPath({ flags: Object.fromEntries(Object.keys(all).map((k) => [k, false])), role: "admin" })).toBe("/no-access");
-    expect(firstAllowedPath({ flags: null, role: "admin" })).toBe("/inventory-info");
+    expect(firstAllowedPath({ flags: null, role: "admin" })).toBe("/products");
   });
 });
