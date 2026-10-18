@@ -12,7 +12,7 @@ Quantities are always stored and returned in the product's base unit. Pack field
 
 `GET /?status=open&page=1&limit=25`
 
-Available statuses are `open`, `closed`, `ordered`, and `cancelled`. The response contains `items`, `page`, `limit`, `total`, and `pages`.
+Available statuses are `open`, `closed`, `approved`, `ordered`, and `cancelled`. The response contains `items`, `page`, `limit`, `total`, and `pages`.
 
 ### Get one order
 
@@ -73,13 +73,30 @@ A kitchen can have only one contribution per order.
 
 `PUT /:id/contributions/me`
 
-The body is the same as the join request. It replaces that kitchen's complete item list.
+The body is the same as the join request. It replaces that kitchen's complete item list, with two limits once an admin has approved something:
+
+- An approved line (it has `approvedAt`) must come back unchanged, and no other line may name the same product. Otherwise the request fails with 409 `LINE_APPROVED`. Lines not yet approved can still be changed, removed or added.
+- If the kitchen's whole share is approved (the contribution has `approvedAt`), any edit fails with 409 `SHARE_APPROVED`.
+
+Edits are saved with a version check, so if the order changed since it was read (for example an approval landed), the request fails with 409 `VERSION_CONFLICT` and should be retried after reloading.
 
 ### Leave an order
 
 `DELETE /:id/contributions/me`
 
-The kitchen that originally opened the order cannot leave it, but can edit its contribution. Other kitchens may leave while the order is open.
+The kitchen that originally opened the order cannot leave it, but can edit its contribution. Other kitchens may leave while the order is open, unless any of their lines is approved (409 `LINE_APPROVED`).
+
+### Approve (admin only)
+
+`POST /:id/approve`
+
+| Body | Effect |
+| --- | --- |
+| `{}` | Approves every kitchen's share and moves the order to `approved`, closing it to every kitchen |
+| `{ "godownId": "KITCHEN_ID" }` | Approves that kitchen's whole share; other kitchens carry on |
+| `{ "godownId": "KITCHEN_ID", "items": [{ "stockItemId": "PRODUCT_ID", "packId": "optional" }] }` | Approves those lines of that kitchen's share; the rest stays editable |
+
+Approval works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSED`). Approved lines and shares carry `approvedAt` and `approvedBy`. A kitchen or product that is not on the order gives 404.
 
 ### Change lifecycle status (admin only)
 
@@ -92,8 +109,11 @@ The kitchen that originally opened the order cannot leave it, but can edit its c
 Allowed transitions:
 
 - `open` → `closed` or `cancelled`
-- `closed` → `ordered` or `cancelled`
+- `closed` → `cancelled`
+- `approved` → `ordered` or `cancelled`
 - `ordered` and `cancelled` are final
+
+`approved` is reached only through `POST /:id/approve` (from `open` or `closed`), so an order is always approved before it is ordered.
 
 A closed order is never reopened; a kitchen that still needs items starts a new order, or an admin opens one on its behalf.
 
@@ -101,4 +121,4 @@ Closing the order immediately prevents kitchens from adding, editing, or removin
 
 ## Errors
 
-Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).

@@ -8,6 +8,9 @@ const collaborativeLineSchema = new mongoose.Schema({
   packSize: { type: Number, default: null },
   packQuantity: { type: Number, default: null },
   packPrice: { type: Number, default: null },
+  // Set when an admin approves this line; the kitchen can no longer change or add to this product.
+  approvedAt: { type: Date, default: null },
+  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { _id: false });
 
 const contributionSchema = new mongoose.Schema({
@@ -17,6 +20,9 @@ const contributionSchema = new mongoose.Schema({
   note: { type: String, trim: true, maxlength: 500, default: "" },
   addedAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
+  // Set when an admin approves the whole share; the kitchen can no longer change it.
+  approvedAt: { type: Date, default: null },
+  approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { _id: true });
 
 const collaborativePurchaseOrderSchema = new mongoose.Schema({
@@ -30,7 +36,7 @@ const collaborativePurchaseOrderSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   createdByGodown: { type: mongoose.Schema.Types.ObjectId, ref: "Godown", required: true },
   contributions: { type: [contributionSchema], default: [] },
-  status: { type: String, enum: ["open", "closed", "ordered", "cancelled"], default: "open" },
+  status: { type: String, enum: ["open", "closed", "approved", "ordered", "cancelled"], default: "open" },
   statusChangedAt: { type: Date, default: null },
   statusChangedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { timestamps: true, optimisticConcurrency: true });

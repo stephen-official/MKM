@@ -82,6 +82,7 @@ test("admins control lifecycle and closed orders reject kitchen changes", async 
   assert.equal(closed.status, 200);
   assert.equal(closed.body.status, "closed");
   assert.equal((await call(ctx.cookB, "post", `/${order._id}/contributions`).send({ items: [{ stockItemId: ctx.dal._id, qtyBaseUnit: 2 }] })).status, 409);
+  assert.equal((await call(ctx.admin, "post", `/${order._id}/approve`).send({})).body.status, "approved");
   assert.equal((await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered" })).body.status, "ordered");
   assert.equal((await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "open" })).status, 409);
 });
