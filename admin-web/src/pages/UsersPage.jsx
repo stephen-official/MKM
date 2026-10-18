@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api.js";
-import { Badge, Banner, Button, Card, DataTable, EmptyState, ErrorState, LoadingState, PageHeader } from "../components/ui/index.jsx";
+import { Badge, Banner, Button, Card, DataTable, EmptyState, ErrorState, LoadingState, PageHeader, Select } from "../components/ui/index.jsx";
 import { useToast } from "../useToast.js";
 import { formatDateTime } from "../businessTime.js";
 import { ROLES, isKitchenRole } from "../roles.js";
@@ -91,12 +91,12 @@ export function UsersPage() {
       {notice && <Banner variant="info">{notice}</Banner>}
       <div className="exec-filters">
         <input aria-label="Search by name or email" placeholder="Search name or email" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <select aria-label="Role" value={filters.role} onChange={(e) => setFilters({ ...filters, role: e.target.value, page: 1 })}>
+        <Select aria-label="Role" value={filters.role} onChange={(e) => setFilters({ ...filters, role: e.target.value, page: 1 })}>
           <option value="">All roles</option><option value="super_admin">Super-admins</option><option value="admin">Admins</option><option value="user">Kitchen users</option>
-        </select>
-        <select aria-label="Status" value={filters.active} onChange={(e) => setFilters({ ...filters, active: e.target.value, page: 1 })}>
+        </Select>
+        <Select aria-label="Status" value={filters.active} onChange={(e) => setFilters({ ...filters, active: e.target.value, page: 1 })}>
           <option value="">Active and inactive</option><option value="true">Active</option><option value="false">Inactive</option>
-        </select>
+        </Select>
       </div>
       {error && <ErrorState message={error} onRetry={load} />}
       {!data && !error && <LoadingState />}

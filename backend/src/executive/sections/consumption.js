@@ -56,6 +56,7 @@ export const aggregateConsumption = async ({ scopeIds, from, to, window, tz, opt
     facet.byDate = [{ $group: { _id: "$effDate", ...SUMS } }];
     facet.byItem = [{ $group: { _id: "$stockItemId", ...SUMS } }];
     facet.byKitchen = [{ $group: { _id: "$godownId", ...SUMS } }];
+    facet.byKitchenDate = [{ $group: { _id: { godownId: "$godownId", date: "$effDate" }, ...SUMS } }];
   }
   const [result] = await Consumption.aggregate([
     ...datedPipeline({ scopeIds, from, to, window }, tz),
@@ -74,7 +75,8 @@ export const aggregateConsumption = async ({ scopeIds, from, to, window, tz, opt
     totals: result?.totals?.[0] || EMPTY_TOTALS,
     byDate: result?.byDate || [],
     byItem: result?.byItem || [],
-    byKitchen: result?.byKitchen || []
+    byKitchen: result?.byKitchen || [],
+    byKitchenDate: result?.byKitchenDate || []
   };
 };
 
@@ -113,6 +115,37 @@ const joinItemNames = async (byItem, options) => {
   return byItem.map((r) => ({ ...r, ...(meta.get(String(r._id)) || fallback(r._id)) }));
 };
 
+const kitchenTrends = (ctx, current) => {
+  if (ctx.params.godownId !== "all") return undefined;
+  const totals = new Map(current.byKitchen.map((row) => [String(row._id), row]));
+  const daily = new Map();
+  for (const row of current.byKitchenDate) {
+    const id = String(row._id.godownId);
+    if (!daily.has(id)) daily.set(id, new Map());
+    daily.get(id).set(row._id.date, row);
+  }
+  // Show every active kitchen, plus inactive/deleted kitchens that had consumption in the period.
+  const ids = new Set([...ctx.activeIds.map(String), ...totals.keys()]);
+  return [...ids].map((id) => {
+    const known = ctx.godowns.get(id);
+    const byDate = daily.get(id) || new Map();
+    const points = [];
+    for (let day = ctx.params.from; day <= ctx.params.to; day = addDays(day, 1)) {
+      const row = byDate.get(day);
+      points.push({ date: day, value: round2(row?.value || 0), unvaluedLines: row?.unvaluedLines || 0 });
+    }
+    return {
+      godownId: id,
+      kitchen: ctx.kitchenName(id),
+      active: known ? known.active : false,
+      deleted: !known,
+      total: round2(totals.get(id)?.value || 0),
+      unvaluedLines: totals.get(id)?.unvaluedLines || 0,
+      points
+    };
+  }).sort((a, b) => b.total - a.total || collator.compare(a.kitchen, b.kitchen) || compareIds(a.godownId, b.godownId));
+};
+
 export const consumptionSection = async (ctx) => {
   const { params, tz, scopeIds } = ctx;
   const options = ctx.aggOptions();
@@ -134,6 +167,7 @@ export const consumptionSection = async (ctx) => {
   const deltaPct = round2(prevValue) === 0 ? null : round2(((current.totals.value - prevValue) / Math.abs(prevValue)) * 100);
   const total = round2(current.totals.value);
   const topItems = rankTopItems(await joinItemNames(current.byItem, options));
+  const kitchens = kitchenTrends(ctx, current);
 
   return {
     kpis: {
@@ -144,7 +178,7 @@ export const consumptionSection = async (ctx) => {
       dailyUseLines: { value: dailyLines }
     },
     sections: {
-      consumptionTrend: { points, total, previousTotal: round2(prevValue), deltaPct },
+      consumptionTrend: { points, total, previousTotal: round2(prevValue), deltaPct, ...(kitchens ? { kitchens } : {}) },
       topItems
     }
   };

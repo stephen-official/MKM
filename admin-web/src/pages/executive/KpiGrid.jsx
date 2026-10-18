@@ -1,6 +1,7 @@
 import { Badge } from "../../components/ui/index.jsx";
-import { InfoTip } from "./InfoTip.jsx";
 import { formatCount, formatDays, formatMoney, formatPct, formatQty, plural } from "./format.js";
+
+const HEADLINE_IDS = new Set(["stockValue", "consumptionValue", "stockReceivedValue", "procurementSpend"]);
 
 const valueText = (kpi) => (kpi.format === "money" ? formatMoney(kpi.value) : formatCount(kpi.value));
 
@@ -33,29 +34,54 @@ const hasMissingData = (kpi) =>
   (kpi.id === "consumptionValue" && kpi.details?.unvaluedLineCount > 0) ||
   (kpi.id === "stockReceivedValue" && kpi.details?.unpricedAllocationCount > 0);
 
-export function KpiGrid({ kpis, definitions }) {
-  const textFor = (id) => definitions.find((d) => d.id === id)?.text || "";
+export function KpiGrid({ kpis, onExplain }) {
+  const headline = kpis.filter((kpi) => HEADLINE_IDS.has(kpi.id));
+  const operational = kpis.filter((kpi) => !HEADLINE_IDS.has(kpi.id));
+  const cards = (items, primary = false) => items.map((kpi, index) => (
+    <li
+      key={kpi.id}
+      className={`exec-kpi exec-explainable${primary ? " exec-kpi--headline" : ""}${primary && index === 0 ? " exec-kpi--primary" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`${kpi.label}. Show detailed explanation and calculation.`}
+      onClick={() => onExplain(kpi)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onExplain(kpi);
+        }
+      }}
+    >
+      <div className="exec-kpi__label">
+        {kpi.label}
+        <span className="exec-explainable__hint" aria-hidden="true">View calculation</span>
+      </div>
+      {kpi.status === "error" ? (
+        <p className="exec-kpi__value exec-kpi__value--na">Not available</p>
+      ) : (
+        <p className="exec-kpi__value">{valueText(kpi)}</p>
+      )}
+      <div className="exec-kpi__tags">
+        <Badge variant="neutral">{kpi.kind === "snapshot" ? "Current" : "In period"}</Badge>
+        {kpi.estimated && <Badge variant="info">Estimated</Badge>}
+        {hasMissingData(kpi) && <Badge variant="warn">Missing prices</Badge>}
+      </div>
+      {kpi.status === "ok" && detailLine(kpi) && <p className="exec-kpi__detail">{detailLine(kpi)}</p>}
+    </li>
+  ));
   return (
-    <ul className="exec-kpis" aria-label="Key figures">
-      {kpis.map((kpi) => (
-        <li key={kpi.id} className="exec-kpi">
-          <div className="exec-kpi__label">
-            {kpi.label}
-            <InfoTip label={kpi.label} text={textFor(kpi.id)} />
-          </div>
-          {kpi.status === "error" ? (
-            <p className="exec-kpi__value exec-kpi__value--na">Not available</p>
-          ) : (
-            <p className="exec-kpi__value">{valueText(kpi)}</p>
-          )}
-          <div className="exec-kpi__tags">
-            <Badge variant="neutral">{kpi.kind === "snapshot" ? "Current" : "In period"}</Badge>
-            {kpi.estimated && <Badge variant="info">Estimated</Badge>}
-            {hasMissingData(kpi) && <Badge variant="warn">Missing prices</Badge>}
-          </div>
-          {kpi.status === "ok" && detailLine(kpi) && <p className="exec-kpi__detail">{detailLine(kpi)}</p>}
-        </li>
-      ))}
-    </ul>
+    <section className="exec-kpi-block" aria-labelledby="exec-key-figures">
+      <div className="exec-group-heading exec-group-heading--first">
+        <div><span>At a glance</span><h2 id="exec-key-figures">Key figures</h2></div>
+        <p>The figures leadership is most likely to act on</p>
+      </div>
+      <ul className="exec-kpis exec-kpis--headline" aria-label="Headline figures">{cards(headline, true)}</ul>
+      {operational.length > 0 && (
+        <>
+          <h3 className="exec-pulse-title">Operational pulse</h3>
+          <ul className="exec-kpis exec-kpis--compact" aria-label="Operational figures">{cards(operational)}</ul>
+        </>
+      )}
+    </section>
   );
 }

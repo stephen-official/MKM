@@ -11,7 +11,7 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
-  PageHeader, DateField } from "../components/ui/index.jsx";
+  PageHeader, DateField, Select } from "../components/ui/index.jsx";
 import { ProductCombobox } from "./ledger/ProductCombobox.jsx";
 import { LedgerSummary } from "./ledger/LedgerSummary.jsx";
 import { formatQty } from "./ledger/format.js";
@@ -246,7 +246,7 @@ export default function ProductLedger() {
           </>
         }
       >
-        <select
+        <Select
           aria-label="Godown"
           value={selectedGodown}
           onChange={(e) => changeGodown(e.target.value)}
@@ -256,7 +256,7 @@ export default function ProductLedger() {
           {godowns.map((g) => (
             <option key={g._id} value={g._id}>{g.name}</option>
           ))}
-        </select>
+        </Select>
         <ProductCombobox
           key={selectedGodown}
           products={products}

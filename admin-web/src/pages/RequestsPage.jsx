@@ -264,7 +264,8 @@ export const RequestsPage = () => {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <PageHeader
-        title="Requests"
+        title="Usage Approvals"
+        subtitle="Approve or reject kitchen requests to record stock usage."
         actions={
           <>
             <div style={{ position: "relative", display: "flex", alignItems: "center" }}>

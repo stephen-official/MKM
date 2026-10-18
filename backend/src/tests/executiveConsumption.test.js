@@ -63,10 +63,22 @@ test("trend is zero-filled and covers every day in range", async () => {
   assert.equal(sections.consumptionTrend.total, 227.25);
 });
 
+test("all-kitchen trend includes an overall total and a zero-filled series for every kitchen", async () => {
+  const { sections } = await consumptionSection(await ctxFor({}));
+  const trends = sections.consumptionTrend.kitchens;
+  assert.deepEqual(trends.map((row) => [row.kitchen, row.total]), [["Kitchen A", 200.25], ["Kitchen B", 27]]);
+  assert.equal(trends[0].points.length, 10);
+  assert.equal(trends[0].points[1].date, "2026-10-02");
+  assert.equal(trends[0].points[1].value, 0);
+  assert.equal(trends[1].points.find((point) => point.date === "2026-10-05").value, 30);
+  assert.equal(trends[1].unvaluedLines, 1);
+});
+
 test("single kitchen scope", async () => {
-  const { kpis } = await consumptionSection(await ctxFor({ godownId: String(f.A._id) }));
+  const { kpis, sections } = await consumptionSection(await ctxFor({ godownId: String(f.A._id) }));
   assert.equal(kpis.consumptionValue.value, 200.25);
   assert.equal(kpis.consumptionValue.details.unvaluedLineCount, 0);
+  assert.equal(sections.consumptionTrend.kitchens, undefined);
   const b = await consumptionSection(await ctxFor({ godownId: String(f.B._id) }));
   assert.equal(b.kpis.consumptionValue.value, 27);
   assert.equal(b.kpis.dailyUseLines.value, 0);

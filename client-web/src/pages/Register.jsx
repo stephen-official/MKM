@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { fetchGodowns, registerUser } from '../api/auth';
 import { useNavigate } from 'react-router-dom';
 import { Roles } from '../types';
+import Select from '../components/ui/Select';
 
 const Register = () => {
   const [godowns, setGodowns] = useState([]);
@@ -37,11 +38,11 @@ const Register = () => {
           <input type="password" placeholder="Password" className="w-full p-3 border rounded-lg" 
             onChange={(e) => setFormData({...formData, password: e.target.value})} required />
 
-          <select className="w-full p-3 border rounded-lg" 
+          <Select value={formData.godownId}
             onChange={(e) => setFormData({...formData, godownId: e.target.value})} required={formData.role === Roles.USER}>
             <option value="">Select Your Godown</option>
             {godowns.map(g => <option key={g._id} value={g._id}>{g.name}</option>)}
-          </select>
+          </Select>
 
           <button className="w-full bg-blue-600 text-white p-3 rounded-lg font-semibold active:scale-95 transition">
             Register

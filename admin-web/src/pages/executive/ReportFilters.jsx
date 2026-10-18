@@ -1,5 +1,5 @@
 import { RotateCcw } from "lucide-react";
-import { Button, DateField, Field } from "../../components/ui/index.jsx";
+import { Button, DateField, Field, Select } from "../../components/ui/index.jsx";
 import { PRESETS, customRangeBounds } from "./reportParams.js";
 
 const PRESET_LABELS = { "7d": "7 days", "30d": "30 days", "90d": "90 days", custom: "Custom" };
@@ -11,7 +11,7 @@ export function ReportFilters({ state, kitchens, today, onChange, onReset, canRe
   return (
     <div className="exec-filters" role="group" aria-label="Report filters">
       <Field label="Kitchen" className="exec-filters__kitchen">
-        <select
+        <Select
           value={state.godownId}
           disabled={disabled}
           onChange={(e) => onChange({ godownId: e.target.value })}
@@ -27,7 +27,7 @@ export function ReportFilters({ state, kitchens, today, onChange, onReset, canRe
               {inactive.map((k) => <option key={k._id} value={k._id}>{k.name} (inactive)</option>)}
             </optgroup>
           )}
-        </select>
+        </Select>
       </Field>
       <div className="exec-filters__range" role="group" aria-label="Date range">
         {[...Object.keys(PRESETS), "custom"].map((preset) => (

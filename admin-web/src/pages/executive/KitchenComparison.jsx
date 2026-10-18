@@ -2,7 +2,20 @@ import { Badge, DataTable } from "../../components/ui/index.jsx";
 import { formatCount, formatMoney } from "./format.js";
 import { Pager } from "./Pager.jsx";
 
-export function KitchenComparison({ data, onSelectKitchen, onPage }) {
+const explainable = (onExplain, row) => onExplain ? {
+  role: "button",
+  tabIndex: 0,
+  "aria-label": `Explain ${row.kitchen} figures`,
+  onClick: () => onExplain(row),
+  onKeyDown: (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onExplain(row);
+    }
+  },
+} : {};
+
+export function KitchenComparison({ data, onSelectKitchen, onPage, onExplain }) {
   return (
     <>
       <DataTable>
@@ -14,10 +27,10 @@ export function KitchenComparison({ data, onSelectKitchen, onPage }) {
         </thead>
         <tbody>
           {data.rows.map((r) => (
-            <tr key={r.godownId}>
+            <tr className={onExplain ? "exec-table-row--clickable" : undefined} {...explainable(onExplain, r)} key={r.godownId}>
               <th scope="row">
                 {r.deleted ? r.kitchen : (
-                  <button type="button" className="exec-link" onClick={() => onSelectKitchen(r.godownId)}>{r.kitchen}</button>
+                  <button type="button" className="exec-link" onClick={(event) => { event.stopPropagation(); onSelectKitchen(r.godownId); }}>{r.kitchen}</button>
                 )}
                 {!r.active && !r.deleted && <Badge variant="neutral">Inactive</Badge>}
               </th>

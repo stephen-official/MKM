@@ -5,7 +5,7 @@ import { Search, CheckCircle2, PackageCheck, History, Download } from "lucide-re
 import * as XLSX from "xlsx";
 import {
   PageHeader, Button, Badge, EmptyState, Field, Tabs, StatusBadge, SplitView,
-  RailList, RailItem, DetailPanel, Meta, LoadingState, ErrorState
+  RailList, RailItem, DetailPanel, Meta, LoadingState, ErrorState, Select
 } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
 
@@ -281,12 +281,12 @@ export const PurchaseOrdersPage = () => {
               <>
                 <div style={{ flex: 1, minWidth: 260 }}>
                   <Field label="Pending indent">
-                    <select value={selectedIndentId} onChange={(e) => setSelectedIndentId(e.target.value)} disabled={submitting}>
+                    <Select value={selectedIndentId} onChange={(e) => setSelectedIndentId(e.target.value)} disabled={submitting}>
                       <option value="">Choose an indent to process…</option>
                       {indents.map((i) => (
                         <option key={i._id} value={i._id}>{i.indentNo} — {money(i.totalAmount)}</option>
                       ))}
-                    </select>
+                    </Select>
                   </Field>
                 </div>
                 <Meta label="Intake total" align="end">{money(intakeTotal)}</Meta>

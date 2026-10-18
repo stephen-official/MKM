@@ -4,9 +4,17 @@ import { useToast } from "../useToast.js";
 import { Search, Download, Table as TableIcon, X } from "lucide-react";
 import {
   PageHeader, Button, Badge, EmptyState, SplitView, RailList, RailItem, DetailPanel, Meta,
-  StatusBadge, ErrorState, DateField } from "../components/ui/index.jsx";
+  StatusBadge, ErrorState, DateField, Select } from "../components/ui/index.jsx";
 
 const reportEntities = ["indents", "purchase-orders", "distributions", "transfers", "requests", "consumptions"];
+const ENTITY_LABELS = {
+  indents: "Purchase indents",
+  "purchase-orders": "Purchase orders",
+  distributions: "Purchase distributions",
+  transfers: "Stock transfers",
+  requests: "Usage approval requests",
+  consumptions: "Usage records"
+};
 const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const MAX_RAIL_ROWS = 200;
 const HIDDEN_KEYS = new Set([
@@ -14,7 +22,7 @@ const HIDDEN_KEYS = new Set([
   "purchaseOrderId", "leftoverSourceId", "fromGodownId", "toGodownId", "godownId", "status", "createdAt"
 ]);
 
-const entityLabel = (entity) => entity.replaceAll("-", " ");
+const entityLabel = (entity) => ENTITY_LABELS[entity] || entity.replaceAll("-", " ");
 const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN")}`;
 const fmtDate = (value) => (value ? new Date(value).toLocaleDateString("en-GB") : "—");
 const fmtDateTime = (value) =>
@@ -167,16 +175,17 @@ export const ReportsPage = () => {
   return (
     <div style={{ height: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
       <PageHeader
-        title="Reports"
+        title="Exports"
+        subtitle="Download records from every workflow in one place."
         actions={
           <Button variant="dark" onClick={exportAllExcel} disabled={exporting || loading || !rows.length}>
             <Download size={14} /> {exporting ? "Exporting…" : "Export all"}
           </Button>
         }
       >
-        <select aria-label="Report type" value={entity} onChange={(e) => changeEntity(e.target.value)} style={{ textTransform: "capitalize" }}>
+        <Select aria-label="Report type" value={entity} onChange={(e) => changeEntity(e.target.value)} style={{ textTransform: "capitalize" }}>
           {reportEntities.map((r) => <option key={r} value={r}>{entityLabel(r)}</option>)}
-        </select>
+        </Select>
         <DateField  aria-label="From date" title="From date" value={startDate} max={endDate || undefined} onChange={(e) => setStartDate(e.target.value)} />
         <span aria-hidden="true" style={{ color: "var(--muted)" }}>to</span>
         <DateField  aria-label="To date" title="To date" value={endDate} min={startDate || undefined} onChange={(e) => setEndDate(e.target.value)} />

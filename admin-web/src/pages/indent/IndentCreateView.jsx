@@ -53,7 +53,7 @@ export const IndentCreateView = ({ stock, selected, setSelected, submitting, onS
         >
           {stock.length === 0 ? (
             <EmptyState title={searching ? "No stock items match your search" : "No stock items available"}>
-              {searching ? "Try a different name or group." : "Add stock items in Inventory Info first."}
+              {searching ? "Try a different name or group." : "Add stock items in Inventory Setup first."}
             </EmptyState>
           ) : (
             <DataTable>

@@ -3,15 +3,15 @@
 // fails if an Express route is missing here or a rule here matches no route.
 
 export const FEATURES = Object.freeze([
-  { key: "inventory", label: "Inventory Info", navPath: "/inventory-info", audiences: ["admin"] },
-  { key: "indent", label: "Indent", navPath: "/indent", audiences: ["admin", "kitchen"] },
+  { key: "inventory", label: "Inventory Setup", navPath: "/inventory-info", audiences: ["admin"] },
+  { key: "indent", label: "Purchase Planning", navPath: "/indent", audiences: ["admin", "kitchen"] },
   { key: "purchase-orders", label: "Purchase Orders", navPath: "/purchase-orders", audiences: ["admin"] },
-  { key: "stock-distribution", label: "Stock Distribution", navPath: "/stock-distribution", audiences: ["admin"] },
-  { key: "godowns", label: "Godowns", navPath: "/godowns", audiences: ["admin"] },
-  { key: "transfer-stock", label: "Transfer Stock", navPath: "/transfer-stock", audiences: ["admin", "kitchen"] },
-  { key: "requests", label: "Requests", navPath: "/requests", audiences: ["admin", "kitchen"] },
-  { key: "consumption", label: "Consumption", navPath: "/consumption", audiences: ["admin", "kitchen"] },
-  { key: "reports", label: "Reports", navPath: "/reports", audiences: ["admin"] },
+  { key: "stock-distribution", label: "Distribute Purchases", navPath: "/stock-distribution", audiences: ["admin"] },
+  { key: "godowns", label: "Stock Levels", navPath: "/godowns", audiences: ["admin"] },
+  { key: "transfer-stock", label: "Stock Transfers", navPath: "/transfer-stock", audiences: ["admin", "kitchen"] },
+  { key: "requests", label: "Usage Approvals", navPath: "/requests", audiences: ["admin", "kitchen"] },
+  { key: "consumption", label: "Usage Records", navPath: "/consumption", audiences: ["admin", "kitchen"] },
+  { key: "reports", label: "Exports", navPath: "/reports", audiences: ["admin"] },
   { key: "product-ledger", label: "Product Ledger", navPath: "/product-ledger", audiences: ["admin"] }
 ]);
 

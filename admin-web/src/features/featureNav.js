@@ -1,7 +1,7 @@
 import { NAV, SUPER_NAV } from "../components/navItems.js";
 import { isSuperAdmin } from "../roles.js";
 
-const SECTION_ORDER = ["Stock", "Insights", "Executive"];
+const SECTION_ORDER = ["Setup", "Stock Operations", "Usage", "Records", "Executive", "Administration"];
 export const NO_ACCESS_PATH = "/no-access";
 
 const enabled = (flags, key) => !flags || flags[key] !== false;
@@ -12,7 +12,7 @@ export const buildSections = ({ flags, role }) => {
     ...NAV.filter((item) => superAdmin || enabled(flags, item.feature))
       .map((item) => ({ ...item, hiddenFromAdmins: superAdmin && !enabled(flags, item.feature) })),
     ...(superAdmin ? SUPER_NAV : [])
-  ];
+  ].filter((item) => !item.hiddenFromNav);
   return SECTION_ORDER
     .map((title) => ({ title, items: items.filter((item) => item.section === title) }))
     .filter((section) => section.items.length > 0);

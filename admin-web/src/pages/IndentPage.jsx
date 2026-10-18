@@ -13,7 +13,7 @@ import { errMsg, inDateRange, makeResolvers } from "./indent/helpers.js";
 
 const TABS = [
   { value: "history", label: "Logs", icon: <ClipboardList size={14} aria-hidden="true" /> },
-  { value: "requests", label: "Requests", icon: <Inbox size={14} aria-hidden="true" /> },
+  { value: "requests", label: "Supply Requests", icon: <Inbox size={14} aria-hidden="true" /> },
   { value: "create", label: "Create New", icon: <PlusCircle size={14} aria-hidden="true" /> }
 ];
 
@@ -239,7 +239,7 @@ export const IndentPage = () => {
         <Button variant="ghost" size="sm" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</Button>
       )}
       <Button variant="success" onClick={exportAll}>
-        <FileSpreadsheet size={16} /> Export All Requests
+        <FileSpreadsheet size={16} /> Export supply requests
       </Button>
     </>
   );
@@ -273,7 +273,7 @@ export const IndentPage = () => {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <PageHeader title="Indent" actions={view === "requests" ? dateFilter : searchBox}>
+      <PageHeader title="Purchase Planning" subtitle="Review kitchen supply requests and prepare purchase indents." actions={view === "requests" ? dateFilter : searchBox}>
         <Tabs items={TABS} value={view} onChange={switchView} label="Indent views" />
       </PageHeader>
       {body}

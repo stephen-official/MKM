@@ -105,7 +105,7 @@ export function ReportSchedulesPage() {
 
   return (
     <>
-      <PageHeader title="Report Schedules" subtitle="Email the executive report automatically."
+      <PageHeader title="Scheduled Emails" subtitle="Send the Executive Report automatically."
         actions={<Button onClick={() => { setServerErrors({}); setEditing({ ...EMPTY_SCHEDULE }); }}>New schedule</Button>} />
       <Banner variant="info">Schedules run only on servers started with REPORT_SCHEDULER_ENABLED=true. Reports cover complete days up to yesterday.</Banner>
       {error && <ErrorState message={error} onRetry={load} />}

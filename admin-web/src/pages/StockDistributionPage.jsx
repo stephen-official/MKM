@@ -5,7 +5,7 @@ import { api } from "../api.js";
 import { useToast } from "../useToast.js";
 import {
   PageHeader, Button, Badge, EmptyState, ErrorState, DataTable, Tabs, StatusBadge,
-  SplitView, RailList, RailItem, DetailPanel, Meta
+  SplitView, RailList, RailItem, DetailPanel, Meta, Select
 } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
 
@@ -307,7 +307,8 @@ export const StockDistributionPage = () => {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <PageHeader
-        title="Stock Distribution"
+        title="Distribute Purchases"
+        subtitle="Allocate newly received purchase-order stock to godowns."
         actions={
           <Button variant="dark" size="sm" onClick={() => downloadAsExcel("master")} disabled={loading}>
             <Download size={14} /> Valuation report
@@ -397,7 +398,7 @@ export const StockDistributionPage = () => {
                           </td>
                           <td>
                             {isCompleted ? getGodownName(alloc.godownId) : (
-                              <select
+                              <Select
                                 aria-label={`Destination godown for ${details.name}`}
                                 value={alloc.godownId}
                                 disabled={submitting}
@@ -406,7 +407,7 @@ export const StockDistributionPage = () => {
                               >
                                 <option value="">Select godown</option>
                                 {godowns.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
-                              </select>
+                              </Select>
                             )}
                           </td>
                           <td>

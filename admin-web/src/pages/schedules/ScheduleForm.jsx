@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, Field, Modal } from "../../components/ui/index.jsx";
+import { Button, Field, Modal, Select } from "../../components/ui/index.jsx";
 import { EMPTY_SCHEDULE, buildSchedulePayload, isRemovedKitchen } from "./scheduleText.js";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -40,41 +40,41 @@ export function ScheduleForm({ title, initial, kitchens, busy, serverErrors = {}
         {otherErrors.map(([key, message]) => <span key={key} className="field__error" role="alert">{message}</span>)}
         <Field label="Name"><input value={form.name} onChange={(e) => set({ name: e.target.value })} />{err("name")}</Field>
         <Field label="Kitchen">
-          <select value={form.godownId} onChange={(e) => set({ godownId: e.target.value })}>
+          <Select value={form.godownId} onChange={(e) => set({ godownId: e.target.value })}>
             <option value="all">All kitchens</option>
             {isRemovedKitchen(form.godownId, kitchens) && <option value={form.godownId} disabled>Removed kitchen</option>}
             {active.length > 0 && <optgroup label="Active">{active.map((k) => <option key={k._id} value={k._id}>{k.name}</option>)}</optgroup>}
             {inactive.length > 0 && <optgroup label="Inactive">{inactive.map((k) => <option key={k._id} value={k._id}>{k.name}</option>)}</optgroup>}
-          </select>
+          </Select>
           {err("godownId")}
         </Field>
         <Field label="Report period">
-          <select value={form.rangePreset} onChange={(e) => set({ rangePreset: e.target.value })}>
+          <Select value={form.rangePreset} onChange={(e) => set({ rangePreset: e.target.value })}>
             <option value="last-7-days">Last 7 days</option>
             <option value="last-30-days">Last 30 days</option>
             <option value="previous-month">Previous calendar month</option>
-          </select>
+          </Select>
           {err("rangePreset")}
         </Field>
         <Field label="Frequency">
-          <select value={form.cadence} onChange={(e) => set({ cadence: e.target.value })}>
+          <Select value={form.cadence} onChange={(e) => set({ cadence: e.target.value })}>
             <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
-          </select>
+          </Select>
           {err("cadence")}
         </Field>
         {form.cadence === "weekly" && (
           <Field label="Day of the week">
-            <select value={form.dayOfWeek} onChange={(e) => set({ dayOfWeek: Number(e.target.value) })}>
+            <Select value={form.dayOfWeek} onChange={(e) => set({ dayOfWeek: Number(e.target.value) })}>
               {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
-            </select>
+            </Select>
             {err("dayOfWeek")}
           </Field>
         )}
         {form.cadence === "monthly" && (
           <Field label="Day of the month">
-            <select value={form.dayOfMonth} onChange={(e) => set({ dayOfMonth: Number(e.target.value) })}>
+            <Select value={form.dayOfMonth} onChange={(e) => set({ dayOfMonth: Number(e.target.value) })}>
               {Array.from({ length: 28 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>)}
-            </select>
+            </Select>
             <small className="exec-muted">Days 29–31 are not offered so every month has a run.</small>
             {err("dayOfMonth")}
           </Field>

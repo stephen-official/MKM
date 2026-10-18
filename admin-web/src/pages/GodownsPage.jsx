@@ -222,10 +222,10 @@ export const GodownsPage = () => {
     </RailList>
   ) : (
     <RailList
-      title="Godowns"
+      title="Godown locations"
       count={godowns.length}
       loading={loading && godowns.length === 0}
-      empty={<EmptyState title="No godowns yet">Add godowns in Inventory Info.</EmptyState>}
+      empty={<EmptyState title="No godowns yet">Add godowns in Inventory Setup.</EmptyState>}
     >
       {godowns.map((g) => (
         <RailItem key={g._id} active={selectedGodownId === g._id} onClick={() => setSelectedGodownId(g._id)}>
@@ -326,7 +326,8 @@ export const GodownsPage = () => {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <PageHeader
-        title="Godowns"
+        title="Stock Levels"
+        subtitle="Monitor quantities and low-stock thresholds by godown."
         actions={
           <>
             <Button variant="dark" size="sm" onClick={downloadMasterExcel} disabled={loading}>

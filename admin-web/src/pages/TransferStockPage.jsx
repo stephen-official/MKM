@@ -5,7 +5,7 @@ import { ArrowRightLeft, Search, FileSpreadsheet, X } from "lucide-react";
 import { useToast } from "../useToast.js";
 import {
   PageHeader, Card, Button, Badge, EmptyState, Field, SplitView, RailList, RailItem, DetailPanel,
-  Meta, StatusBadge, ErrorState, DateField } from "../components/ui/index.jsx";
+  Meta, StatusBadge, ErrorState, DateField, Select } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
 
 const MAX_RAIL_ROWS = 200;
@@ -283,7 +283,8 @@ export const TransferStockPage = () => {
   return (
     <div style={{ height: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
       <PageHeader
-        title="Transfer Stock"
+        title="Stock Transfers"
+        subtitle="Move existing stock between godowns for the receiver to accept."
         actions={
           <Button variant="success" size="sm" onClick={handleDownloadAllTransfersExcel} disabled={!processedTransfers.length}>
             <FileSpreadsheet size={16} /> Export transfers
@@ -304,24 +305,24 @@ export const TransferStockPage = () => {
         <Card as="form" onSubmit={handleTransfer} noValidate tight style={{ marginTop: 0 }} aria-label="New transfer">
           <div className="form-row form-row--grid">
             <FormField label="Source godown" error={errors.fromGodownId} style={{ flex: "1 1 170px" }}>
-              <select value={form.fromGodownId} disabled={submitting} aria-invalid={!!errors.fromGodownId} onChange={(e) => onSourceChange(e.target.value)}>
+              <Select value={form.fromGodownId} disabled={submitting} aria-invalid={!!errors.fromGodownId} onChange={(e) => onSourceChange(e.target.value)}>
                 <option value="">Select source</option>
                 {godowns.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
-              </select>
+              </Select>
             </FormField>
 
             <FormField label="Destination godown" error={errors.toGodownId} style={{ flex: "1 1 170px" }}>
-              <select value={form.toGodownId} disabled={submitting} aria-invalid={!!errors.toGodownId} onChange={(e) => patchForm({ toGodownId: e.target.value })}>
+              <Select value={form.toGodownId} disabled={submitting} aria-invalid={!!errors.toGodownId} onChange={(e) => patchForm({ toGodownId: e.target.value })}>
                 <option value="">Select destination</option>
                 {godowns.filter((g) => g._id !== form.fromGodownId).map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
-              </select>
+              </Select>
             </FormField>
 
             <FormField label="Stock group" style={{ flex: "1 1 150px" }}>
-              <select value={form.stockGroupId} disabled={submitting} onChange={(e) => { setItemSearch(""); patchForm({ stockGroupId: e.target.value, stockItemId: "" }); }}>
+              <Select value={form.stockGroupId} disabled={submitting} onChange={(e) => { setItemSearch(""); patchForm({ stockGroupId: e.target.value, stockItemId: "" }); }}>
                 <option value="">All groups</option>
                 {stockGroups.map((grp) => <option key={grp._id} value={grp._id}>{grp.name}</option>)}
-              </select>
+              </Select>
             </FormField>
 
             <FormField label="Find item" style={{ flex: "1 1 150px" }}>
@@ -339,7 +340,7 @@ export const TransferStockPage = () => {
             </FormField>
 
             <FormField label="Item" error={errors.stockItemId} style={{ flex: "2 1 220px" }}>
-              <select
+              <Select
                 value={form.stockItemId}
                 disabled={!form.fromGodownId || stockLoading || submitting}
                 aria-invalid={!!errors.stockItemId}
@@ -353,7 +354,7 @@ export const TransferStockPage = () => {
                     {item.stockItemId?.name} ({item.qtyBaseUnit} {item.stockItemId?.unitId?.symbol || ""})
                   </option>
                 ))}
-              </select>
+              </Select>
             </FormField>
 
             <FormField

@@ -1,6 +1,7 @@
 import { CalendarDays, MapPin, Minus, Plus, Trash2, X } from "lucide-react";
 import { toLocalDateKey } from "../../utils/date";
 import "./KitchenTransactions.css";
+import Select from "../ui/Select";
 
 export default function KitchenReviewPanel({ type, items = [], usageDate, onUsageDateChange, requestDate, onRequestDateChange, reason, onReasonChange, destination, onDestinationChange, destinations = [], currentGodownId, onQuantityChange, onRemove, onClose, onSubmit }) {
   const isUsage = type === "usage";
@@ -14,7 +15,7 @@ export default function KitchenReviewPanel({ type, items = [], usageDate, onUsag
       <section className="ktr-details" aria-label="Transaction details">
         {isUsage && <label><span><CalendarDays size={17} /> Usage date</span><input type="date" value={usageDate} max={toLocalDateKey()} required onChange={(event) => onUsageDateChange(event.target.value)} /></label>}
         {!isUsage && !isTransfer && <><label><span><CalendarDays size={17} /> Needed by</span><input type="date" value={requestDate} min={toLocalDateKey()} onChange={(event) => onRequestDateChange(event.target.value)} /></label><label className="ktr-note"><span>Reason for request</span><textarea rows="3" value={reason} placeholder="Why are these supplies needed?" onChange={(event) => onReasonChange(event.target.value)} /></label></>}
-        {isTransfer && <label><span><MapPin size={17} /> Destination kitchen</span><select value={destination} required onChange={(event) => onDestinationChange(event.target.value)}><option value="">Choose a kitchen</option>{destinations.filter((item) => item._id !== currentGodownId).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}</select></label>}
+        {isTransfer && <label><span><MapPin size={17} /> Destination kitchen</span><Select value={destination} required onChange={(event) => onDestinationChange(event.target.value)}><option value="">Choose a kitchen</option>{destinations.filter((item) => item._id !== currentGodownId).map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}</Select></label>}
       </section>
       <section className="ktr-items" aria-labelledby="review-items-title"><div className="ktr-items__heading"><h3 id="review-items-title">Selected items</h3><span>{visibleItems.length}</span></div>{visibleItems.map((item) => {
         const quantity = Number(item.requestedQty ?? item.qtyBaseUnit ?? 0);

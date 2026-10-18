@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api.js";
-import { Banner, Button, DataTable, EmptyState, Field } from "../../components/ui/index.jsx";
+import { Banner, Button, DataTable, EmptyState, Field, Select } from "../../components/ui/index.jsx";
 import { useToast } from "../../useToast.js";
 import { TRI_STATE, effectivePreview, overrideChanges, toTri } from "./overrides.js";
 
@@ -84,10 +84,10 @@ export function OverridesPanel({ scope, targets, note, features, globalFlags, on
   return (
     <div className="overrides">
       <Field label={scope === "kitchen" ? "Kitchen" : "User"}>
-        <select value={targetId} onChange={(e) => selectTarget(e.target.value)}>
+        <Select value={targetId} onChange={(e) => selectTarget(e.target.value)}>
           <option value="">Choose…</option>
           {targets.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-        </select>
+        </Select>
       </Field>
       {note && <p className="exec-section__note">{note}</p>}
       {!targetId && <EmptyState title={`Choose a ${scope} to see its overrides`}>Overrides take priority over the general setting.</EmptyState>}
@@ -107,9 +107,9 @@ export function OverridesPanel({ scope, targets, note, features, globalFlags, on
                   <tr key={f.key}>
                     <th scope="row">{f.label}</th>
                     <td>
-                      <select aria-label={`${f.label} override`} value={tri} disabled={saving} onChange={(e) => setEdits((prev) => ({ ...prev, [f.key]: e.target.value }))}>
+                      <Select aria-label={`${f.label} override`} value={tri} disabled={saving} onChange={(e) => setEdits((prev) => ({ ...prev, [f.key]: e.target.value }))}>
                         {TRI_STATE.map((v) => <option key={v} value={v}>{TRI_LABEL[v]}</option>)}
-                      </select>
+                      </Select>
                     </td>
                     <td>{preview[f.key] === false ? "Hidden" : "Shown"}</td>
                   </tr>

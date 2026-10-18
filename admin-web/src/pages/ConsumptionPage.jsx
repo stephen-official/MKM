@@ -252,7 +252,8 @@ export const ConsumptionPage = () => {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <PageHeader
-        title="Consumption"
+        title="Usage Records"
+        subtitle="Review, correct and export recorded consumption and daily usage."
         actions={
           <Button variant="success" onClick={exportAll} disabled={loading || Boolean(loadError)}>
             <FileSpreadsheet size={16} /> Export all

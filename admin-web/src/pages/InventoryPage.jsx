@@ -5,7 +5,7 @@ import { api } from "../api.js";
 import { useToast } from "../useToast.js";
 import {
   PageHeader, Button, Badge, Field, EmptyState, ErrorState, LoadingState,
-  DataTable, Tabs, DetailPanel
+  DataTable, Tabs, DetailPanel, Select
 } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
 
@@ -301,17 +301,17 @@ export const InventoryPage = () => {
       )}
       {tab === "stock-items" && (
         <>
-          <select aria-label="Stock group" value={editForm.stockGroupId} onChange={setEdit("stockGroupId")}>
+          <Select aria-label="Stock group" value={editForm.stockGroupId} onChange={setEdit("stockGroupId")}>
             <option value="">Select group...</option>
             {meta.stockGroups.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
-          </select>
-          <select aria-label="Unit" value={editForm.unitId} onChange={setEdit("unitId")}>
+          </Select>
+          <Select aria-label="Unit" value={editForm.unitId} onChange={setEdit("unitId")}>
             <option value="">Select unit...</option>
             {meta.units.map((u) => <option key={u._id} value={u._id}>{u.symbol}</option>)}
-          </select>
-          <select aria-label="Item type" value={editForm.itemType} onChange={setEdit("itemType")}>
+          </Select>
+          <Select aria-label="Item type" value={editForm.itemType} onChange={setEdit("itemType")}>
             {ITEM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
+          </Select>
           <input
             type="file" accept="image/*" aria-label="Replace image"
             onChange={(e) => setEditForm((prev) => ({ ...prev, file: e.target.files?.[0] || null }))}
@@ -432,21 +432,21 @@ export const InventoryPage = () => {
       {tab === "stock-items" && (
         <>
           <Field label="Stock group">
-            <select value={form.stockGroupId} onChange={setAdd("stockGroupId")}>
+            <Select value={form.stockGroupId} onChange={setAdd("stockGroupId")}>
               <option value="">Select group...</option>
               {meta.stockGroups.map((sg) => <option key={sg._id} value={sg._id}>{sg.name}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Item type">
-            <select value={form.itemType} onChange={setAdd("itemType")}>
+            <Select value={form.itemType} onChange={setAdd("itemType")}>
               {ITEM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="Unit">
-            <select value={form.unitId} onChange={setAdd("unitId")}>
+            <Select value={form.unitId} onChange={setAdd("unitId")}>
               {meta.units.length === 0 && <option value="">No units yet</option>}
               {meta.units.map((u) => <option key={u._id} value={u._id}>{u.symbol}</option>)}
-            </select>
+            </Select>
           </Field>
           <div className="field">
             <span className="field__label">Image</span>
@@ -485,7 +485,8 @@ export const InventoryPage = () => {
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <PageHeader
-        title="Inventory Info"
+        title="Inventory Setup"
+        subtitle="Manage stock items, groups, units and godown locations."
         actions={
           <>
             <div style={{ position: "relative", display: "flex", alignItems: "center" }}>

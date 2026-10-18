@@ -39,7 +39,7 @@ export const IndentRequestsView = ({
 
   const rail = (
     <RailList
-      title="All requests"
+      title="Supply requests"
       count={requests.length}
       loading={loading && requests.length === 0}
       empty={
@@ -47,7 +47,7 @@ export const IndentRequestsView = ({
           <ErrorState message={error} onRetry={onRetry} />
         ) : (
           <EmptyState title={hasFilter ? "No requests in this date range" : "No supply requests yet"}>
-            {hasFilter ? "Clear the date filter to see everything." : "Requests raised by kitchens will appear here."}
+            {hasFilter ? "Clear the date filter to see everything." : "Supply requests raised by kitchens will appear here."}
           </EmptyState>
         )
       }

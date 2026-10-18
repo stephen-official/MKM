@@ -10,19 +10,21 @@ describe("featureNav", () => {
     const paths = sections.flatMap((s) => s.items.map((i) => i.path));
     expect(paths).not.toContain("/reports");
     expect(paths).not.toContain("/executive-report");
-    expect(sections.map((s) => s.title)).toEqual(["Stock", "Insights"]);
+    expect(sections.map((s) => s.title)).toEqual(["Setup", "Stock Operations", "Usage", "Records"]);
   });
   it("super-admins see everything, disabled items flagged", () => {
     const sections = buildSections({ flags: { ...all, reports: false }, role: "super_admin" });
     const reports = sections.flatMap((s) => s.items).find((i) => i.path === "/reports");
     expect(reports.hiddenFromAdmins).toBe(true);
-    expect(sections.at(-1).title).toBe("Executive");
-    expect(sections.at(-1).items.map((i) => i.path)).toEqual(["/executive-report", "/feature-visibility", "/users", "/report-schedules"]);
+    expect(sections.at(-2).title).toBe("Executive");
+    expect(sections.at(-2).items.map((i) => i.path)).toEqual(["/executive-report"]);
+    expect(sections.at(-1).title).toBe("Administration");
+    expect(sections.at(-1).items.map((i) => i.path)).toEqual(["/feature-visibility", "/users"]);
   });
   it("empty sections are dropped", () => {
     const flags = { ...all, reports: false, consumption: false, requests: false, "product-ledger": false, "transfer-stock": false };
     const titles = buildSections({ flags, role: "admin" }).map((s) => s.title);
-    expect(titles).toEqual(["Stock"]);
+    expect(titles).toEqual(["Setup", "Stock Operations"]);
   });
   it("route checks and first allowed path", () => {
     expect(isPathAllowed("/reports", { flags: { ...all, reports: false }, role: "admin" })).toBe(false);

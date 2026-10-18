@@ -23,6 +23,7 @@ import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../f
 import { clearSession } from "../utils/session";
 import { FEATURE_DISABLED_EVENT, canOpenView, draftFeature, featureForView, fetchKitchenFlags, hiddenTabs as computeHidden, isDraftBlocked, isFeatureOn, isViewHidden, sameFlags, tabTarget } from "../features.js";
 import { toastFeatureDisabled } from "../featureToast.js";
+import Select from "./ui/Select";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
   <button
@@ -1461,10 +1462,9 @@ activeTransactionType === "request"
       Destination Godown
     </label>
 
-    <select
+    <Select
       value={transferDestination}
       onChange={(e) => setTransferDestination(e.target.value)}
-      className="w-full border rounded-xl px-3 py-3 text-xs font-bold"
     >
       <option value="">Select Godown</option>
 
@@ -1475,7 +1475,7 @@ activeTransactionType === "request"
             {g.name}
           </option>
       ))}
-    </select>
+    </Select>
   </div>
 )}
     {activeTransactionType === "usage" && (
