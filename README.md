@@ -21,6 +21,29 @@ Both web applications call the backend under `/api`. The backend stores operatio
 - Optional for Android: Android Studio, its Android SDK, and a compatible JDK
 - Optional Cloudinary and email credentials for image uploads and password resets
 
+## Quick start (local stack)
+
+With Node.js and MongoDB installed, one script runs everything on your machine against a local database:
+
+```bash
+scripts/dev.sh up     # installs dependencies if missing, then starts MongoDB, API, admin and kitchen apps
+scripts/dev.sh seed   # fills the local database with development data
+scripts/dev.sh down   # stops everything
+```
+
+| Service | URL |
+| --- | --- |
+| Admin app | `http://localhost:5173` (`admin@example.com` / `Admin@123`) |
+| Kitchen app | `http://localhost:5174` (`user@example.com` / `User@123`) |
+| API | `http://localhost:5055/api` |
+| MongoDB | `127.0.0.1:27018`, database `mkm_dev` |
+
+Local state lives in `~/mkm-local`, outside the repository. The first `up` creates `~/mkm-local/backend.env` with local-only settings and fresh secrets; add Cloudinary or email credentials there if you need uploads or emails. Values in that file override `backend/.env`, so the script never connects to a remote database. Logs are in `~/mkm-local/logs`.
+
+`seed` creates the small sample catalog above. For the full dataset (every kitchen, catalog, stock and history), ask a maintainer for `live-catalog.json`, save it as `~/mkm-local/live-catalog.json`, and run `seed` again. That path uses `seed-dev.js`, which **drops the local database** first; kitchen logins then follow the kitchen name, such as `monte@example.com` / `User@123`.
+
+The steps below set up the same pieces by hand.
+
 ## First-time setup
 
 1. Install each application's locked dependencies: `npm run setup`
