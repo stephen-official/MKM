@@ -24,6 +24,9 @@ const collaborativePurchaseOrderSchema = new mongoose.Schema({
   title: { type: String, trim: true, maxlength: 120, default: "" },
   note: { type: String, trim: true, maxlength: 1000, default: "" },
   neededBy: { type: Date, default: null },
+  emergency: { type: Boolean, default: false },
+  // Other kitchens can join until this time; after it the order counts as closed (see closeExpiredOrders).
+  closesAt: { type: Date, default: null },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   createdByGodown: { type: mongoose.Schema.Types.ObjectId, ref: "Godown", required: true },
   contributions: { type: [contributionSchema], default: [] },
