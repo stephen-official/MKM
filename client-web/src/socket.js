@@ -2,7 +2,7 @@ import { io } from "socket.io-client";
 
 const SOCKET_URL = (
   import.meta.env.VITE_API_URL ||
-  "https://mkm-backend-xr78.onrender.com/api"
+  "https://mkm-backend-sng.onrender.com/api"
 ).replace("/api", "");
 
 export const socket = io(SOCKET_URL, {
