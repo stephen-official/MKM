@@ -20,6 +20,8 @@ Available statuses are `open`, `closed`, `ordered`, and `cancelled`. The respons
 
 The response includes each kitchen contribution plus `kitchenCount` and `combinedItems`, which totals each product across all kitchens.
 
+What a kitchen user sees is limited: its own contribution is complete, but other kitchens' contributions list only `stockItemId` per item (no quantities, pack details or note), and `combinedItems` lists products without `qtyBaseUnit`. Admins see everything. As on every endpoint, price fields (`packPrice`, pack `price`, `pricePerUnit` and so on) are removed from kitchen responses by `kitchenPriceFilter` (`backend/src/utils/kitchenSafe.js`).
+
 ### Open an order (kitchen, or admin on a kitchen's behalf)
 
 `POST /`
