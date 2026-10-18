@@ -85,7 +85,9 @@ realtime.js      io proxy so routes can emit without importing server.js
 
 | Mount | Router | Covers |
 |---|---|---|
-| `/api/inventory` | inventoryRoutes | Master data: stock-items, stock-groups, units, godowns (generic `/:type` CRUD), item image upload (Cloudinary), Excel export |
+| `/api/inventory` | inventoryRoutes | Master data lookups and CRUD for stock-groups and godowns (generic `/:type`), Excel export. Writes to `stock-items` are refused (use `/api/products`) and units are read-only presets. Kitchens only get complete, unarchived products from `GET /stock-items` |
+| `/api/products` | productRoutes | The product catalog (Products page): list with completeness, create/edit, preset units, image upload, archive/restore. Prices and archiving are super-admin only |
+| `/api/product-requests` | productRequestRoutes | Kitchens ask for a missing product; admins approve (creating or linking the product) or reject with a reason |
 | `/api/procurement` | procurementRoutes | Indents, purchase orders, distributions, godown-stock thresholds, stock balance |
 | `/api` **and** `/api/operations` | operationsRoutes | Consumptions, daily-usage edits, requests (approve/reject), transfers and user-transfers, godown-stocks, notifications. **Mounted twice on purpose.** featureGate normalises the alias. |
 | `/api/reports` | reportRoutes | Generic per-entity listings and Excel exports |
@@ -98,7 +100,8 @@ realtime.js      io proxy so routes can emit without importing server.js
 | `/api/report-schedules` | reportScheduleRoutes | Scheduled report emails (super-admin) |
 
 ### Models (`models/`)
-- `InventoryModels.js`: StockGroup, Unit, Godown, StockItem
+- `InventoryModels.js`: StockGroup, Unit, Godown, StockItem (catalog fields: `pricePerUnit`, `brand`, `productCode`, `soldInPacks` + `packs[{name,size,price}]`, `archived`)
+- `ProductRequestModel.js`: ProductRequest (a kitchen's request for a product not in the catalog)
 - `FlowModels.js`: IndentRequest, Indent, PurchaseOrder, GodownStock, Distribution, Consumption, Request, Transfer, Notification, plus the **executive report indexes**
 - `DailyUsageModel.js`: DailyUsage
 - `User.js`: User (`role`, `godownId`, `active`, reset token fields, edit version)
@@ -126,6 +129,12 @@ The README states the *intended* rule: "requesting or approving supplies does no
 - `featureRouteCoverage.test.js` fails if a route is missing from the registry or a rule matches no route. **Every new route must be added to the registry.**
 - How flags combine: super_admin is never gated. For admins: defaults, then the global flags, then that user's override. For kitchen users: defaults, then the kitchen's override, then the user's override. Every default is `true`.
 - Writes use optimistic concurrency (`expectedVersion` → 409 `VERSION_CONFLICT`) and write an audit row in the same transaction. The server cache has a 5 s TTL. Clients refetch on load, on focus, every 60 s, and right after any `FEATURE_DISABLED` response.
+
+### Product catalog (`catalog/`)
+- Units are a fixed preset list in `catalog/units.js` (kg, g, L, mL, pcs, dozen, packet). Kitchens enter quantities in exactly these units, with no conversion. To add a unit, change that list (the admin and kitchen apps each keep a copy, marked "keep in step").
+- A product is **complete** when it has a group, a preset unit, a price per unit, and, if "ordered in packs", at least one pack where each has a name, a size and a price (`catalog/completeness.js`). Incomplete or archived products are hidden from kitchen pickers and refused on every kitchen write (`requireAvailableProducts` in `catalog/productService.js`). Kitchens still see stock they hold, marked "Unavailable".
+- Admins and super-admins add and edit products. Only a super-admin may set or change a price (product or pack) or archive. When an admin changes a pack's size, that pack's price is cleared. Archiving is refused while any kitchen holds stock.
+- `npm --prefix backend run migrate-product-catalog` prints how existing units map onto the presets and which products are still incomplete; add `-- --apply` to merge look-alike units (e.g. "Kgs" → kg).
 
 ### Realtime (Socket.IO)
 - Sockets authenticate with the access token (`server.js`). Rooms: `admins` (all admin-tier users), the godown id (kitchen users), and `user:<id>`.
@@ -156,7 +165,8 @@ New endpoints return `{ code: "SCREAMING_SNAKE_CASE", message, ...details }`. Ol
 
 | Page | Purpose |
 |---|---|
-| Inventory Info | Master data CRUD: stock items (with images), groups, units, godowns |
+| Products | The master product list: add/edit popup (unit, price, packs, threshold, type, brand, code), completeness status, archive, kitchen product requests |
+| Inventory Setup | Product groups and godowns; preset units (read-only) |
 | Indent | Review kitchen indent requests; create indents; mark purchased; logs |
 | Purchase Orders | Receive goods against purchased indents (Intake) and history |
 | Stock Distribution | Allocate received PO stock to kitchens (splits, leftovers) |
