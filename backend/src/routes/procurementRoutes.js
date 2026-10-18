@@ -10,11 +10,14 @@ import {
 } from "../models/FlowModels.js";
 import { packQuantityMatchesBase, packSnapshot } from "../catalog/packaging.js";
 import { createStockBatch } from "../stock/batchService.js";
-import { StockItem } from "../models/InventoryModels.js";
+import { Godown, StockItem } from "../models/InventoryModels.js";
 import { StockBatch } from "../models/StockBatchModel.js";
+import { OpeningBalance } from "../models/OpeningBalanceModel.js";
+import { isValidPrice } from "../catalog/completeness.js";
 
 export const procurementRoutes = express.Router();
 const adminOnly = authorize(["admin"]);
+const superAdminOnly = authorize(["super_admin"]);
 const anyUser = authorize(["admin", "user"]);
 
 // --- STOCK UTILITY & VALIDATION ROUTES ---
@@ -318,6 +321,74 @@ procurementRoutes.get("/stock-batches", adminOnly, async (req, res) => {
     res.json(batches);
   } catch (error) {
     res.status(500).json({ message: "Fetch batches failed", error: error.message });
+  }
+});
+
+procurementRoutes.post("/opening-balances", superAdminOnly, async (req, res) => {
+  const { godownId, stockItemId, quantityBaseUnit, effectiveDate, reason } = req.body || {};
+  const quantity = Number(quantityBaseUnit);
+  const cleanReason = String(reason || "").trim();
+  const effectiveAt = /^\d{4}-\d{2}-\d{2}$/.test(String(effectiveDate || ""))
+    ? new Date(`${effectiveDate}T00:00:00.000Z`)
+    : null;
+  const validEffectiveDate = effectiveAt && !Number.isNaN(effectiveAt.getTime())
+    && effectiveAt.toISOString().slice(0, 10) === effectiveDate;
+
+  if (!mongoose.isValidObjectId(godownId) || !mongoose.isValidObjectId(stockItemId)) {
+    return res.status(400).json({ message: "Choose a valid kitchen and product" });
+  }
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return res.status(400).json({ message: "Opening quantity must be greater than zero" });
+  }
+  if (!validEffectiveDate || effectiveAt > new Date()) {
+    return res.status(400).json({ message: "Effective date must be today or earlier" });
+  }
+  if (cleanReason.length < 3 || cleanReason.length > 500) {
+    return res.status(400).json({ message: "Reason must be between 3 and 500 characters" });
+  }
+
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      const [godown, product, stock, priorBatch, priorOpening] = await Promise.all([
+        Godown.findOne({ _id: godownId, active: true }).session(session),
+        StockItem.findOne({ _id: stockItemId, archived: { $ne: true } }).populate("unitId", "symbol").session(session),
+        GodownStock.findOne({ godownId, stockItemId }).session(session),
+        StockBatch.exists({ godownId, stockItemId }).session(session),
+        OpeningBalance.exists({ godownId, stockItemId }).session(session),
+      ]);
+      if (!godown) throw Object.assign(new Error("Active kitchen not found"), { status: 404 });
+      if (!product) throw Object.assign(new Error("Active product not found"), { status: 404 });
+      if (!isValidPrice(product.pricePerUnit)) {
+        throw Object.assign(new Error("Set the product price before entering its opening balance"), { status: 409 });
+      }
+      if (stock || priorBatch || priorOpening) {
+        throw Object.assign(new Error("This kitchen and product already has stock history; use a stock adjustment workflow instead"), { status: 409 });
+      }
+
+      const [stockRecord] = await GodownStock.create([{
+        godownId, stockItemId, qtyBaseUnit: quantity,
+        thresholdBaseUnit: Number(product.defaultThreshold || 0),
+      }], { session });
+      const batch = await createStockBatch({
+        godownId, stockItemId, quantity, unitPrice: product.pricePerUnit,
+        sourceType: "opening_balance", receivedAt: effectiveAt,
+        notes: cleanReason, condition: "good", createdBy: req.user.sub, session,
+      });
+      const [openingBalance] = await OpeningBalance.create([{
+        godownId, stockItemId, stockRecordId: stockRecord._id, batchId: batch._id,
+        quantityBaseUnit: quantity, unitPrice: product.pricePerUnit,
+        effectiveAt, reason: cleanReason, createdBy: req.user.sub,
+      }], { session });
+      result = { openingBalance, stock: stockRecord, batch };
+    });
+    return res.status(201).json(result);
+  } catch (error) {
+    if (error?.code === 11000) return res.status(409).json({ message: "An opening balance already exists for this kitchen and product" });
+    return res.status(error.status || 500).json({ message: error.status ? error.message : "Opening balance failed", ...(error.status ? {} : { error: error.message }) });
+  } finally {
+    await session.endSession();
   }
 });
 

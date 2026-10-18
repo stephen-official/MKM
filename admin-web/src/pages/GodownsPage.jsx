@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { Search, Download, Trash2, Check, FileSpreadsheet } from "lucide-react";
+import { Search, Download, Trash2, Check, FileSpreadsheet, Plus } from "lucide-react";
 import { api } from "../api.js";
 import { useToast } from "../useToast.js";
 import {
   PageHeader, Button, Badge, Banner, EmptyState, ErrorState, LoadingState,
-  DataTable, Tabs, SplitView, RailList, RailItem, DetailPanel, Meta
+  DataTable, Tabs, SplitView, RailList, RailItem, DetailPanel, Meta, Modal, Field
 } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
 import { stockQuantityLabel } from "./procurementPackaging.js";
+import { eligibleOpeningProducts, emptyOpeningBalance, openingBalanceErrors } from "./openingBalance.js";
 
 const ROW_LIMIT = 100;
 
@@ -18,13 +19,14 @@ const isoToday = () => new Date().toISOString().split("T")[0];
 const idOf = (ref) => ref?._id || ref;
 const isLow = (stock) => Number(stock.qtyBaseUnit) <= Number(stock.thresholdBaseUnit || 0);
 
-export const GodownsPage = () => {
+export const GodownsPage = ({ canSetOpeningBalance = false }) => {
   const { showToast } = useToast();
   const { confirm, dialog } = useConfirm();
 
   const [godowns, setGodowns] = useState([]);
   const [stocks, setStocks] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [viewMode, setViewMode] = useState("all");
@@ -34,6 +36,9 @@ export const GodownsPage = () => {
   const [thresholds, setThresholds] = useState({});
   const [busyRow, setBusyRow] = useState("");
   const [showAll, setShowAll] = useState(false);
+  const [openingForm, setOpeningForm] = useState(null);
+  const [openingErrors, setOpeningErrors] = useState({});
+  const [savingOpening, setSavingOpening] = useState(false);
   const requestRef = useRef(0);
 
   const loadData = useCallback(async () => {
@@ -41,16 +46,18 @@ export const GodownsPage = () => {
     setLoading(true);
     setLoadError("");
     try {
-      const [godRes, stockRes, batchRes] = await Promise.all([
+      const [godRes, stockRes, batchRes, productRes] = await Promise.all([
         api.get("/inventory/godowns"),
         api.get("/godown-stocks"),
-        api.get("/procurement/stock-batches")
+        api.get("/procurement/stock-batches"),
+        canSetOpeningBalance ? api.get("/products") : Promise.resolve({ data: [] })
       ]);
       if (requestId !== requestRef.current) return;
       const godownList = Array.isArray(godRes.data) ? godRes.data : [];
       setGodowns(godownList);
       setStocks(Array.isArray(stockRes.data) ? stockRes.data : []);
       setBatches(Array.isArray(batchRes.data) ? batchRes.data : []);
+      setProducts(Array.isArray(productRes.data?.items) ? productRes.data.items : []);
       setSelectedGodownId((current) =>
         godownList.some((g) => g._id === current) ? current : godownList[0]?._id || null
       );
@@ -62,7 +69,7 @@ export const GodownsPage = () => {
     } finally {
       if (requestId === requestRef.current) setLoading(false);
     }
-  }, [showToast]);
+  }, [canSetOpeningBalance, showToast]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -98,6 +105,7 @@ export const GodownsPage = () => {
 
   const visibleStocks = showAll ? activeStocks : activeStocks.slice(0, ROW_LIMIT);
   const activeBatches = batches.filter((batch) => idOf(batch.godownId) === selectedGodownId);
+  const openingProducts = eligibleOpeningProducts(products, stocks, batches, openingForm?.godownId);
 
   const currentGodown = godowns.find((g) => g._id === (viewMode === "low-stock" ? lowGodownId : selectedGodownId));
   const detailTitle = viewMode === "low-stock"
@@ -203,6 +211,35 @@ export const GodownsPage = () => {
   const switchMode = (mode) => {
     setViewMode(mode);
     setSearchQuery("");
+  };
+
+  const openOpeningBalance = () => {
+    setOpeningErrors({});
+    setOpeningForm(emptyOpeningBalance(selectedGodownId || godowns[0]?._id || ""));
+  };
+
+  const saveOpeningBalance = async (event) => {
+    event.preventDefault();
+    const errors = openingBalanceErrors(openingForm);
+    setOpeningErrors(errors);
+    if (Object.keys(errors).length) return;
+    setSavingOpening(true);
+    try {
+      await api.post("/procurement/opening-balances", {
+        ...openingForm,
+        quantityBaseUnit: Number(openingForm.quantityBaseUnit),
+        reason: openingForm.reason.trim(),
+      });
+      showToast("Opening balance recorded", "success");
+      setSelectedGodownId(openingForm.godownId);
+      setViewMode("all");
+      setOpeningForm(null);
+      await loadData();
+    } catch (error) {
+      showToast(errorMessage(error, "Opening balance failed"), "error");
+    } finally {
+      setSavingOpening(false);
+    }
   };
 
   const rail = viewMode === "low-stock" ? (
@@ -352,6 +389,11 @@ export const GodownsPage = () => {
         subtitle="Monitor quantities and low-stock thresholds by godown."
         actions={
           <>
+            {canSetOpeningBalance && (
+              <Button variant="primary" size="sm" onClick={openOpeningBalance} disabled={loading || godowns.length === 0}>
+                <Plus size={14} /> Opening balance
+              </Button>
+            )}
             <Button variant="dark" size="sm" onClick={downloadMasterExcel} disabled={loading}>
               <FileSpreadsheet size={14} /> Master Excel
             </Button>
@@ -399,6 +441,47 @@ export const GodownsPage = () => {
           </div>
         </DetailPanel>
       </SplitView>
+      {openingForm && (
+        <Modal title="Record opening balance" onClose={() => !savingOpening && setOpeningForm(null)} actions={(
+          <>
+            <Button variant="ghost" onClick={() => setOpeningForm(null)} disabled={savingOpening}>Cancel</Button>
+            <Button type="submit" form="opening-balance-form" disabled={savingOpening}>{savingOpening ? "Recording…" : "Record balance"}</Button>
+          </>
+        )}>
+          <Banner variant="warn" style={{ marginBottom: 16 }}>
+            This is a one-time baseline, not a stock adjustment. It cannot be entered after this product has stock history in the kitchen.
+          </Banner>
+          <form id="opening-balance-form" className="product-form__grid" onSubmit={saveOpeningBalance} noValidate>
+            <Field label="Kitchen">
+              <select value={openingForm.godownId} onChange={(event) => setOpeningForm((form) => ({ ...form, godownId: event.target.value, stockItemId: "" }))} aria-invalid={Boolean(openingErrors.godownId) || undefined}>
+                <option value="">Choose kitchen</option>
+                {godowns.map((godown) => <option key={godown._id} value={godown._id}>{godown.name}</option>)}
+              </select>
+              {openingErrors.godownId && <span className="field__error" role="alert">{openingErrors.godownId}</span>}
+            </Field>
+            <Field label="Product">
+              <select value={openingForm.stockItemId} onChange={(event) => setOpeningForm((form) => ({ ...form, stockItemId: event.target.value }))} aria-invalid={Boolean(openingErrors.stockItemId) || undefined}>
+                <option value="">Choose priced product</option>
+                {openingProducts.map((product) => <option key={product._id} value={product._id}>{product.name} · ₹{Number(product.pricePerUnit).toLocaleString("en-IN")} / {product.unit?.symbol || "unit"}</option>)}
+              </select>
+              {openingErrors.stockItemId && <span className="field__error" role="alert">{openingErrors.stockItemId}</span>}
+              {openingForm.godownId && openingProducts.length === 0 && <span className="page-subtitle">No priced products without visible stock are available. The server also checks all historical batches.</span>}
+            </Field>
+            <Field label="Quantity">
+              <input type="number" min="0" step="any" inputMode="decimal" value={openingForm.quantityBaseUnit} onChange={(event) => setOpeningForm((form) => ({ ...form, quantityBaseUnit: event.target.value }))} aria-invalid={Boolean(openingErrors.quantityBaseUnit) || undefined} />
+              {openingErrors.quantityBaseUnit && <span className="field__error" role="alert">{openingErrors.quantityBaseUnit}</span>}
+            </Field>
+            <Field label="Count date">
+              <input type="date" max={isoToday()} value={openingForm.effectiveDate} onChange={(event) => setOpeningForm((form) => ({ ...form, effectiveDate: event.target.value }))} aria-invalid={Boolean(openingErrors.effectiveDate) || undefined} />
+              {openingErrors.effectiveDate && <span className="field__error" role="alert">{openingErrors.effectiveDate}</span>}
+            </Field>
+            <Field label="Reason" className="product-form__wide">
+              <textarea rows="3" maxLength="500" value={openingForm.reason} onChange={(event) => setOpeningForm((form) => ({ ...form, reason: event.target.value }))} aria-invalid={Boolean(openingErrors.reason) || undefined} />
+              {openingErrors.reason && <span className="field__error" role="alert">{openingErrors.reason}</span>}
+            </Field>
+          </form>
+        </Modal>
+      )}
       {dialog}
     </div>
   );

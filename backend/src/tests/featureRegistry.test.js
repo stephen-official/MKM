@@ -50,6 +50,7 @@ const cases = [
   ["GET", "/api/procurement/distributions/leftovers", "stock-distribution"],
   ["GET", "/api/procurement/distributions/abc/details", "stock-distribution"],
   ["GET", "/api/procurement/stock-batches", "godowns"],
+  ["POST", "/api/procurement/opening-balances", "godowns"],
   ["GET", "/api/godown-stocks", "lookup"],
   ["GET", "/api/operations/godown-stocks", "lookup"],
   ["POST", "/api/procurement/godown-stocks/abc/threshold", "godowns"],

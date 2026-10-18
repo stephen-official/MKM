@@ -74,7 +74,7 @@ export const App = () => {
       "/indent": <IndentPage />,
       "/purchase-orders": <PurchaseOrdersPage />,
       "/stock-distribution": <StockDistributionPage />,
-      "/godowns": <GodownsPage />,
+      "/godowns": <GodownsPage canSetOpeningBalance={isSuperAdmin(session.role)} />,
       "/transfer-stock": <TransferStockPage />,
       "/requests": <RequestsPage />,
       "/consumption": <ConsumptionPage />,
@@ -85,7 +85,7 @@ export const App = () => {
       "/users": <UsersPage />,
       "/report-schedules": <ReportSchedulesPage />
     }),
-    []
+    [session.role]
   );
 
   const [notice, setNotice] = useState("");
