@@ -20,6 +20,7 @@ import KitchenReviewPanel from "./kitchen/KitchenReviewPanel";
 import KitchenMore from "./kitchen/KitchenMore";
 import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../utils/date";
 import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../features/kitchen/workflows";
+import { withPackaging } from "../features/kitchen";
 import { clearSession } from "../utils/session";
 import { FEATURE_DISABLED_EVENT, canOpenView, draftFeature, featureForView, fetchKitchenFlags, hiddenTabs as computeHidden, isDraftBlocked, isFeatureOn, isViewHidden, sameFlags, tabTarget } from "../features.js";
 import { toastFeatureDisabled } from "../featureToast.js";
@@ -171,6 +172,8 @@ const formatted = res.data
     name: item.name,
     unit: item.unitId?.symbol || "Units",
     currentQty: item.kitchenQty || 0,
+    soldInPacks: Boolean(item.soldInPacks),
+    packs: item.packs || [],
     image: item.imageUrl || item.image || ""
   }))
   .sort((a, b) => a.name.localeCompare(b.name));
@@ -189,7 +192,9 @@ setItems(formatted);
           currentQty: Number(item.currentQty) || 0, 
           thresholdBaseUnit: Number(item.thresholdBaseUnit) || 0,
           unit: item.stockItemId?.unitId?.symbol || item.unit || "Units", 
-          image: item.image || item.stockItemId?.imageUrl || ""
+          image: item.image || item.stockItemId?.imageUrl || "",
+          soldInPacks: Boolean(item.soldInPacks),
+          packs: item.packs || []
         })).sort((a, b) => a.name.localeCompare(b.name));
         setItems(formattedItems);
       }
@@ -437,6 +442,16 @@ if (isNaN(parsedQty)) return;
     });
   };
 
+  const updateCartPackaging = (product, packId) => {
+    setCart((previous) => {
+      const exists = previous.some((item) => item.stockRecordId === product.stockRecordId);
+      if (!exists) return [...previous, { ...withPackaging(product, packId), requestedQty: "", unit: product.unit }];
+      return previous.map((item) => item.stockRecordId === product.stockRecordId
+        ? { ...withPackaging({ ...item, packs: product.packs, soldInPacks: product.soldInPacks }, packId), requestedQty: "" }
+        : item);
+    });
+  };
+
 
   const handleDailyUsageAdd = (item, qty) => {
   setCart(prev => {
@@ -650,6 +665,14 @@ if (editIndentId !== null && editIndentId !== undefined) {
     name: it.stockItemId?.name || "Unknown Item",
     unit: it.stockItemId?.unitId?.symbol || it.unit || "unit",
     requestedQty: it.qtyBaseUnit || 0,
+    ...(it.packId ? {
+      requestedQty: it.packQuantity,
+      packId: it.packId,
+      packName: it.packName,
+      packSize: it.packSize,
+    } : {}),
+    soldInPacks: Boolean(inventoryItem?.soldInPacks || it.stockItemId?.soldInPacks),
+    packs: inventoryItem?.packs || it.stockItemId?.packs || [],
 
     image:
       it.stockItemId?.imageUrl ||
@@ -873,6 +896,7 @@ setEditIndentId(indent._id);
           search={searchQuery}
           onSearch={setSearchQuery}
           onQuantityChange={addToCart}
+          onPackagingChange={updateCartPackaging}
           onCancel={() => {
             setCart([]);
             setEditIndentId(null);

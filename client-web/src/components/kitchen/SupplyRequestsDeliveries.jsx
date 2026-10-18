@@ -45,6 +45,7 @@ function StatusChip({ status }) {
 }
 
 function QuantityLine({ line, delivery = false }) {
+  const requested = line.packId ? `${formatQuantity(line.packQuantity)} ${line.packName} (${formatQuantity(line.requestedQuantity)} ${line.unit})` : `${formatQuantity(line.requestedQuantity)} ${line.unit}`;
   return (
     <li className="srd-line">
       <div className="srd-line__name">
@@ -52,7 +53,7 @@ function QuantityLine({ line, delivery = false }) {
         {line.decision === "rejected" && <span>Not approved</span>}
       </div>
       <div className="srd-line__quantities">
-        <span><small>Requested</small><b>{formatQuantity(line.requestedQuantity)} {line.unit}</b></span>
+        <span><small>Requested</small><b>{requested}</b></span>
         <span><small>Approved</small><b>{formatQuantity(line.approvedQuantity)} {line.unit}</b></span>
         {delivery && <span><small>Received</small><b>{formatQuantity(line.receivedQuantity)} {line.unit}</b></span>}
       </div>

@@ -8,6 +8,7 @@ import {
   SplitView, RailList, RailItem, DetailPanel, Meta, Select
 } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
+import { lineQuantityLabel, packagingLineFromSnapshot } from "./procurementPackaging.js";
 
 const errorMessage = (error, fallback) => error?.response?.data?.message || fallback;
 const idOf = (ref) => ref?._id || ref;
@@ -108,7 +109,13 @@ export const StockDistributionPage = () => {
         godownId: idOf(it.godownId) || "",
         qtyBaseUnit: it.qtyBaseUnit,
         unitPrice: it.unitPrice || 0,
-        maxQty: it.qtyBaseUnit
+        maxQty: it.packId ? it.packQuantity : it.qtyBaseUnit,
+        entryQty: it.packId ? it.packQuantity : it.qtyBaseUnit,
+        packId: it.packId || null,
+        packName: it.packName || "",
+        packSize: it.packSize || null,
+        packQuantity: it.packQuantity || null,
+        packPrice: it.packPrice || null
       })));
       return;
     }
@@ -117,8 +124,14 @@ export const StockDistributionPage = () => {
       stockItemId: idOf(it.stockItemId),
       godownId: "",
       qtyBaseUnit: 0,
+      entryQty: 0,
       unitPrice: it.unitPrice || 0,
-      maxQty: it.receivedQty || 0
+      maxQty: it.packId ? it.packQuantity : (it.receivedQty || 0),
+      packId: it.packId || null,
+      packName: it.packName || "",
+      packSize: it.packSize || null,
+      packQuantity: 0,
+      packPrice: it.packPrice || null
     })));
   }, [activeRecord, isCompleted]);
 
@@ -148,14 +161,14 @@ export const StockDistributionPage = () => {
     if (!row) return;
 
     let next = value;
-    if (field === "qtyBaseUnit") {
+    if (field === "entryQty") {
       next = Math.max(0, Number(value) || 0);
       const othersTotal = allocations
         .filter((a) => a.tempId !== tempId && sameItem(a.stockItemId, row.stockItemId))
-        .reduce((sum, a) => sum + (Number(a.qtyBaseUnit) || 0), 0);
+        .reduce((sum, a) => sum + (Number(a.entryQty) || 0), 0);
       const limit = Math.max(0, row.maxQty - othersTotal);
       if (next > limit) {
-        showToast(`Only ${fmtNum(limit)} ${getStockDetails(row.stockItemId).unit} left to allocate`, "error");
+        showToast(`Only ${fmtNum(limit)} ${row.packName || getStockDetails(row.stockItemId).unit} left to allocate`, "error");
         next = limit;
       }
     }
@@ -163,7 +176,7 @@ export const StockDistributionPage = () => {
   };
 
   const addAllocationRow = (index, baseAlloc) => {
-    const newRow = { ...baseAlloc, tempId: `extra-${++extraRowId.current}`, qtyBaseUnit: 0, godownId: "" };
+    const newRow = { ...baseAlloc, tempId: `extra-${++extraRowId.current}`, qtyBaseUnit: 0, entryQty: 0, packQuantity: 0, godownId: "" };
     setAllocations((prev) => {
       const updated = [...prev];
       updated.splice(index + 1, 0, newRow);
@@ -175,25 +188,25 @@ export const StockDistributionPage = () => {
     setAllocations((prev) => prev.filter((a) => a.tempId !== tempId));
   };
 
-  const totalValue = allocations.reduce((sum, a) => sum + (Number(a.qtyBaseUnit) || 0) * (a.unitPrice || 0), 0);
+  const totalValue = allocations.reduce((sum, a) => sum + (Number(a.entryQty) || 0) * (a.packId ? Number(a.packPrice || 0) : Number(a.unitPrice || 0)), 0);
 
   const handleDistributionSubmit = async (event) => {
     event?.preventDefault();
     if (!activeRecord || submitting) return;
 
-    if (allocations.some((a) => a.qtyBaseUnit > 0 && !a.godownId)) {
+    if (allocations.some((a) => a.entryQty > 0 && !a.godownId)) {
       return showToast("Choose a destination godown for every row that has a quantity.", "error");
     }
-    const validAllocations = allocations.filter((a) => a.godownId && a.qtyBaseUnit > 0);
+    const validAllocations = allocations.filter((a) => a.godownId && a.entryQty > 0);
     if (validAllocations.length === 0) return showToast("Assign destinations and quantities.", "error");
 
     const stockItemIds = [...new Set(allocations.map((a) => String(a.stockItemId)))];
     for (const sId of stockItemIds) {
       const rows = allocations.filter((a) => sameItem(a.stockItemId, sId));
-      const total = rows.reduce((sum, a) => sum + (Number(a.qtyBaseUnit) || 0), 0);
+      const total = rows.reduce((sum, a) => sum + (Number(a.entryQty) || 0), 0);
       if (Math.abs(total - rows[0].maxQty) > 1e-9) {
         const details = getStockDetails(sId);
-        return showToast(`Incomplete: distribute all ${fmtNum(rows[0].maxQty)} ${details.unit} of ${details.name} (now ${fmtNum(total)}).`, "error");
+        return showToast(`Incomplete: distribute all ${fmtNum(rows[0].maxQty)} ${rows[0].packName || details.unit} of ${details.name} (now ${fmtNum(total)}).`, "error");
       }
     }
 
@@ -209,9 +222,10 @@ export const StockDistributionPage = () => {
     try {
       await api.post("/procurement/distributions", {
         purchaseOrderId: activeRecord._id,
-        allocations: validAllocations.map(({ stockItemId, godownId, qtyBaseUnit, unitPrice }) => ({
-          stockItemId, godownId, qtyBaseUnit, unitPrice
-        })),
+        allocations: validAllocations.map((allocation) => {
+          const converted = packagingLineFromSnapshot(allocation, allocation.entryQty, allocation.packPrice ?? allocation.unitPrice);
+          return { stockItemId: allocation.stockItemId, godownId: allocation.godownId, ...converted };
+        }),
         leftovers: []
       });
       showToast("Inventory distributed successfully", "success");
@@ -259,7 +273,9 @@ export const StockDistributionPage = () => {
           Item: details.name,
           Group: details.group,
           Destination: getGodownName(a.godownId),
-          Quantity: a.qtyBaseUnit,
+          Packaging: a.packName || details.unit,
+          "Pack Quantity": a.packQuantity || "",
+          "Base Quantity": a.qtyBaseUnit,
           Unit: details.unit,
           "Unit Price": a.unitPrice || 0,
           "Total Amount": (a.qtyBaseUnit || 0) * (a.unitPrice || 0)
@@ -375,9 +391,9 @@ export const StockDistributionPage = () => {
                       const isSubRow = idx > 0 && sameItem(allocations[idx - 1].stockItemId, alloc.stockItemId);
                       const totalAllocated = allocations
                         .filter((a) => sameItem(a.stockItemId, alloc.stockItemId))
-                        .reduce((sum, a) => sum + (Number(a.qtyBaseUnit) || 0), 0);
+                        .reduce((sum, a) => sum + (Number(a.entryQty) || 0), 0);
                       const remaining = alloc.maxQty - totalAllocated;
-                      const rowAmount = (Number(alloc.qtyBaseUnit) || 0) * (alloc.unitPrice || 0);
+                      const rowAmount = (Number(alloc.entryQty) || 0) * (alloc.packId ? Number(alloc.packPrice || 0) : Number(alloc.unitPrice || 0));
                       return (
                         <tr key={alloc.tempId}>
                           <td>
@@ -385,11 +401,11 @@ export const StockDistributionPage = () => {
                               <>
                                 <strong>{details.name}</strong>
                                 <div style={{ marginTop: 4 }}><Badge>{details.group}</Badge></div>
-                                <div className="page-subtitle">Rate: {fmtMoney(alloc.unitPrice)} / {details.unit}</div>
+                                <div className="page-subtitle">Rate: {fmtMoney(alloc.packId ? alloc.packPrice : alloc.unitPrice)} / {alloc.packName || details.unit}</div>
                                 {!isCompleted && (
                                   <div style={{ marginTop: 4 }}>
                                     <Badge variant={remaining === 0 ? "success" : "warn"}>
-                                      {remaining === 0 ? "Balanced" : `Pending ${fmtNum(remaining)} ${details.unit}`}
+                                      {remaining === 0 ? "Balanced" : `Pending ${fmtNum(remaining)} ${alloc.packName || details.unit}`}
                                     </Badge>
                                   </div>
                                 )}
@@ -411,17 +427,17 @@ export const StockDistributionPage = () => {
                             )}
                           </td>
                           <td>
-                            {isCompleted ? `${fmtNum(alloc.qtyBaseUnit)} ${details.unit}` : (
+                            {isCompleted ? (alloc.packId ? lineQuantityLabel(alloc, details.unit) : `${fmtNum(alloc.qtyBaseUnit)} ${details.unit}`) : (
                               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                 <input
                                   type="number" min="0" max={alloc.maxQty} step="any"
-                                  aria-label={`Quantity of ${details.name}`}
-                                  value={alloc.qtyBaseUnit}
+                                  aria-label={`Quantity of ${details.name} in ${alloc.packName || details.unit}`}
+                                  value={alloc.entryQty}
                                   disabled={submitting}
-                                  onChange={(e) => updateAllocation(alloc.tempId, "qtyBaseUnit", e.target.value)}
+                                  onChange={(e) => updateAllocation(alloc.tempId, "entryQty", e.target.value)}
                                   style={{ width: 90 }}
                                 />
-                                <span className="page-subtitle">{details.unit}</span>
+                                <span className="page-subtitle">{alloc.packName || details.unit}</span>
                               </div>
                             )}
                           </td>

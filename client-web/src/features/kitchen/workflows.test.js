@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
-import { buildReceiptPayload, buildTransactionItems, canRecordUsage, outstandingQuantity } from "./workflows.js";
+import { buildReceiptPayload, buildTransactionItems, canRecordUsage, outstandingEntryQuantity, outstandingQuantity } from "./workflows.js";
 import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../../utils/date.js";
 import { isAccessTokenValid } from "../../utils/session.js";
 
@@ -20,6 +20,10 @@ test("builds a safe partial receipt and rejects over-receiving", () => {
   assert.equal(outstandingQuantity(indent.items[0]), 6);
   assert.deepEqual(buildReceiptPayload(indent, { rice: "2.5", oil: "1" }), [{ stockItemId: "rice", receivedQty: 2.5 }]);
   assert.deepEqual(buildReceiptPayload(indent, { rice: "7" }), []);
+
+  const packed = { items: [{ stockItemId: { _id: "flour" }, status: "approved", qtyBaseUnit: 75, receivedQty: 25, packId: "bag", packSize: 25 }] };
+  assert.equal(outstandingEntryQuantity(packed.items[0]), 2);
+  assert.deepEqual(buildReceiptPayload(packed, { flour: "2" }), [{ stockItemId: "flour", receivedQty: 50 }]);
 });
 
 test("builds valid usage and supply-request transaction lines", () => {
@@ -30,6 +34,12 @@ test("builds valid usage and supply-request transaction lines", () => {
 
   const dailyCart = [{ stockItemId: "meals", qtyBaseUnit: "125" }];
   assert.deepEqual(buildTransactionItems(dailyCart, "daily"), [{ stockItemId: "meals", stockRecordId: undefined, qtyBaseUnit: 125 }]);
+
+  const packed = [{ _id: "rice", requestedQty: "3", packId: "bag", packName: "Bag", packSize: 25 }];
+  assert.deepEqual(buildTransactionItems(packed), [{
+    stockItemId: "rice", stockRecordId: undefined, qtyBaseUnit: 75,
+    packId: "bag", packName: "Bag", packSize: 25, packQuantity: 3,
+  }]);
 });
 
 test("accepts only an unexpired access token", () => {

@@ -10,6 +10,7 @@ import { IndentRequestsView } from "./indent/IndentRequestsView.jsx";
 import { IndentCreateView } from "./indent/IndentCreateView.jsx";
 import { exportIndent, exportRequests } from "./indent/exports.js";
 import { errMsg, inDateRange, makeResolvers } from "./indent/helpers.js";
+import { packagingLine } from "./procurementPackaging.js";
 
 const TABS = [
   { value: "history", label: "Logs", icon: <ClipboardList size={14} aria-hidden="true" /> },
@@ -197,9 +198,10 @@ export const IndentPage = () => {
     }
     const items = checked.map(([id, s]) => ({
       stockItemId: id,
-      orderedQty: Number(s.qty),
-      unitPrice: Number(s.price || 0),
-      amount: Number(s.qty) * Number(s.price || 0)
+      ...(() => {
+        const line = packagingLine(stockItems.find((item) => item._id === id), s.packageKey, s.qty, s.price);
+        return { ...line, orderedQty: line.qtyBaseUnit };
+      })()
     }));
     setBusy(true);
     try {

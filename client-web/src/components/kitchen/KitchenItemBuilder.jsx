@@ -1,9 +1,10 @@
 import { ArrowLeft, Boxes, Minus, Plus, Search, Send, X } from "lucide-react";
 import "./KitchenTransactions.css";
+import { productPacks } from "../../features/kitchen";
 
 const idOf = (item) => item.stockRecordId || item.stockItemId || item._id;
 
-export default function KitchenItemBuilder({ type, items = [], cart = [], loading, search, onSearch, onQuantityChange, onCancel }) {
+export default function KitchenItemBuilder({ type, items = [], cart = [], loading, search, onSearch, onQuantityChange, onPackagingChange, onCancel }) {
   const isTransfer = type === "transfer";
   const selectedQuantity = (item) => cart.find((entry) => String(idOf(entry)) === String(idOf(item)))?.requestedQty ?? "";
   return <main className="ktb-shell">
@@ -18,9 +19,12 @@ export default function KitchenItemBuilder({ type, items = [], cart = [], loadin
         const raw = selectedQuantity(item);
         const quantity = Number(raw || 0);
         const unit = item.unit || "units";
+        const selected = cart.find((entry) => String(idOf(entry)) === String(idOf(item)));
+        const packs = productPacks(item);
+        const entryUnit = selected?.packName || unit;
         return <article className={`ktb-card${quantity > 0 ? " ktb-card--selected" : ""}`} key={idOf(item)}>
           <div className="ktb-card__identity"><span aria-hidden="true">{String(item.name || "?").charAt(0)}</span><div><h2>{item.name}</h2>{isTransfer && <p>Available: {Number(item.currentQty || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {unit}</p>}</div></div>
-          <div className="ktb-entry"><label htmlFor={`builder-${idOf(item)}`}>Quantity</label><div><button type="button" onClick={() => onQuantityChange(item, Math.max(0, quantity - 1))} disabled={quantity <= 0} aria-label={`Decrease ${item.name}`}><Minus size={17} /></button><input id={`builder-${idOf(item)}`} type="text" inputMode="decimal" value={raw} placeholder="0" onChange={(event) => onQuantityChange(item, event.target.value)} /><span>{unit}</span><button type="button" onClick={() => onQuantityChange(item, quantity + 1)} aria-label={`Increase ${item.name}`}><Plus size={17} /></button></div></div>
+          <div className="ktb-entry"><label htmlFor={`builder-${idOf(item)}`}>Quantity</label>{packs.length > 0 && !isTransfer && <select aria-label={`Packaging for ${item.name}`} value={selected?.packId || "base"} onChange={(event) => onPackagingChange?.(item, event.target.value)}><option value="base">{unit}</option>{packs.map((pack) => <option key={pack._id} value={pack._id}>{pack.name} ({pack.size} {unit})</option>)}</select>}<div><button type="button" onClick={() => onQuantityChange(item, Math.max(0, quantity - 1))} disabled={quantity <= 0} aria-label={`Decrease ${item.name}`}><Minus size={17} /></button><input id={`builder-${idOf(item)}`} type="text" inputMode="decimal" value={raw} placeholder="0" onChange={(event) => onQuantityChange(item, event.target.value)} /><span>{entryUnit}</span><button type="button" onClick={() => onQuantityChange(item, quantity + 1)} aria-label={`Increase ${item.name}`}><Plus size={17} /></button></div></div>
         </article>;
       })}
     </section>}

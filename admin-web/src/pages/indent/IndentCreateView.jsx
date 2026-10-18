@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { Badge, Button, DataTable, DetailPanel, EmptyState, Meta } from "../../components/ui/index.jsx";
 import { inr } from "./helpers.js";
+import { packOptions, selectedPackage } from "../procurementPackaging.js";
 
 const PAGE = 200;
-const BLANK = { checked: false, qty: "", price: "" };
+const BLANK = { checked: false, qty: "", price: "", packageKey: "base" };
 const lineTotal = (s) => Number(s.qty || 0) * Number(s.price || 0);
 
 /* Create New tab: tick stock items, enter quantity and price, submit as an indent. */
@@ -72,6 +73,8 @@ export const IndentCreateView = ({ stock, selected, setSelected, submitting, onS
               <tbody>
                 {stock.slice(0, limit).map((row) => {
                   const state = selected[row._id] || BLANK;
+                  const options = packOptions(row);
+                  const packaging = selectedPackage(row, state.packageKey);
                   return (
                     <tr key={row._id}>
                       <td>
@@ -86,7 +89,19 @@ export const IndentCreateView = ({ stock, selected, setSelected, submitting, onS
                             aria-label={`Quantity of ${row.name}`}
                             disabled={!state.checked} value={state.qty} onChange={(e) => onQty(row._id, e.target.value)}
                           />
-                          <span style={{ color: "var(--muted)", fontSize: 12 }}>{row.unitId?.symbol}</span>
+                          {options.length > 1 ? (
+                            <select
+                              aria-label={`Packaging for ${row.name}`}
+                              disabled={!state.checked}
+                              value={state.packageKey}
+                              onChange={(e) => {
+                                const next = selectedPackage(row, e.target.value);
+                                patch(row._id, { packageKey: e.target.value, price: next.price || "" });
+                              }}
+                            >
+                              {options.map((option) => <option key={option.key} value={option.key}>{option.label}{option.id ? ` (${option.size} ${row.unitId?.symbol})` : ""}</option>)}
+                            </select>
+                          ) : <span style={{ color: "var(--muted)", fontSize: 12 }}>{packaging.label}</span>}
                         </div>
                       </td>
                       <td>

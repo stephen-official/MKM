@@ -4,6 +4,7 @@ import {
   Badge, Button, DataTable, DetailPanel, EmptyState, Meta, RailItem, RailList, SplitView, StatusBadge
 } from "../../components/ui/index.jsx";
 import { fmtDate, formatQty, inr } from "./helpers.js";
+import { lineQuantityLabel } from "../procurementPackaging.js";
 
 const PAGE = 100;
 const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 };
@@ -83,10 +84,10 @@ export const IndentLogsView = ({ indents, selected, onSelect, r, busy, onExport,
                   <td>
                     <strong>{r.name(item)}</strong>
                     {item.status === "rejected" && <> <StatusBadge status="rejected" /></>}
-                    <div style={mutedStyle}>Unit price: {inr(item.unitPrice)}</div>
+                    <div style={mutedStyle}>{item.packId ? `${inr(item.packPrice)} / ${item.packName}` : `Unit price: ${inr(item.unitPrice)}`}</div>
                   </td>
                   <td><Badge variant="info">{r.group(item)}</Badge></td>
-                  <td style={{ textAlign: "right" }}>{formatQty(item.orderedQty)} {r.unit(item)}</td>
+                  <td style={{ textAlign: "right" }}>{item.packId ? lineQuantityLabel(item, r.unit(item)) : `${formatQty(item.orderedQty)} ${r.unit(item)}`}</td>
                   <td style={{ textAlign: "right" }}>{inr(item.orderedQty * item.unitPrice)}</td>
                 </tr>
               ))}

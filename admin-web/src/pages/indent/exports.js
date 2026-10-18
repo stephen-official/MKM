@@ -32,12 +32,15 @@ const save = (ws, sheetName, fileName) => {
 
 /* One indent -> product / group / qty / unit / price / subtotal. */
 export const exportIndent = (indent, r) => {
-  const rows = [["INDENT REPORT"], [`DATE: ${fmtDate(indent.createdAt)}`], [], ["Product", "Group", "Quantity", "Unit", "Price", "Subtotal"]];
+  const rows = [["INDENT REPORT"], [`DATE: ${fmtDate(indent.createdAt)}`], [], ["Product", "Group", "Packaging", "Pack quantity", "Base quantity", "Unit", "Price", "Subtotal"]];
   (indent.items || []).forEach((item) => {
-    rows.push([r.name(item), r.group(item), item.orderedQty, r.unit(item), item.unitPrice, item.orderedQty * item.unitPrice]);
+    rows.push([
+      r.name(item), r.group(item), item.packName || r.unit(item), item.packQuantity || "",
+      item.orderedQty, r.unit(item), item.packId ? item.packPrice : item.unitPrice, item.orderedQty * item.unitPrice,
+    ]);
   });
   const ws = buildSheet(rows, { 0: "title", 1: "date", 3: "header" });
-  ws["!cols"] = [{ wch: 25 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 15 }];
+  ws["!cols"] = [{ wch: 25 }, { wch: 20 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 15 }];
   save(ws, "Indent", `Indent_${indent.indentNo || "Export"}.xlsx`);
 };
 

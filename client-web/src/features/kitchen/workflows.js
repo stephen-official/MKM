@@ -3,12 +3,24 @@ export const outstandingQuantity = (line) => Math.max(
   Number(line?.qtyBaseUnit || 0) - Number(line?.receivedQty || 0),
 );
 
+export const outstandingEntryQuantity = (line) => {
+  const base = outstandingQuantity(line);
+  return line?.packId && Number(line.packSize) > 0 ? base / Number(line.packSize) : base;
+};
+
 export const buildTransactionItems = (cart = [], mode = "stock", { allowNegative = false } = {}) => cart
-  .map((item) => ({
-    stockItemId: item.stockItemId || item._id || item.stockRecordId,
-    stockRecordId: item.stockRecordId,
-    qtyBaseUnit: Number(mode === "daily" ? item.qtyBaseUnit : item.requestedQty),
-  }))
+  .map((item) => {
+    const entered = Number(mode === "daily" ? item.qtyBaseUnit : item.requestedQty);
+    const packSize = item.packId ? Number(item.packSize) : 1;
+    return {
+      stockItemId: item.stockItemId || item._id || item.stockRecordId,
+      stockRecordId: item.stockRecordId,
+      qtyBaseUnit: entered * packSize,
+      ...(item.packId ? {
+        packId: item.packId, packName: item.packName, packSize, packQuantity: entered,
+      } : {}),
+    };
+  })
   .filter((item) => Number.isFinite(item.qtyBaseUnit) && (allowNegative ? item.qtyBaseUnit !== 0 : item.qtyBaseUnit > 0));
 
 export const canRecordUsage = (available, requested) => {
@@ -22,7 +34,8 @@ export const buildReceiptPayload = (indent, values = {}) => Object.entries(value
     const line = (indent?.items || []).find(
       (item) => String(item.stockItemId?._id || item.stockItemId) === String(stockItemId),
     );
-    return { stockItemId, receivedQty: Number(value), line };
+    const receivedQty = Number(value) * (line?.packId ? Number(line.packSize) : 1);
+    return { stockItemId, receivedQty, line };
   })
   .filter(({ receivedQty, line }) =>
     line?.status === "approved" &&

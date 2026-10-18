@@ -8,6 +8,7 @@ import {
   DataTable, Tabs, SplitView, RailList, RailItem, DetailPanel, Meta
 } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
+import { stockQuantityLabel } from "./procurementPackaging.js";
 
 const ROW_LIMIT = 100;
 
@@ -277,7 +278,7 @@ export const GodownsPage = () => {
                   </td>
                   <td><Badge variant="info">{it.stockItemId?.stockGroupId?.name || "General"}</Badge></td>
                   <td>
-                    <Badge variant={low ? "alert" : "success"}>{fmtQty(it.qtyBaseUnit)} {unit}</Badge>
+                    <Badge variant={low ? "alert" : "success"}>{stockQuantityLabel(it.qtyBaseUnit, it.stockItemId, unit)}</Badge>
                   </td>
                   <td>{fmtQty(it.thresholdBaseUnit)} {unit}</td>
                   <td>

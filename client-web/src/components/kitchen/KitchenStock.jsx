@@ -1,7 +1,7 @@
 import { AlertTriangle, Ban, Boxes, PackagePlus, PackageX, RefreshCw, Search, Utensils, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import ProductRequestSheet from "./ProductRequestSheet";
-import { getStockHealth } from "../../features/kitchen";
+import { formatStockQuantity, getStockHealth } from "../../features/kitchen";
 import "./KitchenStock.css";
 
 const FILTERS = [
@@ -153,7 +153,7 @@ export default function KitchenStock({
                         ? <span className="ks-status ks-status--unavailable">Unavailable</span>
                         : <span className={`ks-status ks-status--${health.tone}`}>{health.label}</span>}
                     </div>
-                    <p className="ks-quantity"><strong>{formatQuantity(health.quantity)}</strong><span>{unit}</span></p>
+                    <p className="ks-quantity"><strong>{formatStockQuantity(health.quantity, unit, item)}</strong></p>
                   </div>
                   <div className="ks-card__footer">
                     <p>{unavailable

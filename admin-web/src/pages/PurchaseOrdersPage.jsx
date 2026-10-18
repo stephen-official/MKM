@@ -8,6 +8,7 @@ import {
   RailList, RailItem, DetailPanel, Meta, LoadingState, ErrorState, Select
 } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
+import { lineQuantityLabel, packagingLineFromSnapshot } from "./procurementPackaging.js";
 
 const VIEW_TABS = [
   { value: "history", label: "History", icon: <History size={14} /> },
@@ -98,6 +99,8 @@ export const PurchaseOrdersPage = () => {
         "Product Name": details.name,
         "Stock Group": details.group,
         "Unit": details.unit,
+        "Pack": item.packName || "",
+        "Pack quantity": item.packQuantity || "",
         "Unit Price": item.unitPrice,
         "Received Qty": item.receivedQty,
         "Subtotal": item.amount
@@ -125,8 +128,12 @@ export const PurchaseOrdersPage = () => {
         unit: details.unit,
         group: details.group,
         orderedQty: Number(it.orderedQty || 0),
-        receivedQty: String(Number(it.orderedQty || 0)),
-        unitPrice: String(Number(it.unitPrice || 0))
+        receivedQty: String(Number(it.packQuantity ?? it.orderedQty ?? 0)),
+        unitPrice: String(Number(it.packPrice ?? it.unitPrice ?? 0)),
+        packId: it.packId || null,
+        packName: it.packName || "",
+        packSize: it.packSize || null,
+        packQuantity: it.packQuantity || null
       };
     }));
   }, [selectedIndentId, indents, getStockDetails]);
@@ -165,9 +172,8 @@ export const PurchaseOrdersPage = () => {
     setSubmitting(true);
     try {
       const items = editableItems.map((it) => {
-        const receivedQty = Number(it.receivedQty);
-        const unitPrice = Number(it.unitPrice);
-        return { ...it, receivedQty, unitPrice, amount: receivedQty * unitPrice };
+        const converted = packagingLineFromSnapshot(it, it.receivedQty, it.unitPrice);
+        return { ...it, ...converted, receivedQty: converted.qtyBaseUnit };
       });
       await api.post("/procurement/purchase-orders", {
         indentId: selectedIndentId,
@@ -250,10 +256,10 @@ export const PurchaseOrdersPage = () => {
                     <tr key={idx}>
                       <td>
                         <div style={{ fontWeight: 650 }}>{details.name}</div>
-                        <div style={{ fontSize: 12, color: "var(--muted)" }}>Rate: {money(item.unitPrice)} / {details.unit}</div>
+                        <div style={{ fontSize: 12, color: "var(--muted)" }}>Rate: {item.packId ? `${money(item.packPrice)} / ${item.packName}` : `${money(item.unitPrice)} / ${details.unit}`}</div>
                       </td>
                       <td><Badge variant="info">{details.group}</Badge></td>
-                      <td style={{ textAlign: "center" }}>{item.receivedQty} {details.unit}</td>
+                      <td style={{ textAlign: "center" }}>{item.packId ? lineQuantityLabel({ ...item, qtyBaseUnit: item.receivedQty }, details.unit) : `${item.receivedQty} ${details.unit}`}</td>
                       <td style={{ textAlign: "right", fontWeight: 650 }}>{money(item.amount)}</td>
                     </tr>
                   );
@@ -318,14 +324,14 @@ export const PurchaseOrdersPage = () => {
                         <div style={{ fontWeight: 650 }}>{item.name}</div>
                         <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
                           <Badge>{item.group}</Badge>
-                          <span style={{ fontSize: 12, color: "var(--muted)" }}>per {item.unit}</span>
+                          <span style={{ fontSize: 12, color: "var(--muted)" }}>per {item.packName || item.unit}</span>
                         </div>
                       </td>
-                      <td style={{ textAlign: "center" }}>{item.orderedQty} {item.unit}</td>
+                      <td style={{ textAlign: "center" }}>{item.packId ? `${item.packQuantity} ${item.packName} (${item.orderedQty} ${item.unit})` : `${item.orderedQty} ${item.unit}`}</td>
                       <td style={{ textAlign: "center" }}>
                         <input
                           type="number" min="0" step="any" inputMode="decimal"
-                          aria-label={`Unit price for ${item.name}`}
+                          aria-label={`${item.packName || "Unit"} price for ${item.name}`}
                           aria-invalid={rowErrors[idx].price}
                           value={item.unitPrice}
                           disabled={submitting}
@@ -336,7 +342,7 @@ export const PurchaseOrdersPage = () => {
                       <td style={{ textAlign: "center" }}>
                         <input
                           type="number" min="0" step="any" inputMode="decimal"
-                          aria-label={`Received quantity for ${item.name}`}
+                          aria-label={`Received ${item.packName || item.unit} quantity for ${item.name}`}
                           aria-invalid={rowErrors[idx].qty}
                           value={item.receivedQty}
                           disabled={submitting}

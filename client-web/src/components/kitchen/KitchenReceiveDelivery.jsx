@@ -1,5 +1,6 @@
 import { ArrowLeft, PackageCheck } from "lucide-react";
 import "./KitchenSecondaryScreens.css";
+import { outstandingEntryQuantity } from "../../features/kitchen/workflows";
 
 export default function KitchenReceiveDelivery({ indent, values = {}, onChange, onBack, onSubmit }) {
   const items = (indent?.items || []).filter((item) => item.status === "approved" && Number(item.receivedQty || 0) < Number(item.qtyBaseUnit || 0));
@@ -9,9 +10,11 @@ export default function KitchenReceiveDelivery({ indent, values = {}, onChange, 
     <section className="kss-receive-list">
       {items.map((item) => {
         const id = String(item.stockItemId?._id || item.stockItemId);
-        const remaining = Math.max(0, Number(item.qtyBaseUnit || 0) - Number(item.receivedQty || 0));
-        const unit = item.stockItemId?.unitId?.symbol || item.unit || "units";
-        return <article key={id}><div><h2>{item.stockItemId?.name || "Unknown item"}</h2><p>Previously received: {Number(item.receivedQty || 0).toLocaleString("en-IN")} {unit}</p></div><label><span>Outstanding: <strong>{remaining.toLocaleString("en-IN")} {unit}</strong></span><input type="number" inputMode="decimal" min="0" max={remaining} step="0.001" placeholder="0" value={values[id] ?? ""} onChange={(event) => onChange(id, event.target.value, remaining)} /></label></article>;
+        const remaining = outstandingEntryQuantity(item);
+        const baseUnit = item.stockItemId?.unitId?.symbol || item.unit || "units";
+        const unit = item.packName || baseUnit;
+        const received = item.packId ? Number(item.receivedQty || 0) / Number(item.packSize) : Number(item.receivedQty || 0);
+        return <article key={id}><div><h2>{item.stockItemId?.name || "Unknown item"}</h2><p>Previously received: {received.toLocaleString("en-IN", { maximumFractionDigits: 3 })} {unit}</p></div><label><span>Outstanding: <strong>{remaining.toLocaleString("en-IN", { maximumFractionDigits: 3 })} {unit}</strong></span><input type="number" inputMode="decimal" min="0" max={remaining} step="0.001" placeholder="0" value={values[id] ?? ""} onChange={(event) => onChange(id, event.target.value, remaining)} /></label></article>;
       })}
     </section>
     <footer className="kss-submit"><div><strong>{Object.values(values).filter((value) => Number(value) > 0).length}</strong><span>items entered</span></div><button type="button" onClick={onSubmit} disabled={!Object.values(values).some((value) => Number(value) > 0)}>Confirm received</button></footer>

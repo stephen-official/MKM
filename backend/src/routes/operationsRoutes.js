@@ -67,6 +67,8 @@ select: "name stockGroupId unitId imageUrl itemType pricePerUnit soldInPacks pac
   thresholdBaseUnit: s.thresholdBaseUnit || 0,
   unit: s.stockItemId?.unitId?.symbol || s.stockItemId?.unitId?.name || "Units",
   image: s.stockItemId?.imageUrl || "",
+  soldInPacks: Boolean(s.stockItemId?.soldInPacks),
+  packs: s.stockItemId?.packs || [],
 
   itemType: s.stockItemId?.itemType || "stock"
 }));
@@ -1225,7 +1227,7 @@ const stocks = await GodownStock.find(filter)
         .populate({
           path: "stockItemId",
           model: "StockItem",
-          select: "name imageUrl unitId stockGroupId itemType",
+          select: "name imageUrl unitId stockGroupId itemType soldInPacks packs",
           populate: [
             {
               path: "unitId",

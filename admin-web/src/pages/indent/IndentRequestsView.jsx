@@ -4,6 +4,7 @@ import {
   RailItem, RailList, SplitView, StatusBadge
 } from "../../components/ui/index.jsx";
 import { fmtDate, formatQty } from "./helpers.js";
+import { lineQuantityLabel } from "../procurementPackaging.js";
 
 const PAGE = 100;
 const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 };
@@ -140,7 +141,7 @@ export const IndentRequestsView = ({
                   </td>
                   <td><strong>{r.name(it)}</strong></td>
                   <td><Badge variant="info">{r.group(it)}</Badge></td>
-                  <td>{formatQty(it.qtyBaseUnit)} {r.unit(it)}</td>
+                  <td>{it.packId ? lineQuantityLabel(it, r.unit(it)) : `${formatQty(it.qtyBaseUnit)} ${r.unit(it)}`}</td>
                   <td>
                     {formatQty(it.receivedQty)} {r.unit(it)}
                     {!pending && it.status === "approved" && fullyReceived && <div style={mutedStyle}>Fully received</div>}

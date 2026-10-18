@@ -10,6 +10,13 @@ const lineItemSchema = new mongoose.Schema(
     qtyBaseUnit: { type: Number, default: 0 },
     unitPrice: { type: Number, default: 0 },
     amount: { type: Number, default: 0 },
+    // Optional immutable snapshot of the catalog pack selected for this line.
+    // Quantities above remain in the product's base unit for stock arithmetic.
+    packId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    packName: { type: String, default: "" },
+    packSize: { type: Number, default: null },
+    packQuantity: { type: Number, default: null },
+    packPrice: { type: Number, default: null },
      status: { 
     type: String, 
     enum: ["pending", "approved", "rejected"], 
@@ -63,8 +70,13 @@ const distributionSchema = new mongoose.Schema(
         stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: "StockItem" }, 
         godownId: { type: mongoose.Schema.Types.ObjectId, ref: "Godown" }, 
         qtyBaseUnit: Number ,
-        unitPrice: Number, // Add this
-    amount: Number
+        unitPrice: Number,
+        amount: Number,
+        packId: { type: mongoose.Schema.Types.ObjectId, default: null },
+        packName: { type: String, default: "" },
+        packSize: { type: Number, default: null },
+        packQuantity: { type: Number, default: null },
+        packPrice: { type: Number, default: null }
       }
     ],
     leftovers: [
@@ -83,6 +95,8 @@ const godownStockSchema = new mongoose.Schema(
   {
     godownId: { type: mongoose.Schema.Types.ObjectId, ref: "Godown", required: true },
     stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: "StockItem", required: true },
+    // Pack balances are derived for display from qtyBaseUnit and the current catalog packs.
+    // This keeps one authoritative balance and avoids stock drifting between representations.
     qtyBaseUnit: { type: Number, default: 0 },
     thresholdBaseUnit: { type: Number, default: 0 }
   },
@@ -201,6 +215,11 @@ items: [
     qtyBaseUnit: { type: Number, required: true },
 
     receivedQty: { type: Number, default: 0 },
+
+    packId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    packName: { type: String, default: "" },
+    packSize: { type: Number, default: null },
+    packQuantity: { type: Number, default: null },
 
     status: {
       type: String,

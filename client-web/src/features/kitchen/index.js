@@ -7,3 +7,4 @@ export {
   normalizeSupplyRequests,
 } from "./normalize.js";
 export { deriveDashboardMetrics, getStockHealth, selectStockByHealth } from "./selectors.js";
+export { formatStockQuantity, productPacks, withPackaging } from "./packaging.js";

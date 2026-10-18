@@ -36,6 +36,10 @@ const normalizeLine = (item = {}) => {
     approvedQuantity,
     receivedQuantity,
     remainingQuantity: Math.max(0, approvedQuantity - receivedQuantity),
+    packId: item.packId || null,
+    packName: item.packName || "",
+    packSize: finiteNumber(item.packSize),
+    packQuantity: finiteNumber(item.packQuantity),
     decision: item.status || null,
   };
 };

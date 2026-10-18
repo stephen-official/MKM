@@ -8,6 +8,7 @@ import {
   Notification, 
   PurchaseOrder 
 } from "../models/FlowModels.js";
+import { packQuantityMatchesBase, packSnapshot } from "../catalog/packaging.js";
 
 export const procurementRoutes = express.Router();
 const adminOnly = authorize(["admin"]);
@@ -86,14 +87,18 @@ procurementRoutes.get("/indents/:id/preview", adminOnly, async (req, res) => {
 
 procurementRoutes.post("/indents", adminOnly, async (req, res) => {
   try {
-    const totalAmount = (req.body.items || []).reduce(
-      (sum, it) => sum + (it.amount || it.orderedQty * it.unitPrice || 0), 
+    const items = (req.body.items || []).map((item) => ({ ...item, ...packSnapshot(item) }));
+    if (!items.length || items.some((item) => !(Number(item.orderedQty) > 0) || !packQuantityMatchesBase(item, item.orderedQty))) {
+      return res.status(400).json({ message: "Add valid base-unit or pack quantities" });
+    }
+    const totalAmount = items.reduce(
+      (sum, it) => sum + (Number(it.amount) || Number(it.orderedQty) * Number(it.unitPrice) || 0),
       0
     );
     const indent = await Indent.create({
       indentNo: `IND-${Date.now()}`,
       createdBy: req.user.sub,
-      items: req.body.items || [],
+      items,
       totalAmount
     });
     res.status(201).json(indent);
@@ -135,15 +140,19 @@ procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      const totalAmount = (req.body.items || []).reduce(
-        (sum, it) => sum + ((it.receivedQty || it.orderedQty) * it.unitPrice || 0), 
+      const items = (req.body.items || []).map((item) => ({ ...item, ...packSnapshot(item) }));
+      if (!items.length || items.some((item) => Number(item.receivedQty) < 0 || !packQuantityMatchesBase(item, item.receivedQty))) {
+        throw Object.assign(new Error("Enter valid base-unit or pack quantities"), { status: 400 });
+      }
+      const totalAmount = items.reduce(
+        (sum, it) => sum + (Number(it.receivedQty) * Number(it.unitPrice) || 0),
         0
       );
       
       const po = await PurchaseOrder.create(
         [{ 
           indentId: req.body.indentId, 
-          items: req.body.items || [], 
+          items,
           totalAmount,
           receivedAt: req.body.receivedAt || new Date(),
           status: "pending" 
@@ -160,7 +169,7 @@ procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
       res.status(201).json(po[0]);
     });
   } catch (error) {
-    res.status(500).json({ message: "PO Creation failed", error: error.message });
+    res.status(error.status || 500).json({ message: "PO Creation failed", error: error.message });
   } finally {
     await session.endSession();
   }
@@ -175,12 +184,15 @@ procurementRoutes.post("/distributions", adminOnly, async (req, res) => {
   const cleanLeftoverId = leftoverSourceId && leftoverSourceId !== "" ? leftoverSourceId : null;
 
   try {
+    if ((allocations || []).some((item) => !(Number(item.qtyBaseUnit) > 0) || !packQuantityMatchesBase(item, item.qtyBaseUnit))) {
+      return res.status(400).json({ message: "Enter valid base-unit or pack allocation quantities" });
+    }
     await session.withTransaction(async () => {
       const distribution = await Distribution.create(
         [{ 
           purchaseOrderId: cleanPOId, 
           leftoverSourceId: cleanLeftoverId, 
-          allocations: allocations || [], 
+          allocations: (allocations || []).map((item) => ({ ...item, ...packSnapshot(item) })),
           leftovers: leftovers || [] 
         }], 
         { session }

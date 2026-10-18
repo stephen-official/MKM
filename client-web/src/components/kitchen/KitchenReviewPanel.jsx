@@ -19,7 +19,7 @@ export default function KitchenReviewPanel({ type, items = [], usageDate, onUsag
       </section>
       <section className="ktr-items" aria-labelledby="review-items-title"><div className="ktr-items__heading"><h3 id="review-items-title">Selected items</h3><span>{visibleItems.length}</span></div>{visibleItems.map((item) => {
         const quantity = Number(item.requestedQty ?? item.qtyBaseUnit ?? 0);
-        const unit = item.unit || "units";
+        const unit = item.packName || item.unit || "units";
         return <article key={item.stockRecordId || item.stockItemId || item._id}><span className="ktr-avatar" aria-hidden="true">{String(item.name || "?").charAt(0)}</span><div className="ktr-item-name"><strong>{item.name}</strong><small>{unit}</small></div><div className="ktr-stepper"><button type="button" onClick={() => onQuantityChange(item, Math.max(0, quantity - 1))} aria-label={`Decrease ${item.name}`}><Minus size={15} /></button><b>{quantity.toLocaleString("en-IN", { maximumFractionDigits: 3 })}</b><button type="button" onClick={() => onQuantityChange(item, quantity + 1)} aria-label={`Increase ${item.name}`}><Plus size={15} /></button></div><button type="button" className="ktr-remove" onClick={() => onRemove(item)} aria-label={`Remove ${item.name}`}><Trash2 size={17} /></button></article>;
       })}</section>
     </div>

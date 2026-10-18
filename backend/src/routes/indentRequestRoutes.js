@@ -4,6 +4,7 @@ import { authorize } from "../middleware/auth.js";
 import { GodownStock, IndentRequest } from "../models/FlowModels.js";
 import { isKitchenRole } from "../utils/roles.js";
 import { bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
+import { packQuantityMatchesBase, packSnapshot } from "../catalog/packaging.js";
 
 const router = express.Router();
 
@@ -14,9 +15,20 @@ export const normalizePositiveItems = (items) => {
     const stockItemId = String(item?.stockItemId || "");
     const quantity = Number(item?.qtyBaseUnit ?? item?.qty);
     if (!mongoose.isValidObjectId(stockItemId) || !Number.isFinite(quantity) || quantity <= 0) return null;
-    merged.set(stockItemId, (merged.get(stockItemId) || 0) + quantity);
+    if (!packQuantityMatchesBase(item, quantity)) return null;
+    const existing = merged.get(stockItemId);
+    const snapshot = packSnapshot(item);
+    if (existing) {
+      const samePack = String(existing.packId || "") === String(snapshot.packId || "") &&
+        Number(existing.packSize || 0) === Number(snapshot.packSize || 0);
+      existing.qtyBaseUnit += quantity;
+      if (samePack && snapshot.packId) existing.packQuantity += snapshot.packQuantity;
+      else Object.keys(existing).filter((key) => key.startsWith("pack")).forEach((key) => delete existing[key]);
+    } else {
+      merged.set(stockItemId, { stockItemId, qtyBaseUnit: quantity, ...snapshot });
+    }
   }
-  return [...merged.entries()].map(([stockItemId, qtyBaseUnit]) => ({ stockItemId, qtyBaseUnit }));
+  return [...merged.values()];
 };
 
 export const userOwnsRequest = (request, user) =>
@@ -44,7 +56,7 @@ router.get("/me", authorize(["user"]), async (req, res) => {
     const requests = await IndentRequest.find({ userId: req.user.sub, godownId: req.user.godownId })
       .populate({
         path: "items.stockItemId",
-        select: "name unitId imageUrl",
+        select: "name unitId imageUrl soldInPacks packs",
         populate: { path: "unitId", select: "symbol" },
       })
       .sort({ createdAt: -1 });
@@ -61,7 +73,7 @@ router.get("/", authorize(["admin"]), async (_req, res) => {
       .populate("godownId", "name")
       .populate({
         path: "items.stockItemId",
-        select: "name unitId stockGroupId imageUrl",
+        select: "name unitId stockGroupId imageUrl soldInPacks packs",
         populate: { path: "unitId", select: "symbol" },
       })
       .sort({ createdAt: -1 });
