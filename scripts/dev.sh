@@ -55,8 +55,8 @@ need_deps() {
 up() {
   command -v mongod >/dev/null || { echo "mongod not found. Install MongoDB 7+ first (macOS: brew install mongodb-community)."; exit 1; }
   need_deps
-  start mongo "$L" mongod --dbpath "$L/mongo-data" --port "$MONGO_PORT" --bind_ip 127.0.0.1
-  sleep 3
+  start mongo "$L" mongod --dbpath "$L/mongo-data" --port "$MONGO_PORT" --bind_ip 127.0.0.1 --replSet rs0
+  init_replset
   (load_env; start backend "$R/backend" node src/server.js)
   local api; api=$(api_url)
   (export VITE_API_URL=$api; start admin "$R/admin-web" node_modules/.bin/vite --port "$ADMIN_PORT" --strictPort)
@@ -64,6 +64,29 @@ up() {
   for _ in $(seq 1 20); do curl -sf "$api/health" >/dev/null && break; sleep 1; done
   status
   echo "Empty database? Run: scripts/dev.sh seed"
+}
+
+# Stock writes run in transactions, which need a replica set; a single-node one is enough.
+init_replset() {
+  (cd "$R/backend" && MONGO_PORT=$MONGO_PORT node --input-type=module -e '
+    import mongoose from "mongoose";
+    const uri = `mongodb://127.0.0.1:${process.env.MONGO_PORT}/?directConnection=true`;
+    for (let i = 0; ; i++) {
+      try { await mongoose.connect(uri, { serverSelectionTimeoutMS: 1000 }); break; }
+      catch (e) { if (i === 20) throw e; await new Promise((r) => setTimeout(r, 500)); }
+    }
+    const admin = mongoose.connection.db.admin();
+    try { await admin.command({ replSetGetStatus: 1 }); }
+    catch {
+      await admin.command({ replSetInitiate: { _id: "rs0", members: [{ _id: 0, host: `127.0.0.1:${process.env.MONGO_PORT}` }] } });
+      console.log("initialized replica set rs0");
+    }
+    for (let i = 0; !(await admin.command({ hello: 1 })).isWritablePrimary; i++) {
+      if (i === 40) throw new Error("replica set has no primary");
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    await mongoose.disconnect();
+  ')
 }
 
 down() { for n in client admin backend mongo; do stop "$n"; done; echo stopped; }
