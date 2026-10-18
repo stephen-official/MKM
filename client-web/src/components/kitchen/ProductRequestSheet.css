@@ -1,0 +1,12 @@
+.kpr-history h3 { margin: 0 0 9px; font-size: .9rem; }
+.kpr-history ul { margin: 0; padding: 0; list-style: none; }
+.kpr-history li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid #eaf0ed; }
+.kpr-history li:last-child { border-bottom: 0; }
+.kpr-history li > div { display: grid; min-width: 0; }
+.kpr-history strong { overflow: hidden; font-size: .86rem; text-overflow: ellipsis; white-space: nowrap; }
+.kpr-history small { margin-top: 2px; color: #5d7068; font-size: .75rem; }
+.kpr-muted { margin: 0; color: #5d7068; font-size: .82rem; }
+.kpr-status { flex: none; padding: 4px 9px; border-radius: 999px; font-size: .7rem; font-weight: 800; }
+.kpr-status--pending { color: #8a5a00; background: #fdf1d8; }
+.kpr-status--approved { color: #0b5f58; background: #e3f4f1; }
+.kpr-status--rejected { color: #a3342c; background: #fbe4e1; }

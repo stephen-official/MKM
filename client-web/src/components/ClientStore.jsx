@@ -181,6 +181,8 @@ setItems(formatted);
         const formattedItems = res.data
   .filter(item => item.itemType !== "daily_use")
   .map(item => ({
+          // False when the product's catalog details are incomplete or it is archived (see backend catalog/).
+          available: item.available !== false,
           stockRecordId: item.stockRecordId, 
           _id: item.stockItemId?._id || item.stockItemId,
           name: item.name || item.stockItemId?.name || "Unknown Item",
@@ -345,11 +347,14 @@ setItems(formatted);
     return () => window.removeEventListener("popstate", handleHistoryNavigation);
   }, [activeTab, hasDraft]);
 
+  // Products a kitchen may pick for usage, requests and transfers; the stock screen still lists the rest.
+  const usableItems = useMemo(() => items.filter((item) => item.available !== false), [items]);
+
   const filteredItems = useMemo(() => {
   const source =
     mode === "daily"
       ? dailyItems
-      : items;
+      : usableItems;
 
   return source.filter(item =>
     item.name
@@ -357,7 +362,7 @@ setItems(formatted);
       .includes(searchQuery.toLowerCase())
   );
 }, [
-  items,
+  usableItems,
   dailyItems,
   searchQuery,
   mode
@@ -756,7 +761,7 @@ setEditIndentId(indent._id);
     setActiveTab("receive-delivery");
   };
 
-  const usageItems = items;
+  const usageItems = usableItems;
 
   const attentionCount =
     requests.filter((request) => request.status === "pending").length +
@@ -797,6 +802,7 @@ setEditIndentId(indent._id);
           filter={stockFilter}
           onFilterChange={setStockFilter}
           hidden={hidden}
+          canRequestProduct={isFeatureOn(flags, "products")}
           onRefresh={() => fetchItems(false)}
           onRecordUsage={(item) => {
             if (openUsage()) addToCart(item, 1);

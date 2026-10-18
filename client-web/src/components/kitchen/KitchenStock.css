@@ -22,15 +22,19 @@
 .ks-card { display: flex; gap: 12px; padding: var(--card-padding); background: #fff; border: 1px solid #dde5e0; border-left: 4px solid #8da099; border-radius: 15px; }
 .ks-card--warning { border-left-color: #d99416; }
 .ks-card--critical { border-left-color: #c0392b; }
+.ks-card--unavailable { border-left-color: #9aa8a1; background: #f7f9f8; }
 .ks-card__icon { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; color: #0f766e; background: #e3f4f1; border-radius: 12px; }
 .ks-card--warning .ks-card__icon { color: #8a5a00; background: #fff4d6; }
 .ks-card--critical .ks-card__icon { color: #a52c23; background: #fdf1ef; }
+.ks-card--unavailable .ks-card__icon { color: #5d7068; background: #eaf0ed; }
 .ks-card__body { min-width: 0; flex: 1; }
 .ks-card__top { display: flex; justify-content: space-between; gap: 10px; }
 .ks-card h2 { margin: 1px 0 6px; font-size: 16px; line-height: 1.25; }
 .ks-status { display: inline-flex; padding: 4px 8px; color: #0f766e; background: #e3f4f1; border-radius: 999px; font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .ks-status--warning { color: #7b5100; background: #fff4d6; }
 .ks-status--critical { color: #9d291f; background: #fdf1ef; }
+.ks-status--unavailable { color: #42564e; background: #eaf0ed; }
+.ks-heading__actions { display: flex; flex: none; gap: 8px; }
 .ks-quantity { display: flex; flex: none; margin: 0; align-items: flex-end; flex-direction: column; color: #10211c; }
 .ks-quantity strong { font-size: 22px; line-height: 1; }
 .ks-quantity span { margin-top: 3px; color: #5d7068; font-size: 11px; font-weight: 650; }

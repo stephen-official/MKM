@@ -1,5 +1,6 @@
-import { AlertTriangle, Boxes, PackageX, RefreshCw, Search, Utensils, X } from "lucide-react";
-import { useMemo } from "react";
+import { AlertTriangle, Ban, Boxes, PackagePlus, PackageX, RefreshCw, Search, Utensils, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import ProductRequestSheet from "./ProductRequestSheet";
 import { getStockHealth } from "../../features/kitchen";
 import "./KitchenStock.css";
 
@@ -31,8 +32,10 @@ export default function KitchenStock({
   onRecordUsage,
   onRefresh,
   hidden = NO_HIDDEN,
+  canRequestProduct = false,
 }) {
   const canRecordUsage = !hidden.has("usage");
+  const [requesting, setRequesting] = useState(false);
   const counts = useMemo(() => {
     const result = { all: items.length, low: 0, out: 0 };
     items.forEach((item) => {
@@ -63,11 +66,20 @@ export default function KitchenStock({
           <h1 id="kitchen-stock-title">Stock</h1>
           <p>Check what is available before recording usage or requesting supplies.</p>
         </div>
-        <button type="button" className="ks-refresh" onClick={onRefresh} disabled={loading} aria-label="Refresh kitchen stock">
-          <RefreshCw size={20} className={loading ? "ks-spin" : ""} aria-hidden="true" />
-          <span>Refresh</span>
-        </button>
+        <div className="ks-heading__actions">
+          {canRequestProduct && (
+            <button type="button" className="ks-refresh" onClick={() => setRequesting(true)} aria-label="Request a new product">
+              <PackagePlus size={20} aria-hidden="true" />
+              <span>Request product</span>
+            </button>
+          )}
+          <button type="button" className="ks-refresh" onClick={onRefresh} disabled={loading} aria-label="Refresh kitchen stock">
+            <RefreshCw size={20} className={loading ? "ks-spin" : ""} aria-hidden="true" />
+            <span>Refresh</span>
+          </button>
+        </div>
       </header>
+      {requesting && <ProductRequestSheet onClose={() => setRequesting(false)} />}
 
       <section className="ks-controls" aria-label="Search and filter stock">
         <label className="ks-search">
@@ -126,23 +138,29 @@ export default function KitchenStock({
           {visibleItems.map((item, index) => {
             const health = getStockHealth(item);
             const unit = itemUnit(item);
+            // The product's catalog details are incomplete (or it was archived): it is shown but cannot be used.
+            const unavailable = item.available === false;
             return (
-              <li className={`ks-card ks-card--${health.tone}`} key={stockKey(item, index)}>
+              <li className={`ks-card ks-card--${unavailable ? "unavailable" : health.tone}`} key={stockKey(item, index)}>
                 <div className="ks-card__icon" aria-hidden="true">
-                  {health.key === "out" ? <PackageX size={23} /> : health.key === "low" ? <AlertTriangle size={23} /> : <Boxes size={23} />}
+                  {unavailable ? <Ban size={23} /> : health.key === "out" ? <PackageX size={23} /> : health.key === "low" ? <AlertTriangle size={23} /> : <Boxes size={23} />}
                 </div>
                 <div className="ks-card__body">
                   <div className="ks-card__top">
                     <div>
                       <h2>{itemName(item)}</h2>
-                      <span className={`ks-status ks-status--${health.tone}`}>{health.label}</span>
+                      {unavailable
+                        ? <span className="ks-status ks-status--unavailable">Unavailable</span>
+                        : <span className={`ks-status ks-status--${health.tone}`}>{health.label}</span>}
                     </div>
                     <p className="ks-quantity"><strong>{formatQuantity(health.quantity)}</strong><span>{unit}</span></p>
                   </div>
                   <div className="ks-card__footer">
-                    <p>{health.threshold > 0 ? `Low-stock level: ${formatQuantity(health.threshold)} ${unit}` : "No low-stock level set"}</p>
+                    <p>{unavailable
+                      ? "Can’t be used until an admin finishes setting up this product."
+                      : health.threshold > 0 ? `Low-stock level: ${formatQuantity(health.threshold)} ${unit}` : "No low-stock level set"}</p>
                     {canRecordUsage && (
-                      <button type="button" onClick={() => onRecordUsage?.(item)} disabled={health.key === "out"}>
+                      <button type="button" onClick={() => onRecordUsage?.(item)} disabled={unavailable || health.key === "out"}>
                         <Utensils size={17} aria-hidden="true" /> Record usage
                       </button>
                     )}
