@@ -544,6 +544,14 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .detail__body > .field { margin: 16px 0 12px; }
 .page-bar__title { flex: none; }
 .page-bar__title .page-title, .page-bar__title .page-subtitle { white-space: nowrap; }
+/* On phones each header part takes its own full-width row and may wrap, so no page scrolls sideways. */
+@media (max-width: 700px) {
+  .page-bar__title, .page-bar__body, .page-bar__actions { flex: 1 1 100%; min-width: 0; }
+  .page-bar__title .page-title, .page-bar__title .page-subtitle { white-space: normal; }
+  .page-bar__body > *, .page-bar__actions > * { min-width: 0; max-width: 100%; }
+  .page-bar .tabs { overflow-x: auto; scrollbar-width: none; }
+  .page-bar .tabs::-webkit-scrollbar { display: none; }
+}
 .page-bar .date-field { width: 140px; }
 @media (min-width: 1101px) {
   .page-bar__body { flex-wrap: nowrap; }
