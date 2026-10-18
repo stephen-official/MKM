@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, ArchiveRestore, Edit3, Package, Plus, Search } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Archive, ArchiveRestore, Download, Edit3, FileSpreadsheet, Package, Plus, Search, Upload } from "lucide-react";
 import { api } from "../api.js";
 import { useToast } from "../useToast.js";
 import { formatDateTime } from "../businessTime.js";
@@ -45,6 +45,9 @@ export function ProductsPage() {
   const [rejecting, setRejecting] = useState(null);
   const [linking, setLinking] = useState(null);
   const [tracker] = useState(createRequestTracker);
+  const importInput = useRef(null);
+  const [importing, setImporting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setQ(search.trim()), SEARCH_DEBOUNCE_MS);
@@ -84,6 +87,36 @@ export function ProductsPage() {
   const pending = useMemo(() => (requests || []).filter((r) => r.status === "pending"), [requests]);
 
   const openEditor = (next) => { setServerErrors({}); setEditing(next); };
+
+  const downloadWorkbook = async (path, name) => {
+    setDownloading(true);
+    try {
+      const response = await api.get(path, { responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement("a");
+      link.href = url; link.download = name; link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) { showToast(errorOf(error, "Could not download the spreadsheet."), "error"); }
+    finally { setDownloading(false); }
+  };
+
+  const importWorkbook = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".xlsx")) { showToast("Choose an .xlsx Excel workbook.", "error"); return; }
+    setImporting(true);
+    try {
+      const form = new FormData(); form.append("file", file);
+      const { data: outcome } = await api.post("/products/import", form, { headers: { "Content-Type": "multipart/form-data" } });
+      if (outcome.failed) {
+        const detail = outcome.results.filter((row) => row.action === "error").slice(0, 3).map((row) => `Row ${row.row}: ${row.message}`).join(" ");
+        showToast(`${outcome.imported} imported; ${outcome.failed} need attention. ${detail}`, "error");
+      } else showToast(`${outcome.imported} product${outcome.imported === 1 ? "" : "s"} imported.`, "success");
+      loadProducts();
+    } catch (error) { showToast(errorOf(error, "Could not import the spreadsheet."), "error"); }
+    finally { setImporting(false); }
+  };
 
   const save = async (form) => {
     setBusy(true);
@@ -269,6 +302,10 @@ export function ProductsPage() {
               <Search size={14} aria-hidden="true" />
               <input type="search" aria-label="Search products" placeholder="Name, brand, code or group" value={search} onChange={(e) => setSearch(e.target.value)} />
             </label>
+            <input ref={importInput} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={importWorkbook} />
+            <Button variant="ghost" disabled={downloading} onClick={() => downloadWorkbook("/products/import-template", "products-import-template.xlsx")}><FileSpreadsheet size={16} aria-hidden="true" /> Template</Button>
+            <Button variant="ghost" disabled={downloading} onClick={() => downloadWorkbook("/products/export/excel", "products-export.xlsx")}><Download size={16} aria-hidden="true" /> Export</Button>
+            <Button variant="ghost" disabled={importing} onClick={() => importInput.current?.click()}><Upload size={16} aria-hidden="true" /> {importing ? "Importing…" : "Import"}</Button>
             <Button onClick={() => openEditor({ initial: emptyProductForm() })}><Plus size={16} aria-hidden="true" /> Add product</Button>
           </>
         )}

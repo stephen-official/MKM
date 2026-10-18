@@ -6,7 +6,7 @@ export const FEATURES = Object.freeze([
   { key: "products", label: "Products", navPath: "/products", audiences: ["admin", "kitchen"] },
   { key: "inventory", label: "Inventory Setup", navPath: "/inventory-info", audiences: ["admin"] },
   { key: "indent", label: "Purchase Planning", navPath: "/indent", audiences: ["admin", "kitchen"] },
-  { key: "purchase-orders", label: "Purchase Orders", navPath: "/purchase-orders", audiences: ["admin"] },
+  { key: "purchase-orders", label: "Purchase Orders", navPath: "/purchase-orders", audiences: ["admin", "kitchen"] },
   { key: "stock-distribution", label: "Distribute Purchases", navPath: "/stock-distribution", audiences: ["admin"] },
   { key: "godowns", label: "Stock Levels", navPath: "/godowns", audiences: ["admin"] },
   { key: "transfer-stock", label: "Stock Transfers", navPath: "/transfer-stock", audiences: ["admin", "kitchen"] },
@@ -49,6 +49,9 @@ export const ROUTE_RULES = Object.freeze([
 
   // --- products (master catalog) + kitchen product requests ---
   feature("GET", "/api/products/units", ["products"], "read"),
+  feature("GET", "/api/products/export/excel", ["products"], "read"),
+  feature("GET", "/api/products/import-template", ["products"], "read"),
+  feature("POST", "/api/products/import", ["products"], "mutation"),
   feature("POST", "/api/products/upload-image", ["products"], "mutation"),
   feature("GET", "/api/products", ["products"], "read"),
   feature("GET", "/api/products/:id", ["products"], "read"),
@@ -87,6 +90,13 @@ export const ROUTE_RULES = Object.freeze([
   feature("GET", "/api/procurement/purchase-orders/purchased-indents", ["purchase-orders"], "read"),
   feature("GET", "/api/procurement/purchase-orders", ["purchase-orders", "stock-distribution"], "read"),
   feature("POST", "/api/procurement/purchase-orders", ["purchase-orders"], "mutation"),
+  feature("GET", "/api/procurement/collaborative-purchase-orders", ["purchase-orders"], "read", "both"),
+  feature("POST", "/api/procurement/collaborative-purchase-orders", ["purchase-orders"], "mutation", "kitchen"),
+  feature("GET", "/api/procurement/collaborative-purchase-orders/:id", ["purchase-orders"], "read", "both"),
+  feature("POST", "/api/procurement/collaborative-purchase-orders/:id/contributions", ["purchase-orders"], "mutation", "kitchen"),
+  feature("PUT", "/api/procurement/collaborative-purchase-orders/:id/contributions/me", ["purchase-orders"], "mutation", "kitchen"),
+  feature("DELETE", "/api/procurement/collaborative-purchase-orders/:id/contributions/me", ["purchase-orders"], "mutation", "kitchen"),
+  feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/status", ["purchase-orders"], "mutation"),
 
   // --- stock distribution ---
   feature("GET", "/api/procurement/distributions/logs", ["stock-distribution"], "read"),

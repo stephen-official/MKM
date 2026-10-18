@@ -5,10 +5,12 @@ import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { authorize } from "../middleware/auth.js";
 import { StockItem } from "../models/InventoryModels.js";
+import { StockGroup } from "../models/InventoryModels.js";
 import { isSuperAdmin } from "../utils/roles.js";
 import {
   CatalogError, buildProductUpdate, ensurePresetUnits, kitchensHolding, sendCatalogError, serializeProduct
 } from "../catalog/productService.js";
+import { createProductWorkbook, PRODUCT_COLUMNS, rowToProduct } from "../catalog/productWorkbook.js";
 
 export const productRoutes = express.Router();
 
@@ -21,6 +23,7 @@ const upload = multer({
     params: { folder: "inventory_management", allowed_formats: ["jpg", "png", "jpeg", "webp"], transformation: [{ width: 500, height: 500, crop: "limit" }] }
   })
 });
+const workbookUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const STATUSES = ["all", "available", "incomplete", "archived"];
 
@@ -38,6 +41,76 @@ productRoutes.get("/units", adminOnly, async (_req, res) => {
   } catch (error) {
     sendCatalogError(res, error);
   }
+});
+
+productRoutes.get("/export/excel", adminOnly, async (_req, res) => {
+  try {
+    const docs = await StockItem.find().populate("unitId", "name symbol").populate("stockGroupId", "name").sort({ name: 1 }).lean();
+    const workbook = await createProductWorkbook(docs.map((doc) => serializeProduct(doc)));
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", 'attachment; filename="products-export.xlsx"');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) { sendCatalogError(res, error); }
+});
+
+productRoutes.get("/import-template", adminOnly, async (_req, res) => {
+  const workbook = await createProductWorkbook([], { template: true });
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", 'attachment; filename="products-import-template.xlsx"');
+  await workbook.xlsx.write(res);
+  res.end();
+});
+
+productRoutes.post("/import", adminOnly, workbookUpload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) throw new CatalogError(400, "IMPORT_FILE_REQUIRED", "Choose an Excel (.xlsx) file to import.");
+    const ExcelJS = (await import("exceljs")).default;
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
+    const sheet = workbook.getWorksheet("Products");
+    if (!sheet) throw new CatalogError(400, "INVALID_IMPORT", "The workbook needs a sheet named Products.");
+    const headersMatch = PRODUCT_COLUMNS.every(([header], index) => String(sheet.getRow(1).getCell(index + 1).value || "").trim() === header);
+    if (!headersMatch) throw new CatalogError(400, "INVALID_IMPORT", "Use the current Products import template; its column headings must not be changed.");
+    const units = await ensurePresetUnits();
+    const unitBySymbol = new Map(units.map((unit) => [unit.symbol, unit]));
+    const groups = await StockGroup.find().lean();
+    const groupByName = new Map(groups.map((group) => [group.name.trim().toLowerCase(), group]));
+    const results = [];
+    for (let index = 2; index <= sheet.rowCount; index += 1) {
+      const row = rowToProduct(sheet.getRow(index));
+      if (!Object.values(row).some((value) => value !== "" && value !== false && (!Array.isArray(value) || value.length))) continue;
+      try {
+        const existing = row.id ? await StockItem.findById(row.id).lean() : null;
+        if (row.id && !existing) throw new CatalogError(404, "NOT_FOUND", "Product ID was not found.");
+        const group = groupByName.get(row.groupName.toLowerCase());
+        const unit = unitBySymbol.get(row.unitSymbol);
+        if ((row.archived || (existing && Boolean(row.archived) !== Boolean(existing.archived))) && !isSuperAdmin(req.user.role)) throw new CatalogError(403, "ARCHIVE_SUPER_ADMIN_ONLY", "Only a super-admin can archive or restore products.");
+        if (existing && row.archived && !existing.archived) {
+          const held = await kitchensHolding([existing._id]);
+          if ((held.get(String(existing._id)) || 0) > 0) throw new CatalogError(409, "STOCK_HELD", "This product cannot be archived while a kitchen still holds it.");
+        }
+        const body = {
+          ...row, stockGroupId: group?._id, unitId: unit?._id,
+          ...(isSuperAdmin(req.user.role) ? { pricePerUnit: row.pricePerUnit, packs: row.packs } : {
+            packs: row.packs.map(({ price, ...pack }) => pack)
+          })
+        };
+        const update = await buildProductUpdate(body, { canPrice: isSuperAdmin(req.user.role), existing, userId: req.user.sub, allowBlankPrice: true });
+        if (existing) {
+          await StockItem.updateOne({ _id: existing._id }, { $set: { ...update, archived: row.archived, archivedAt: row.archived ? new Date() : null, archivedBy: row.archived ? req.user.sub : null } });
+          results.push({ row: index, action: "updated", name: update.name });
+        } else {
+          const created = await StockItem.create({ ...update, archived: row.archived, ...(row.archived ? { archivedAt: new Date(), archivedBy: req.user.sub } : {}) });
+          results.push({ row: index, action: "created", name: created.name });
+        }
+      } catch (error) {
+        results.push({ row: index, action: "error", message: error.message || "Could not import this row." });
+      }
+    }
+    const failed = results.filter((result) => result.action === "error");
+    res.json({ imported: results.length - failed.length, failed: failed.length, results });
+  } catch (error) { sendCatalogError(res, error); }
 });
 
 productRoutes.post("/upload-image", adminOnly, upload.single("image"), (req, res) => {

@@ -39,7 +39,7 @@ const samePrice = (a, b) => (a ?? null) === (b ?? null) || (isValidPrice(a) && i
  * Turns a request body into the fields to save. `canPrice` is true only for a super-admin: anyone else may not
  * change a price, and a pack whose size they change loses its price until a super-admin sets it again.
  */
-export const buildProductUpdate = async (body, { canPrice, existing = null, userId = null }) => {
+export const buildProductUpdate = async (body, { canPrice, existing = null, userId = null, allowBlankPrice = false }) => {
   const errors = {};
   const update = {};
 
@@ -86,7 +86,7 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
   // --- price per unit ---
   const priceInput = body.pricePerUnit === undefined ? existing?.pricePerUnit ?? null : toNumber(body.pricePerUnit);
   if (canPrice) {
-    if (!isValidPrice(priceInput)) errors.pricePerUnit = "Enter a price per unit greater than zero.";
+    if (!isValidPrice(priceInput) && !allowBlankPrice) errors.pricePerUnit = "Enter a price per unit greater than zero.";
     else update.pricePerUnit = priceInput;
   } else if (!samePrice(priceInput, existing?.pricePerUnit ?? null)) {
     throw new CatalogError(403, "PRICE_SUPER_ADMIN_ONLY", "Only a super-admin can set or change prices.");
@@ -111,7 +111,7 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
     if (!Number.isFinite(size) || size <= 0) problems.size = "Enter how much one pack holds.";
     let price = input.price === undefined ? before?.price ?? null : toNumber(input.price);
     if (canPrice) {
-      if (!isValidPrice(price)) problems.price = "Enter the pack price.";
+      if (!isValidPrice(price) && !allowBlankPrice) problems.price = "Enter the pack price.";
     } else {
       if (!samePrice(price, before?.price ?? null)) throw new CatalogError(403, "PRICE_SUPER_ADMIN_ONLY", "Only a super-admin can set or change prices.");
       if (before && size !== before.size) price = null; // a resized pack must be re-priced by a super-admin
