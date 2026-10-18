@@ -1,0 +1,8 @@
+.df { align-items: center; background: #fff; border: 1px solid #cfd9d3; border-radius: 10px; box-sizing: border-box; color: #17231c; display: flex; gap: 8px; min-height: 44px; padding: 0 12px; position: relative; width: 100%; }
+.df > svg { color: #0f766e; flex: 0 0 auto; }
+.df__text { font-size: .95rem; font-weight: 700; }
+.df__text--empty { color: #8a958f; font-weight: 500; }
+/* Screens style their inputs (widths, padding); the invisible picker must still cover the whole box. */
+.df input.df__input { border: 0 !important; cursor: pointer; height: 100% !important; inset: 0; margin: 0; max-width: none !important; opacity: 0; padding: 0 !important; position: absolute; width: 100% !important; }
+.df--disabled { background: #f1f4f2; color: #8a958f; }
+.df:focus-within { border-color: #0f766e; box-shadow: 0 0 0 3px #d0ece7; }

@@ -141,7 +141,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
 }
 
 /** "Ask for supplies": start a shared order, add items to another kitchen's open order, and follow each order. */
-export default function KitchenOrders({ products = [], godownId, onShowPast, canShowPast = true }) {
+export default function KitchenOrders({ products = [], godownId, onShowPast, canShowPast = true, onOrdersLoaded }) {
   const [orders, setOrders] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -158,6 +158,7 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
     try {
       const [list, figures] = await Promise.all([api.get(BASE, { params: { limit: 100 } }), api.get("/ordering-settings")]);
       setOrders(list.data.items || []);
+      onOrdersLoaded?.(list.data.items || []);
       setSettings(figures.data.settings);
       setFailed(false);
     } catch {
@@ -166,7 +167,7 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
       setLoading(false);
       setNow(new Date());
     }
-  }, []);
+  }, [onOrdersLoaded]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);

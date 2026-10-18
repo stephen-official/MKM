@@ -150,14 +150,16 @@ export default function KitchenStock({
                     <div>
                       <h2>{itemName(item)}</h2>
                       {unavailable
-                        ? <span className="ks-status ks-status--unavailable">Unavailable</span>
+                        ? <span className="ks-status ks-status--unavailable">{item.archived ? "Discontinued" : "Unavailable"}</span>
                         : <span className={`ks-status ks-status--${health.tone}`}>{health.label}</span>}
                     </div>
                     <p className="ks-quantity"><strong>{formatStockQuantity(health.quantity, unit, item)}</strong></p>
                   </div>
                   <div className="ks-card__footer">
                     <p>{unavailable
-                      ? "Can’t be used until an admin finishes setting up this product."
+                      ? item.archived
+                        ? "This product has been discontinued and can’t be used."
+                        : "Can’t be used until an admin finishes setting up this product."
                       : health.threshold > 0 ? `Low-stock level: ${formatQuantity(health.threshold)} ${unit}` : "No low-stock level set"}</p>
                     {canRecordUsage && (
                       <button type="button" onClick={() => onRecordUsage?.(item)} disabled={unavailable || health.key === "out"}>

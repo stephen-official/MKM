@@ -1,6 +1,8 @@
 import { ChevronRight, Minus, Plus, Search, Utensils } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "react-hot-toast";
 import { toLocalDateKey } from "../../utils/date";
+import DateField from "../ui/DateField";
 import "./KitchenUsageScreen.css";
 
 const itemId = (item) => item?.stockRecordId || item?._id || item?.stockItemId?._id || item?.stockItemId;
@@ -65,6 +67,11 @@ export default function KitchenUsageScreen({
     }
     if (!/^\d*(\.\d{0,3})?$/.test(String(nextValue))) return;
     const available = availableQuantity(item);
+    if (Number(nextValue) > available) {
+      // The server refuses usage above the balance, so cap it, but say so: a real overrun means the stock is wrong.
+      toast.error(`Only ${displayNumber(available)} ${unitOf(item)} in stock. Used more? Tell the central store so your stock can be corrected.`,
+        { id: `usage-cap-${item?.stockRecordId || item?._id}` });
+    }
     const next = Math.min(Number(nextValue) || 0, available);
     onQuantityChange?.(item, nextValue.endsWith?.(".") ? nextValue : next);
   };
@@ -83,14 +90,8 @@ export default function KitchenUsageScreen({
       <section className="kus-controls" aria-label="Usage details">
         <label className="kus-date">
           <span>Usage date</span>
-          <input
-            type="date"
-            value={selectedDate}
-            max={today}
-            required
-            onChange={(event) => onDateChange?.(event.target.value)}
-            disabled={submitting}
-          />
+          <DateField value={selectedDate} max={today} required label="Usage date"
+            onChange={(value) => onDateChange?.(value)} disabled={submitting} />
         </label>
         <label className="kus-search">
           <span className="kus-visually-hidden">Search kitchen stock</span>

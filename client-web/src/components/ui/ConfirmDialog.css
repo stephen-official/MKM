@@ -1,0 +1,11 @@
+.cd-layer { align-items: flex-end; display: flex; inset: 0; justify-content: center; position: fixed; z-index: 200; }
+.cd-backdrop { background: rgba(15, 30, 22, .45); border: 0; inset: 0; position: absolute; }
+.cd-panel { background: #fff; border-radius: 18px 18px 0 0; box-shadow: 0 -10px 30px rgba(15, 30, 22, .18); color: #17231c; max-width: 480px; padding: 20px 16px max(16px, env(safe-area-inset-bottom)); position: relative; width: 100%; }
+.cd-panel h2 { font-size: 1.1rem; margin: 0 0 6px; }
+.cd-panel p { color: #5d7068; font-size: .9rem; line-height: 1.45; margin: 0 0 16px; }
+.cd-panel footer { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+.cd-panel footer button { border-radius: 12px; font-size: .92rem; font-weight: 800; min-height: 48px; }
+.cd-cancel { background: #fff; border: 1px solid #cfd9d3; color: #335543; }
+.cd-confirm { background: #0f766e; border: 0; color: #fff; }
+.cd-confirm--danger { background: #b4382c; }
+@media (min-width: 700px) { .cd-layer { align-items: center; } .cd-panel { border-radius: 18px; } }
