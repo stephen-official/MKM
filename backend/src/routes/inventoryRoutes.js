@@ -1,28 +1,10 @@
 import express from "express";
 import ExcelJS from "exceljs";
-import multer from "multer";
-import { v2 as cloudinary } from "cloudinary";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
 import { authorize } from "../middleware/auth.js";
 import { Godown, StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
+import { isAvailable } from "../catalog/completeness.js";
+import { isKitchenRole } from "../utils/roles.js";
 
-// --- Cloudinary Configuration ---
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "inventory_management",
-    allowed_formats: ["jpg", "png", "jpeg", "webp"],
-    transformation: [{ width: 500, height: 500, crop: "limit" }],
-  },
-});
-
-const upload = multer({ storage });
 export const inventoryRoutes = express.Router();
 
 const modelMap = {
@@ -35,17 +17,18 @@ const modelMap = {
 const adminOnly = authorize(["admin"]);
 const adminOrUser = authorize(["admin", "user"]);
 
-
-
-// --- Image Upload (Cloudinary) ---
-inventoryRoutes.post("/stock-items/upload-image", adminOnly, upload.single("image"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ message: "Image file is required" });
-    return res.status(201).json({ imageUrl: req.file.path });
-  } catch (error) {
-    return res.status(500).json({ message: "Cloudinary upload failed", error: error.message });
+/** Products are managed on the products page (price rules live there) and units are fixed presets. */
+const refuseCatalogWrites = (req, res, next) => {
+  if (req.params.type === "stock-items") {
+    return res.status(410).json({ code: "USE_PRODUCTS_PAGE", message: "Products are added and edited on the Products page." });
   }
-});
+  if (req.params.type === "units") {
+    return res.status(409).json({ code: "UNITS_ARE_PRESETS", message: "Units are a fixed preset list and cannot be changed here." });
+  }
+  return next();
+};
+
+
 
 // --- Excel Export ---
 inventoryRoutes.get("/:type/export/excel", adminOnly, async (req, res) => {
@@ -113,7 +96,12 @@ const middleware =
       if (req.params.type === "units")
         query = query.populate("stockGroupId");
 
-      const rows = await query.lean();
+      let rows = await query.lean();
+      if (req.params.type === "stock-items") {
+        // Admin pages use this list to name past records, so they get every product (with `archived`);
+        // kitchens only ever see products that are complete and not archived.
+        if (isKitchenRole(req.user.role)) rows = rows.filter((row) => isAvailable(row, row.unitId));
+      }
       return res.json(rows);
     });
 
@@ -123,7 +111,7 @@ const middleware =
 });
 
 // CREATE
-inventoryRoutes.post("/:type", adminOnly, async (req, res) => {
+inventoryRoutes.post("/:type", adminOnly, refuseCatalogWrites, async (req, res) => {
   try {
     const type = req.params.type;
     const Model = modelMap[type];
@@ -150,19 +138,14 @@ inventoryRoutes.post("/:type", adminOnly, async (req, res) => {
 inventoryRoutes.put(
   "/:type/:id",
   adminOnly,
-  upload.single("image"), // ✅ ADD THIS
+  refuseCatalogWrites,
   async (req, res) => {
     try {
       const type = req.params.type;
       const Model = modelMap[type];
       if (!Model) return res.status(404).json({ message: "Invalid type" });
 
-      let updateData = { ...req.body };
-
-      // ✅ HANDLE IMAGE FOR STOCK ITEMS ONLY
-      if (type === "stock-items" && req.file) {
-        updateData.imageUrl = req.file.path; // Cloudinary URL
-      }
+      const updateData = { ...req.body };
 
       const row = await Model.findByIdAndUpdate(
         req.params.id,
@@ -182,11 +165,14 @@ inventoryRoutes.put(
 
 
 // DELETE
-inventoryRoutes.delete("/:type/:id", adminOnly, async (req, res) => {
+inventoryRoutes.delete("/:type/:id", adminOnly, refuseCatalogWrites, async (req, res) => {
   try {
     const Model = modelMap[req.params.type];
     if (!Model) return res.status(404).json({ message: "Invalid type" });
-    
+    if (req.params.type === "stock-groups" && await StockItem.exists({ stockGroupId: req.params.id })) {
+      return res.status(409).json({ code: "GROUP_IN_USE", message: "Products still belong to this group. Move them to another group first." });
+    }
+
     await Model.findByIdAndDelete(req.params.id);
     return res.json({ message: "Deleted" });
   } catch (error) {

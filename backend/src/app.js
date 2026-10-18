@@ -20,6 +20,8 @@ import { productLedgerRoutes } from "./routes/productLedgerRoutes.js";
 import { executiveRoutes } from "./routes/executiveRoutes.js";
 import { userRoutes } from "./routes/userRoutes.js";
 import { reportScheduleRoutes } from "./routes/reportScheduleRoutes.js";
+import { productRoutes } from "./routes/productRoutes.js";
+import { productRequestRoutes } from "./routes/productRequestRoutes.js";
 
 const app = express();
 
@@ -124,6 +126,8 @@ export const PUBLIC_MOUNTS = [["/api/auth", authRoutes]];
 // mounted at both /api and /api/operations (featureGate normalises the alias).
 export const PROTECTED_MOUNTS = [
   ["/api/inventory", inventoryRoutes],
+  ["/api/products", productRoutes],
+  ["/api/product-requests", productRequestRoutes],
   ["/api/procurement", procurementRoutes],
   ["/api", operationsRoutes],
   ["/api/reports", reportRoutes],

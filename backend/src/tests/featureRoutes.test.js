@@ -28,7 +28,7 @@ test("everyone can read their effective flags", async () => {
   assert.equal(res.body.audience, "admin");
   assert.equal(res.body.version, 0);
   assert.equal(res.body.flags.reports, true);
-  assert.equal(res.body.features.length, 10);
+  assert.equal(res.body.features.length, 11);
   assert.equal((await as(kitchenUser, "get", "/api/features")).body.audience, "kitchen");
   assert.equal((await as(superAdmin, "get", "/api/features")).body.audience, "super_admin");
 });

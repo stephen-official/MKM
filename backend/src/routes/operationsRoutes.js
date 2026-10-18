@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { Consumption, GodownStock, Notification, Request, Transfer } from "../models/FlowModels.js";
 import { io } from "../realtime.js";
+import { bodyItemIds, requireAvailableProducts, stockRecordItemIds } from "../catalog/productService.js";
+import { isAvailable, missingFields } from "../catalog/completeness.js";
 // CRITICAL: Explicitly import these so Mongoose registers the models for population
 import { StockItem, StockGroup, Unit } from "../models/InventoryModels.js";
 import { DailyUsage } from "../models/DailyUsageModel.js";
@@ -48,10 +50,14 @@ operationsRoutes.get("/my-kitchen-stock", authorize(["user", "admin"]), async (r
   { path: "stockGroupId", model: "StockGroup", select: "name" },
   { path: "unitId", model: "Unit", select: "name symbol" }
 ],
-select: "name stockGroupId unitId imageUrl itemType"
+select: "name stockGroupId unitId imageUrl itemType pricePerUnit soldInPacks packs archived"
       });
 
     const formatted = stock.map(s => ({
+  // Kitchens keep seeing stock they hold, but cannot use a product until its details are complete.
+  available: Boolean(s.stockItemId) && isAvailable(s.stockItemId, s.stockItemId.unitId),
+  missing: s.stockItemId ? missingFields(s.stockItemId, s.stockItemId.unitId) : [],
+  archived: Boolean(s.stockItemId?.archived),
   stockRecordId: s._id,
   stockItemId: s.stockItemId?._id,
   stockGroupId: s.stockItemId?.stockGroupId?._id,
@@ -168,8 +174,8 @@ const handleStockProcessing = async (req, res) => {
   }
 };
 
-operationsRoutes.post("/orders", authorize(["user", "admin"]), handleStockProcessing);
-operationsRoutes.post("/consumptions", authorize(["user", "admin"]), handleStockProcessing);
+operationsRoutes.post("/orders", authorize(["user", "admin"]), requireAvailableProducts(stockRecordItemIds), handleStockProcessing);
+operationsRoutes.post("/consumptions", authorize(["user", "admin"]), requireAvailableProducts(stockRecordItemIds), handleStockProcessing);
 
 
 
@@ -860,7 +866,7 @@ operationsRoutes.get("/requests", authorize(["admin", "user"]), async (req, res)
   }
 });
 
-operationsRoutes.post("/requests", authorize(["user"]), async (req, res) => {
+operationsRoutes.post("/requests", authorize(["user"]), requireAvailableProducts(bodyItemIds), async (req, res) => {
   try {
     const created = await Request.create({ 
       ...req.body, 
@@ -1117,6 +1123,7 @@ const transfers = await Transfer.find(filter)
 operationsRoutes.post(
   "/transfers",
   authorize(["admin", "user"]),
+  requireAvailableProducts(bodyItemIds),
   async (req, res) => {
     try {
 
@@ -1322,6 +1329,7 @@ res.json(transfers);
 operationsRoutes.post(
 "/user-transfers",
 authorize(["user"]),
+requireAvailableProducts(bodyItemIds),
 async (req,res)=>{
 
 console.log("BODY");

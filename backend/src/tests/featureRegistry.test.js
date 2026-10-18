@@ -4,7 +4,7 @@ import { FEATURE_KEYS, ROUTE_RULES, classifyRoute, describeFeature, isFeatureKey
 
 test("feature keys are exactly the admin modules", () => {
   assert.deepEqual(FEATURE_KEYS, [
-    "inventory", "indent", "purchase-orders", "stock-distribution", "godowns",
+    "products", "inventory", "indent", "purchase-orders", "stock-distribution", "godowns",
     "transfer-stock", "requests", "consumption", "reports", "product-ledger"
   ]);
   assert.equal(isFeatureKey("executive-report"), false);
@@ -42,7 +42,9 @@ const cases = [
   ["PUT", "/api/inventory/units/abc", "inventory"],
   ["DELETE", "/api/inventory/units/abc", "inventory"],
   ["GET", "/api/inventory/units/export/excel", "inventory"],
-  ["POST", "/api/inventory/stock-items/upload-image", "inventory"],
+  ["POST", "/api/products/upload-image", "products"],
+  ["PUT", "/api/products/123", "products"],
+  ["POST", "/api/product-requests/123/approve", "products"],
   ["GET", "/api/procurement/purchase-orders", "purchase-orders|stock-distribution"],
   ["POST", "/api/procurement/purchase-orders", "purchase-orders"],
   ["GET", "/api/procurement/distributions/leftovers", "stock-distribution"],

@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { GodownStock, IndentRequest } from "../models/FlowModels.js";
 import { isKitchenRole } from "../utils/roles.js";
+import { bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ export const normalizePositiveItems = (items) => {
 export const userOwnsRequest = (request, user) =>
   String(request.userId) === String(user.sub) && String(request.godownId) === String(user.godownId);
 
-router.post("/", authorize(["user"]), async (req, res) => {
+router.post("/", authorize(["user"]), requireAvailableProducts(bodyItemIds), async (req, res) => {
   try {
     const items = normalizePositiveItems(req.body.items);
     if (!items) return res.status(400).json({ message: "Add at least one item with a valid quantity" });
@@ -154,7 +155,7 @@ router.post("/:id/receive", authorize(["user", "admin"]), async (req, res) => {
   }
 });
 
-router.put("/:id", authorize(["user"]), async (req, res) => {
+router.put("/:id", authorize(["user"]), requireAvailableProducts(bodyItemIds), async (req, res) => {
   try {
     const request = await IndentRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: "Supply request not found" });

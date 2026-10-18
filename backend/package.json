@@ -9,7 +9,8 @@
     "test": "NODE_ENV=test node --test --test-concurrency=2 src/tests/*.test.js",
     "test:perf": "NODE_ENV=test PERF=1 node --test --test-concurrency=1 src/tests/executivePerf.test.js",
     "seed": "node src/jobs/seed.js",
-    "create-super-admin": "node src/jobs/create-super-admin.js"
+    "create-super-admin": "node src/jobs/create-super-admin.js",
+    "migrate-product-catalog": "node src/jobs/migrate-product-catalog.js"
   },
   "dependencies": {
     "axios": "^1.15.0",

@@ -27,7 +27,8 @@ export const seedCatalog = async (names = ["Rice", "Dal", "Oil"]) => {
   const group = await StockGroup.create({ name: `Group ${seq}` });
   const unit = await Unit.create({ name: "Kilogram", symbol: "kg", stockGroupId: group._id });
   const items = {};
-  for (const name of names) items[name] = await StockItem.create({ name, stockGroupId: group._id, unitId: unit._id });
+  // A catalog price makes each product complete, so kitchen routes accept it (catalog/completeness.js).
+  for (const name of names) items[name] = await StockItem.create({ name, stockGroupId: group._id, unitId: unit._id, pricePerUnit: 10 });
   return { group, unit, items };
 };
 

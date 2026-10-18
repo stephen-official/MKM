@@ -3,6 +3,7 @@
 // fails if an Express route is missing here or a rule here matches no route.
 
 export const FEATURES = Object.freeze([
+  { key: "products", label: "Products", navPath: "/products", audiences: ["admin", "kitchen"] },
   { key: "inventory", label: "Inventory Setup", navPath: "/inventory-info", audiences: ["admin"] },
   { key: "indent", label: "Purchase Planning", navPath: "/indent", audiences: ["admin", "kitchen"] },
   { key: "purchase-orders", label: "Purchase Orders", navPath: "/purchase-orders", audiences: ["admin"] },
@@ -46,9 +47,23 @@ export const ROUTE_RULES = Object.freeze([
   lookup("GET", "/api/inventory/:type"),
   lookup("GET", "/api/godown-stocks"),
 
+  // --- products (master catalog) + kitchen product requests ---
+  feature("GET", "/api/products/units", ["products"], "read"),
+  feature("POST", "/api/products/upload-image", ["products"], "mutation"),
+  feature("GET", "/api/products", ["products"], "read"),
+  feature("GET", "/api/products/:id", ["products"], "read"),
+  feature("POST", "/api/products", ["products"], "mutation"),
+  feature("PUT", "/api/products/:id", ["products"], "mutation"),
+  feature("POST", "/api/products/:id/archive", ["products"], "mutation"),
+  feature("POST", "/api/products/:id/restore", ["products"], "mutation"),
+  feature("GET", "/api/product-requests/me", ["products"], "read", "kitchen"),
+  feature("GET", "/api/product-requests", ["products"], "read"),
+  feature("POST", "/api/product-requests", ["products"], "mutation", "kitchen"),
+  feature("POST", "/api/product-requests/:id/approve", ["products"], "mutation"),
+  feature("POST", "/api/product-requests/:id/reject", ["products"], "mutation"),
+
   // --- inventory ---
   feature("GET", "/api/inventory/:type/export/excel", ["inventory"], "read"),
-  feature("POST", "/api/inventory/stock-items/upload-image", ["inventory"], "mutation"),
   feature("POST", "/api/inventory/:type", ["inventory"], "mutation"),
   feature("PUT", "/api/inventory/:type/:id", ["inventory"], "mutation"),
   feature("DELETE", "/api/inventory/:type/:id", ["inventory"], "mutation"),

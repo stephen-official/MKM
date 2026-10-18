@@ -1,6 +1,7 @@
 import express from "express";
 import { DailyUsage } from "../models/DailyUsageModel.js";
 import { authorize } from "../middleware/auth.js";
+import { bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
 
 const dailyUsageRoutes = express.Router();
 
@@ -44,6 +45,7 @@ async (req, res) => {
 dailyUsageRoutes.post(
   "/",
   authorize(["user", "admin"]),
+  requireAvailableProducts(bodyItemIds),
   async (req, res) => {
     try {
       console.log("=== DAILY USAGE ===");
