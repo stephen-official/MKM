@@ -110,3 +110,44 @@ test("editing migrated daily usage corrects the history without moving stock", a
   const batches = await StockBatch.find({ godownId: kitchen._id, stockItemId: rice._id }).sort({ receivedAt: 1 });
   assert.deepEqual(batches.map((batch) => batch.remainingQtyBaseUnit), [8, 12]);
 });
+
+test("deleting a kitchen stock row empties its batches so they cannot feed later usage", async () => {
+  const admin = await createUser({ role: "admin" });
+  const deleted = await request(app).delete(`/api/procurement/godown-stocks/${stock._id}`)
+    .set("Authorization", `Bearer ${admin.token}`);
+  assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
+
+  assert.equal(await GodownStock.countDocuments({ _id: stock._id }), 0);
+  const batches = await StockBatch.find({ godownId: kitchen._id, stockItemId: rice._id }).sort({ receivedAt: 1 });
+  assert.deepEqual(batches.map((batch) => batch.remainingQtyBaseUnit), [0, 0]);
+});
+
+test("over-using stock names the product in the error", async () => {
+  const response = await request(app).post("/api/consumptions")
+    .set("Authorization", `Bearer ${cook.token}`)
+    .send({ date: "2026-10-18", items: [{ stockRecordId: stock._id, qtyBaseUnit: 25 }] });
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /Insufficient stock for Rice/);
+});
+
+test("an admin can edit one line while another line's stock row no longer exists", async () => {
+  const { items: { Dal: dal } } = await seedCatalog(["Dal"]);
+  const dalStock = await stockRow(kitchen, dal, 5);
+  const created = await request(app).post("/api/consumptions")
+    .set("Authorization", `Bearer ${cook.token}`)
+    .send({ date: "2026-10-18", items: [{ stockRecordId: stock._id, qtyBaseUnit: 10 }, { stockRecordId: dalStock._id, qtyBaseUnit: 2 }] });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const admin = await createUser({ role: "admin" });
+  await request(app).delete(`/api/procurement/godown-stocks/${dalStock._id}`).set("Authorization", `Bearer ${admin.token}`);
+  const edited = await request(app).patch(`/api/consumptions/${created.body._id}`)
+    .set("Authorization", `Bearer ${admin.token}`)
+    .send({ items: [{ stockItemId: String(rice._id), qtyBaseUnit: 12 }, { stockItemId: String(dal._id), qtyBaseUnit: 2 }] });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+
+  assert.equal((await GodownStock.findById(stock._id)).qtyBaseUnit, 8);
+  const saved = await Consumption.findById(created.body._id).lean();
+  assert.deepEqual(saved.items.map((item) => item.qtyBaseUnit), [12, 2]);
+  const dalBatches = await StockBatch.find({ godownId: kitchen._id, stockItemId: dal._id });
+  assert.deepEqual(dalBatches.map((batch) => batch.remainingQtyBaseUnit), [0]);
+});

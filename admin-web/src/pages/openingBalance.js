@@ -1,6 +1,8 @@
+import { todayInBusinessTz } from "../businessTime.js";
+
 export const emptyOpeningBalance = (godownId = "") => ({
   godownId, stockItemId: "", quantityBaseUnit: "",
-  effectiveDate: new Date().toISOString().slice(0, 10), reason: "Initial stock count",
+  effectiveDate: todayInBusinessTz(), reason: "Initial stock count",
 });
 
 export const openingBalanceErrors = (form) => {

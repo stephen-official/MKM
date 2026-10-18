@@ -18,6 +18,8 @@ export const packSnapshot = (line = {}) => {
 };
 
 export const packQuantityMatchesBase = (line, baseQuantity) => {
+  // A line received as nothing (0 packs, 0 base units) is a valid partial intake.
+  if (Number(baseQuantity) === 0 && !Number(line?.packQuantity)) return true;
   const snapshot = packSnapshot(line);
   const attemptedPack = Boolean(line?.packId || line?.packName || line?.packSize || line?.packQuantity);
   if (attemptedPack && !snapshot.packId) return false;

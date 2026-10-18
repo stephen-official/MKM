@@ -14,6 +14,8 @@ import { Godown, StockItem } from "../models/InventoryModels.js";
 import { StockBatch } from "../models/StockBatchModel.js";
 import { OpeningBalance } from "../models/OpeningBalanceModel.js";
 import { isValidPrice } from "../catalog/completeness.js";
+import { isSuperAdmin } from "../utils/roles.js";
+import { parseOpeningDate } from "../stock/openingDate.js";
 
 export const procurementRoutes = express.Router();
 const adminOnly = authorize(["admin"]);
@@ -145,6 +147,7 @@ procurementRoutes.get("/purchase-orders", adminOnly, async (_req, res) => {
 procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
   const session = await mongoose.startSession();
   try {
+    let created;
     await session.withTransaction(async () => {
       const items = (req.body.items || []).map((item) => ({ ...item, ...packSnapshot(item) }));
       if (!items.length || items.some((item) => Number(item.receivedQty) < 0 || !packQuantityMatchesBase(item, item.receivedQty))) {
@@ -171,7 +174,11 @@ procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
         { status: "stock_received" }, 
         { session }
       );
-      for (const item of items.filter((line) => Number(line.receivedQty) > 0 && Number(line.unitPrice) >= 0)) {
+      // Catalog prices are super-admin only (see catalog/productService.js); an admin's PO keeps its price on the PO and batches.
+      const pricedLines = isSuperAdmin(req.user.role)
+        ? items.filter((line) => Number(line.receivedQty) > 0 && isValidPrice(Number(line.unitPrice)))
+        : [];
+      for (const item of pricedLines) {
         const update = {
           $set: {
             pricePerUnit: Number(item.unitPrice),
@@ -179,7 +186,7 @@ procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
             priceUpdatedBy: req.user.sub,
           },
         };
-        if (item.packId && Number(item.packPrice) >= 0) {
+        if (item.packId && isValidPrice(Number(item.packPrice))) {
           update.$set["packs.$[pack].price"] = Number(item.packPrice);
         }
         await StockItem.updateOne(
@@ -187,9 +194,10 @@ procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
           { session, ...(item.packId ? { arrayFilters: [{ "pack._id": item.packId }] } : {}) },
         );
       }
-      
-      res.status(201).json(po[0]);
+      created = po[0];
     });
+    // Reply only after the commit, so a failed commit is never reported as created.
+    res.status(201).json(created);
   } catch (error) {
     res.status(error.status || 500).json({ message: "PO Creation failed", error: error.message });
   } finally {
@@ -328,11 +336,7 @@ procurementRoutes.post("/opening-balances", superAdminOnly, async (req, res) => 
   const { godownId, stockItemId, quantityBaseUnit, effectiveDate, reason } = req.body || {};
   const quantity = Number(quantityBaseUnit);
   const cleanReason = String(reason || "").trim();
-  const effectiveAt = /^\d{4}-\d{2}-\d{2}$/.test(String(effectiveDate || ""))
-    ? new Date(`${effectiveDate}T00:00:00.000Z`)
-    : null;
-  const validEffectiveDate = effectiveAt && !Number.isNaN(effectiveAt.getTime())
-    && effectiveAt.toISOString().slice(0, 10) === effectiveDate;
+  const effectiveAt = parseOpeningDate(String(effectiveDate || ""));
 
   if (!mongoose.isValidObjectId(godownId) || !mongoose.isValidObjectId(stockItemId)) {
     return res.status(400).json({ message: "Choose a valid kitchen and product" });
@@ -340,7 +344,7 @@ procurementRoutes.post("/opening-balances", superAdminOnly, async (req, res) => 
   if (!Number.isFinite(quantity) || quantity <= 0) {
     return res.status(400).json({ message: "Opening quantity must be greater than zero" });
   }
-  if (!validEffectiveDate || effectiveAt > new Date()) {
+  if (!effectiveAt) {
     return res.status(400).json({ message: "Effective date must be today or earlier" });
   }
   if (cleanReason.length < 3 || cleanReason.length > 500) {
@@ -351,13 +355,12 @@ procurementRoutes.post("/opening-balances", superAdminOnly, async (req, res) => 
   try {
     let result;
     await session.withTransaction(async () => {
-      const [godown, product, stock, priorBatch, priorOpening] = await Promise.all([
-        Godown.findOne({ _id: godownId, active: true }).session(session),
-        StockItem.findOne({ _id: stockItemId, archived: { $ne: true } }).populate("unitId", "symbol").session(session),
-        GodownStock.findOne({ godownId, stockItemId }).session(session),
-        StockBatch.exists({ godownId, stockItemId }).session(session),
-        OpeningBalance.exists({ godownId, stockItemId }).session(session),
-      ]);
+      // One operation at a time: MongoDB does not support parallel operations inside a transaction.
+      const godown = await Godown.findOne({ _id: godownId, active: true }).session(session);
+      const product = await StockItem.findOne({ _id: stockItemId, archived: { $ne: true } }).populate("unitId", "symbol").session(session);
+      const stock = await GodownStock.findOne({ godownId, stockItemId }).session(session);
+      const priorBatch = await StockBatch.exists({ godownId, stockItemId }).session(session);
+      const priorOpening = await OpeningBalance.exists({ godownId, stockItemId }).session(session);
       if (!godown) throw Object.assign(new Error("Active kitchen not found"), { status: 404 });
       if (!product) throw Object.assign(new Error("Active product not found"), { status: 404 });
       if (!isValidPrice(product.pricePerUnit)) {
@@ -457,10 +460,19 @@ procurementRoutes.post("/godown-stocks/:id/threshold", adminOnly, async (req, re
 });
 
 procurementRoutes.delete("/godown-stocks/:id", adminOnly, async (req, res) => {
-  console.log("DELETE route hit:", req.params.id);
-
+  const session = await mongoose.startSession();
   try {
-    const deletedStock = await GodownStock.findByIdAndDelete(req.params.id);
+    let deletedStock;
+    await session.withTransaction(async () => {
+      deletedStock = await GodownStock.findByIdAndDelete(req.params.id, { session });
+      if (!deletedStock) return;
+      // Empty (not delete) the row's batches: they keep their history but can no longer feed FIFO usage.
+      await StockBatch.updateMany(
+        { godownId: deletedStock.godownId, stockItemId: deletedStock.stockItemId, remainingQtyBaseUnit: { $gt: 0 } },
+        { $set: { remainingQtyBaseUnit: 0 } },
+        { session },
+      );
+    });
 
     if (!deletedStock) {
       return res.status(404).json({ message: "Stock item not found" });
@@ -475,6 +487,8 @@ procurementRoutes.delete("/godown-stocks/:id", adminOnly, async (req, res) => {
     res.status(500).json({
       message: err.message
     });
+  } finally {
+    await session.endSession();
   }
 });
 

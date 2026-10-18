@@ -136,15 +136,14 @@ const handleStockProcessing = async (req, res) => {
         if (!updatedStock) throw new Error(`Item not found in inventory.`);
 
         const qtyToDeduct = Number(item.qtyBaseUnit || item.quantity);
+        if (qtyToDeduct > Number(updatedStock.qtyBaseUnit || 0)) {
+          throw new Error(`Insufficient stock for ${updatedStock.stockItemId.name}.`);
+        }
         const batchAllocations = await deductFifo({
           godownId, stockItemId: updatedStock.stockItemId._id,
           quantity: qtyToDeduct, stock: updatedStock, session,
         });
         updatedStock.qtyBaseUnit -= qtyToDeduct;
-
-        if (updatedStock.qtyBaseUnit < 0) {
-          throw new Error(`Insufficient stock for ${updatedStock.stockItemId.name}.`);
-        }
         await updatedStock.save({ session });
 
         // Low Stock Alert Logic
@@ -419,8 +418,18 @@ operationsRoutes.patch(
             originalPrices.set(key, old.unitPriceAtIssue ?? null);
           }
         }
+        // Lines whose quantity did not change keep their recorded allocations and never touch stock,
+        // so an edit still works when another line's stock row has since been removed.
+        // Legacy records can hold several lines for one item; those are merged, so they never count as unchanged.
+        const oldLineCount = new Map();
+        for (const old of oldItems) oldLineCount.set(String(old.stockItemId), (oldLineCount.get(String(old.stockItemId)) || 0) + 1);
+        const unchanged = new Map(oldItems
+          .filter((old) => oldLineCount.get(String(old.stockItemId)) === 1
+            && newMap.get(String(old.stockItemId))?.qty === Number(old.qtyBaseUnit || 0))
+          .map((old) => [String(old.stockItemId), old]));
         for (const old of oldItems) {
           const oldQuantity = Number(old.qtyBaseUnit || 0);
+          if (unchanged.has(String(old.stockItemId))) continue;
           if (oldQuantity > 0) {
             await restoreBatchAllocations({
               godownId, stockItemId: old.stockItemId,
@@ -434,6 +443,11 @@ operationsRoutes.patch(
         }
         const replacementLines = [];
         for (const item of items.filter((entry) => Number(entry.qtyBaseUnit) !== 0)) {
+          const kept = unchanged.get(String(item.stockItemId));
+          if (kept) {
+            replacementLines.push(kept.toObject());
+            continue;
+          }
           const stock = await GodownStock.findOne({ godownId, stockItemId: item.stockItemId }).session(session);
           const quantity = Number(item.qtyBaseUnit);
           const existingPrice = originalPrices.get(String(item.stockItemId));

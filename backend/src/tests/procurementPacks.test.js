@@ -54,7 +54,8 @@ test("pack snapshots survive indent, PO and distribution while stock stays in ba
   });
   assert.equal(po.status, 201, JSON.stringify(po.body));
   assert.equal(po.body.totalAmount, 3000);
-  assert.equal((await StockItem.findById(rice._id)).pricePerUnit, 60);
+  // Only a super-admin may change catalog prices; an admin's PO keeps its price on the PO and batches.
+  assert.equal((await StockItem.findById(rice._id)).pricePerUnit, 58);
 
   const distribution = await auth(admin, "post", "/api/procurement/distributions").send({
     purchaseOrderId: po.body._id,
@@ -76,4 +77,42 @@ test("a kitchen supply request stores the chosen pack snapshot", async () => {
   assert.equal(response.status, 201, JSON.stringify(response.body));
   assert.equal(response.body.items[0].packQuantity, 2);
   assert.equal(response.body.items[0].qtyBaseUnit, 50);
+});
+
+const receivePo = async (actor, line) => {
+  const indent = await auth(admin, "post", "/api/procurement/indents").send({
+    items: [{ ...packed(3), orderedQty: 75, qtyBaseUnit: 75, unitPrice: 58, amount: 4350 }],
+  });
+  return auth(actor, "post", "/api/procurement/purchase-orders").send({ indentId: indent.body._id, items: [line] });
+};
+
+test("a super-admin's PO updates the catalog unit and pack prices", async () => {
+  const superAdmin = await createUser({ role: "super_admin" });
+  const po = await receivePo(superAdmin, { ...packed(2, 1500), orderedQty: 75, receivedQty: 50, qtyBaseUnit: 50, unitPrice: 60, amount: 3000 });
+  assert.equal(po.status, 201, JSON.stringify(po.body));
+  const product = await StockItem.findById(rice._id);
+  assert.equal(product.pricePerUnit, 60);
+  assert.equal(product.packs[0].price, 1500);
+});
+
+test("a zero PO price never replaces the catalog price, even for a super-admin", async () => {
+  const superAdmin = await createUser({ role: "super_admin" });
+  const po = await receivePo(superAdmin, { stockItemId: rice._id, orderedQty: 75, receivedQty: 50, unitPrice: 0, amount: 0 });
+  assert.equal(po.status, 201, JSON.stringify(po.body));
+  assert.equal((await StockItem.findById(rice._id)).pricePerUnit, 58);
+});
+
+test("a pack line received as zero is accepted so partial intakes can be recorded", async () => {
+  const indent = await auth(admin, "post", "/api/procurement/indents").send({
+    items: [{ ...packed(2), orderedQty: 50, qtyBaseUnit: 50, unitPrice: 58, amount: 2900 }],
+  });
+  const po = await auth(admin, "post", "/api/procurement/purchase-orders").send({
+    indentId: indent.body._id,
+    items: [
+      { ...packed(0), orderedQty: 50, receivedQty: 0, qtyBaseUnit: 0, unitPrice: 58, amount: 0 },
+      { stockItemId: rice._id, orderedQty: 10, receivedQty: 10, qtyBaseUnit: 10, unitPrice: 58, amount: 580 },
+    ],
+  });
+  assert.equal(po.status, 201, JSON.stringify(po.body));
+  assert.equal(po.body.totalAmount, 580);
 });
