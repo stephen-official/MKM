@@ -16,6 +16,7 @@ import {
 import { useConfirm } from "../components/ui/useConfirm.jsx";
 import { ConsumptionDetail } from "./consumption/ConsumptionDetail.jsx";
 import { exportAllRecords, exportRecord } from "./consumption/exportExcel.js";
+import { deleteUsageMessage } from "./usageRecord.js";
 import {
   compareRecords,
   errorMessage,
@@ -177,7 +178,7 @@ export const ConsumptionPage = () => {
     const record = activeRecord;
     const ok = await confirm({
       title: "Delete usage record?",
-      message: `Delete this usage record for ${record.userId?.name || "this user"}? The used quantity will be returned to godown stock.`,
+      message: deleteUsageMessage(record),
       confirmLabel: "Delete",
       variant: "danger"
     });

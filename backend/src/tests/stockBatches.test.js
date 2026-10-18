@@ -5,6 +5,7 @@ import { startDb, clearDb, stopDb } from "./helpers/db.js";
 import { createGodown, createUser } from "./helpers/auth.js";
 import { seedCatalog, stockRow } from "./helpers/fixtures.js";
 import { StockBatch } from "../models/StockBatchModel.js";
+import { Consumption, GodownStock } from "../models/FlowModels.js";
 
 let app;
 let kitchen;
@@ -55,6 +56,57 @@ test("deleting a consumption restores its exact batch allocations", async () => 
     .set("Authorization", `Bearer ${admin.token}`);
   assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
 
+  const batches = await StockBatch.find({ godownId: kitchen._id, stockItemId: rice._id }).sort({ receivedAt: 1 });
+  assert.deepEqual(batches.map((batch) => batch.remainingQtyBaseUnit), [8, 12]);
+});
+
+test("admin edits match batches by stock item even when the id arrives as a string", async () => {
+  const created = await request(app).post("/api/consumptions")
+    .set("Authorization", `Bearer ${cook.token}`)
+    .send({ date: "2026-10-18", items: [{ stockRecordId: stock._id, qtyBaseUnit: 10 }] });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+
+  const admin = await createUser({ role: "admin" });
+  const edited = await request(app).patch(`/api/consumptions/${created.body._id}`)
+    .set("Authorization", `Bearer ${admin.token}`)
+    .send({ items: [{ stockItemId: String(rice._id), qtyBaseUnit: 12 }] });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+
+  const batches = await StockBatch.find({ godownId: kitchen._id, stockItemId: rice._id }).sort({ receivedAt: 1 });
+  assert.deepEqual(batches.map((batch) => batch.remainingQtyBaseUnit), [0, 8]);
+  assert.equal((await GodownStock.findById(stock._id)).qtyBaseUnit, 8);
+});
+
+const migratedUsage = (qty) => Consumption.create({
+  godownId: kitchen._id, userId: cook.user._id, date: "2026-09-01", sourceType: "migrated_daily_usage",
+  items: [{ stockItemId: rice._id, qtyBaseUnit: qty, unitPriceAtIssue: null, amountAtIssue: null, batchAllocations: [] }],
+});
+
+test("deleting migrated daily usage leaves stock and batches alone, since it never deducted stock", async () => {
+  const migrated = await migratedUsage(5);
+  const admin = await createUser({ role: "admin" });
+  const deleted = await request(app).delete(`/api/consumptions/${migrated._id}`)
+    .set("Authorization", `Bearer ${admin.token}`);
+  assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
+
+  assert.equal(await Consumption.countDocuments({ _id: migrated._id }), 0);
+  assert.equal((await GodownStock.findById(stock._id)).qtyBaseUnit, 20);
+  const batches = await StockBatch.find({ godownId: kitchen._id, stockItemId: rice._id }).sort({ receivedAt: 1 });
+  assert.deepEqual(batches.map((batch) => batch.remainingQtyBaseUnit), [8, 12]);
+});
+
+test("editing migrated daily usage corrects the history without moving stock", async () => {
+  const migrated = await migratedUsage(5);
+  const admin = await createUser({ role: "admin" });
+  const edited = await request(app).patch(`/api/consumptions/${migrated._id}`)
+    .set("Authorization", `Bearer ${admin.token}`)
+    .send({ items: [{ stockItemId: String(rice._id), qtyBaseUnit: 3 }] });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+
+  const saved = await Consumption.findById(migrated._id).lean();
+  assert.equal(saved.sourceType, "migrated_daily_usage");
+  assert.deepEqual(saved.items.map((item) => item.qtyBaseUnit), [3]);
+  assert.equal((await GodownStock.findById(stock._id)).qtyBaseUnit, 20);
   const batches = await StockBatch.find({ godownId: kitchen._id, stockItemId: rice._id }).sort({ receivedAt: 1 });
   assert.deepEqual(batches.map((batch) => batch.remainingQtyBaseUnit), [8, 12]);
 });

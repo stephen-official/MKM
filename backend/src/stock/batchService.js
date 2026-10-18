@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { StockBatch } from "../models/StockBatchModel.js";
 import { round2 } from "../utils/money.js";
 import { pricesForKitchen } from "../executive/valuation.js";
@@ -23,8 +24,10 @@ export const createStockBatch = async ({
 };
 
 const ensureOpeningCoverage = async ({ godownId, stockItemId, stock, session }) => {
+  // Aggregates skip Mongoose casting, so a string id from a request body would match no batches.
+  const itemId = new mongoose.Types.ObjectId(String(stockItemId));
   const totals = await StockBatch.aggregate([
-      { $match: { godownId: stock.godownId, stockItemId, remainingQtyBaseUnit: { $gt: 0 } } },
+      { $match: { godownId: stock.godownId, stockItemId: itemId, remainingQtyBaseUnit: { $gt: 0 } } },
       { $group: { _id: null, quantity: { $sum: "$remainingQtyBaseUnit" } } },
     ]).session(session);
   const covered = Number(totals[0]?.quantity || 0);

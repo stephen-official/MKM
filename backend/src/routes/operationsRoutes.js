@@ -298,6 +298,15 @@ operationsRoutes.patch(
         // ----------------------------------------------------
         // Get every affected stock item
         // ----------------------------------------------------
+        // Migrated daily usage never deducted stock, so correcting it only rewrites history.
+        if (consumption.sourceType === "migrated_daily_usage") {
+          consumption.items = [...newMap].filter(([, data]) => data.qty > 0).map(([stockItemId, data]) => ({
+            stockItemId, qtyBaseUnit: data.qty, unitPriceAtIssue: null, amountAtIssue: null, batchAllocations: [],
+          }));
+          await consumption.save({ session });
+          return;
+        }
+
         const affectedIds = new Set([
           ...oldMap.keys(),
           ...newMap.keys()
@@ -534,8 +543,10 @@ operationsRoutes.delete(
 
         // ----------------------------------------------------
         // Return every consumed quantity to stock
+        // (migrated daily usage never deducted any, so it returns nothing)
         // ----------------------------------------------------
-        for (const item of consumption.items || []) {
+        const linesToReturn = consumption.sourceType === "migrated_daily_usage" ? [] : consumption.items || [];
+        for (const item of linesToReturn) {
           const stockItemId = item.stockItemId;
           const qtyToReturn = Number(item.qtyBaseUnit || 0);
 
@@ -591,6 +602,7 @@ operationsRoutes.delete(
         // Delete consumption
         // ----------------------------------------------------
         deletedConsumption = {
+          stockRestored: linesToReturn.length > 0,
           _id: consumption._id,
           godownId: consumption.godownId,
           userId: consumption.userId
@@ -621,7 +633,7 @@ operationsRoutes.delete(
       );
 
       res.json({
-        message: "Consumption deleted and stock restored",
+        message: deletedConsumption.stockRestored ? "Consumption deleted and stock restored" : "Consumption deleted",
         consumptionId: deletedConsumption._id
       });
 
