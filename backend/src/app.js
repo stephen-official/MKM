@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
 import { authenticate } from "./middleware/auth.js";
 import { featureGate } from "./features/featureGate.js";
+import { kitchenPriceFilter } from "./utils/kitchenSafe.js";
 import { featureRoutes } from "./routes/featureRoutes.js";
 import { authRoutes } from "./routes/authRoutes.js";
 import { inventoryRoutes } from "./routes/inventoryRoutes.js";
@@ -144,7 +145,7 @@ export const PROTECTED_MOUNTS = [
 ];
 
 app.use("/api/auth", authLimiter, authRoutes);
-for (const [mountPath, router] of PROTECTED_MOUNTS) app.use(mountPath, authenticate, featureGate, router);
+for (const [mountPath, router] of PROTECTED_MOUNTS) app.use(mountPath, authenticate, featureGate, kitchenPriceFilter, router);
 
 
 // --- 6. ERROR HANDLING (OPTIONAL BUT RECOMMENDED) ---

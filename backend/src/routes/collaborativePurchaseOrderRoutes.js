@@ -71,19 +71,31 @@ const populateOrder = (query) => query
     populate: [{ path: "unitId", select: "name symbol" }, { path: "stockGroupId", select: "name" }],
   });
 
-const responseOrder = (order) => {
+const idOf = (ref) => String(ref?._id || ref);
+
+/** A kitchen sees which items other kitchens asked for, but not how much or their notes. */
+const otherKitchensHidden = (value, viewer) => ({
+  ...value,
+  contributions: (value.contributions || []).map((contribution) => (idOf(contribution.godownId) === String(viewer.godownId)
+    ? contribution
+    : { ...contribution, note: undefined, items: contribution.items.map((item) => ({ stockItemId: item.stockItemId })) })),
+  combinedItems: value.combinedItems.map((line) => ({ stockItemId: line.stockItemId })),
+});
+
+const responseOrder = (order, viewer) => {
   const value = order.toObject ? order.toObject() : order;
   const totals = new Map();
   for (const contribution of value.contributions || []) {
     for (const item of contribution.items || []) {
       const product = item.stockItemId;
-      const id = String(product?._id || product);
+      const id = idOf(product);
       const current = totals.get(id) || { stockItemId: product, qtyBaseUnit: 0 };
       current.qtyBaseUnit += Number(item.qtyBaseUnit) || 0;
       totals.set(id, current);
     }
   }
-  return { ...value, kitchenCount: value.contributions?.length || 0, combinedItems: [...totals.values()] };
+  const full = { ...value, kitchenCount: value.contributions?.length || 0, combinedItems: [...totals.values()] };
+  return isKitchenRole(viewer?.role) ? otherKitchensHidden(full, viewer) : full;
 };
 
 const loadOrder = async (id) => {
@@ -118,7 +130,7 @@ collaborativePurchaseOrderRoutes.get("/", everyone, async (req, res) => {
       populateOrder(CollaborativePurchaseOrder.find(filter).sort({ updatedAt: -1 }).skip((page - 1) * limit).limit(limit)),
       CollaborativePurchaseOrder.countDocuments(filter),
     ]);
-    return res.json({ items: orders.map(responseOrder), page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) });
+    return res.json({ items: orders.map((order) => responseOrder(order, req.user)), page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) });
   } catch (error) { return sendError(res, error); }
 });
 
@@ -154,14 +166,14 @@ collaborativePurchaseOrderRoutes.post("/", everyone, requireAvailableProducts(bo
       createdByGodown: godownId,
       contributions: [contribution],
     });
-    return res.status(201).json(responseOrder(await loadOrder(order._id)));
+    return res.status(201).json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
 collaborativePurchaseOrderRoutes.get("/:id", everyone, async (req, res) => {
   try {
     await closeExpiredOrders();
-    return res.json(responseOrder(await loadOrder(req.params.id)));
+    return res.json(responseOrder(await loadOrder(req.params.id), req.user));
   }
   catch (error) { return sendError(res, error); }
 });
@@ -183,7 +195,7 @@ collaborativePurchaseOrderRoutes.post("/:id/contributions", kitchenOnly, require
       if (existing.status !== "open") throw fail(409, "This order is no longer accepting additions", "ORDER_CLOSED");
       throw fail(409, "Your kitchen has already joined this order; edit its contribution instead", "ALREADY_JOINED");
     }
-    return res.status(201).json(responseOrder(await loadOrder(order._id)));
+    return res.status(201).json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
@@ -203,7 +215,7 @@ collaborativePurchaseOrderRoutes.put("/:id/contributions/me", kitchenOnly, requi
       if (existing.status !== "open") throw fail(409, "This order is no longer accepting changes", "ORDER_CLOSED");
       throw fail(404, "Your kitchen has not joined this order");
     }
-    return res.json(responseOrder(await loadOrder(order._id)));
+    return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
@@ -221,7 +233,7 @@ collaborativePurchaseOrderRoutes.delete("/:id/contributions/me", kitchenOnly, as
       { new: true },
     );
     if (!order) throw fail(404, "Your kitchen has not joined this order");
-    return res.json(responseOrder(await loadOrder(order._id)));
+    return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
@@ -237,6 +249,6 @@ collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res
     order.statusChangedAt = new Date();
     order.statusChangedBy = req.user.sub;
     await order.save();
-    return res.json(responseOrder(await loadOrder(order._id)));
+    return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });

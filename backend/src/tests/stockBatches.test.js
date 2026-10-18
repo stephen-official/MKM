@@ -40,8 +40,11 @@ test("daily-use products deduct oldest received batches first and capture weight
   assert.equal(response.status, 201, JSON.stringify(response.body));
   const batches = await StockBatch.find({ godownId: kitchen._id, stockItemId: rice._id }).sort({ receivedAt: 1 });
   assert.deepEqual(batches.map((batch) => batch.remainingQtyBaseUnit), [0, 10]);
-  assert.equal(response.body.items[0].amountAtIssue, 120);
-  assert.equal(response.body.items[0].unitPriceAtIssue, 12);
+  // The value is stored for admins; the kitchen's own response never carries prices.
+  assert.equal(response.body.items[0].amountAtIssue, undefined);
+  const saved = await Consumption.findById(response.body._id).lean();
+  assert.equal(saved.items[0].amountAtIssue, 120);
+  assert.equal(saved.items[0].unitPriceAtIssue, 12);
   assert.deepEqual(response.body.items[0].batchAllocations.map((line) => line.qtyBaseUnit), [8, 2]);
 });
 

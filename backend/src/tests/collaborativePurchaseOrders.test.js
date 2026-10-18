@@ -38,7 +38,8 @@ test("a kitchen opens an order that all kitchens and admins can see", async () =
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.match(created.body.orderNo, /^CPO-/);
   assert.equal(created.body.kitchenCount, 1);
-  assert.equal(created.body.combinedItems[0].qtyBaseUnit, 20);
+  assert.equal(created.body.contributions[0].items[0].qtyBaseUnit, 20);
+  assert.equal((await call(ctx.admin, "get", `/${created.body._id}`)).body.combinedItems[0].qtyBaseUnit, 20);
 
   for (const actor of [ctx.cookA, ctx.cookB, ctx.admin]) {
     const list = await call(actor, "get", "/");
@@ -57,14 +58,16 @@ test("another kitchen adds, edits and removes its own contribution", async () =>
   });
   assert.equal(added.status, 201, JSON.stringify(added.body));
   assert.equal(added.body.kitchenCount, 2);
-  assert.equal(added.body.combinedItems.find((line) => line.stockItemId.name === "Rice").qtyBaseUnit, 25);
+  const own = (body, name) => body.contributions.find((c) => c.godownId.name === name);
+  assert.equal(own(added.body, "Kitchen B").items.length, 2);
+  assert.equal((await call(ctx.admin, "get", `/${order._id}`)).body.combinedItems.find((line) => line.stockItemId.name === "Rice").qtyBaseUnit, 25);
 
   const duplicate = await call(ctx.cookB, "post", `/${order._id}/contributions`).send({ items: [{ stockItemId: ctx.rice._id, qtyBaseUnit: 1 }] });
   assert.equal(duplicate.status, 409);
 
   const edited = await call(ctx.cookB, "put", `/${order._id}/contributions/me`).send({ items: [{ stockItemId: ctx.dal._id, qtyBaseUnit: 10 }] });
   assert.equal(edited.status, 200);
-  assert.equal(edited.body.combinedItems.find((line) => line.stockItemId.name === "Dal").qtyBaseUnit, 10);
+  assert.equal(own(edited.body, "Kitchen B").items.find((line) => line.stockItemId.name === "Dal").qtyBaseUnit, 10);
 
   const removed = await call(ctx.cookB, "delete", `/${order._id}/contributions/me`);
   assert.equal(removed.status, 200);

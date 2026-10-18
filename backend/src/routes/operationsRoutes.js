@@ -13,6 +13,7 @@ import { businessDateOf, normalizeBusinessDate } from "../executive/params.js";
 import { round2 } from "../utils/money.js";
 import { createStockBatch, deductFifo, restoreBatchAllocations, valuationFromAllocations } from "../stock/batchService.js";
 import { StockBatch } from "../models/StockBatchModel.js";
+import { stripPrices } from "../utils/kitchenSafe.js";
 
 export const operationsRoutes = express.Router();
 
@@ -495,7 +496,7 @@ operationsRoutes.patch(
       // ------------------------------------------------------
       io.to(updatedConsumption.godownId._id.toString()).emit(
         "consumption_updated",
-        updatedConsumption
+        stripPrices(updatedConsumption)
       );
 
       io.to("admins").emit(
@@ -939,7 +940,7 @@ transfer.acceptedAt=new Date();
 await transfer.save({session});
 io.to(transfer.fromGodownId.toString()).emit(
     "transfer_accepted",
-    transfer
+    stripPrices(transfer)
 );
 
 });
@@ -1061,7 +1062,7 @@ operationsRoutes.post(
 
       io.to(toGodownId.toString()).emit(
         "new_transfer",
-        transfer
+        stripPrices(transfer)
       );
 
       res.status(201).json(transfer);
@@ -1158,7 +1159,7 @@ await transfer.save();
 
 io.to(transfer.fromGodownId.toString()).emit(
     "transfer_rejected",
-    transfer
+    stripPrices(transfer)
 );
 
 res.json({
@@ -1280,7 +1281,7 @@ const transfer = await Transfer.create({
 });
 io.to(req.body.toGodownId.toString()).emit(
     "new_transfer",
-    transfer
+    stripPrices(transfer)
 );
 console.log("TRANSFER SAVED");
 console.log(transfer);
