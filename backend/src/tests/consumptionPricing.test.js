@@ -5,7 +5,7 @@ import { startDb, clearDb, stopDb } from "./helpers/db.js";
 import { createUser } from "./helpers/auth.js";
 import { distribution, kitchen, seedCatalog, stockRow } from "./helpers/fixtures.js";
 import { Consumption, Distribution, GodownStock, Request } from "../models/FlowModels.js";
-import { DailyUsage as DailyUsageModel } from "../models/DailyUsageModel.js";
+import { StockBatch } from "../models/StockBatchModel.js";
 
 let app;
 let f;
@@ -81,7 +81,7 @@ test("request approval converts an ISO-instant targetDate into the business date
   assert.equal(row.date, "2026-10-12");
 });
 
-test("approving a request for a future date records it on the approval day, when the stock moves", async () => {
+test("approving legacy request types writes both into the unified log on the stock-movement day", async () => {
   const { businessDateOf } = await import("../executive/params.js");
   const today = businessDateOf(new Date());
   const future = businessDateOf(new Date(Date.now() + 3 * 86_400_000));
@@ -91,17 +91,36 @@ test("approving a request for a future date records it on the approval day, when
     items: [{ stockItemId: f.items.Dal._id, qtyBaseUnit: 1 }] });
   assert.equal((await as("admin", "post", `/api/requests/${req._id}/approve`)).status, 200);
   assert.equal((await as("admin", "post", `/api/requests/${daily._id}/approve`)).status, 200);
-  assert.equal((await Consumption.findOne().lean()).date, today);
-  assert.equal((await DailyUsageModel.findOne().lean()).date, today);
+  const rows = await Consumption.find().sort({ createdAt: 1 }).lean();
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((row) => row.date === today));
+  assert.ok(rows.every((row) => row.reason === "r"));
 });
 
-test("daily-usage approvals store an ISO date and no price", async () => {
+test("legacy daily-usage approvals are valued and retain their reason in the unified log", async () => {
   const daily = await Request.create({ godownId: f.A._id, userId: f.cook.user._id, requestType: "daily_usage", targetDate: "2026-10-11T09:00:00.000Z", reason: "r",
     items: [{ stockItemId: f.items.Dal._id, qtyBaseUnit: 1 }] });
   assert.equal((await as("admin", "post", `/api/requests/${daily._id}/approve`)).status, 200);
-  const row = await DailyUsageModel.findOne().lean();
+  const row = await Consumption.findOne().lean();
   assert.equal(row.date, "2026-10-11");
-  assert.equal(row.items[0].amountAtIssue, undefined);
+  assert.equal(row.reason, "r");
+  assert.equal(row.sourceType, "request");
+  assert.equal(row.items[0].amountAtIssue, null);
+});
+
+test("deleting an approved return removes its return batch and restores the prior balance", async () => {
+  const returned = await Request.create({
+    godownId: f.A._id, userId: f.cook.user._id, targetDate: "2026-10-11", reason: "Correction",
+    items: [{ stockItemId: f.items.Rice._id, qtyBaseUnit: -2 }],
+  });
+  assert.equal((await as("admin", "post", `/api/requests/${returned._id}/approve`)).status, 200);
+  const row = await Consumption.findOne().lean();
+  assert.equal((await GodownStock.findById(f.rice._id).lean()).qtyBaseUnit, 52);
+
+  const deleted = await as("admin", "delete", `/api/consumptions/${row._id}`);
+  assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
+  assert.equal((await GodownStock.findById(f.rice._id).lean()).qtyBaseUnit, 50);
+  assert.equal((await StockBatch.findById(row.items[0].returnBatchId).lean()).remainingQtyBaseUnit, 0);
 });
 
 test("editing a legacy unpriced line keeps it unvalued; lines added in the edit are priced now", async () => {

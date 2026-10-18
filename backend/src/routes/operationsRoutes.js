@@ -7,14 +7,28 @@ import { bodyItemIds, requireAvailableProducts, stockRecordItemIds } from "../ca
 import { isAvailable, missingFields } from "../catalog/completeness.js";
 // CRITICAL: Explicitly import these so Mongoose registers the models for population
 import { StockItem, StockGroup, Unit } from "../models/InventoryModels.js";
-import { DailyUsage } from "../models/DailyUsageModel.js";
 import { isAdminRole, isKitchenRole } from "../utils/roles.js";
 import { pricesForKitchen } from "../executive/valuation.js";
 import { businessDateOf, normalizeBusinessDate } from "../executive/params.js";
 import { round2 } from "../utils/money.js";
 import { createStockBatch, deductFifo, restoreBatchAllocations, valuationFromAllocations } from "../stock/batchService.js";
+import { StockBatch } from "../models/StockBatchModel.js";
 
 export const operationsRoutes = express.Router();
+
+const removeReturnedStock = async ({ item, godownId, stockItemId, stock, session }) => {
+  let remaining = Math.abs(Number(item.qtyBaseUnit || 0));
+  if (item.returnBatchId) {
+    const batch = await StockBatch.findOne({ _id: item.returnBatchId, godownId, stockItemId }).session(session);
+    if (batch) {
+      const take = Math.min(remaining, Number(batch.remainingQtyBaseUnit || 0));
+      batch.remainingQtyBaseUnit -= take;
+      await batch.save({ session });
+      remaining -= take;
+    }
+  }
+  if (remaining > 1e-8) await deductFifo({ godownId, stockItemId, quantity: remaining, stock, session });
+};
 
 /**
  * SHARED UTILITY: Deep Population Config
@@ -231,11 +245,6 @@ operationsRoutes.patch(
         const godownId = consumption.godownId;
 
         // ----------------------------------------------------
-        // Only normal Consumption can be edited
-        // DailyUsage is a different collection.
-        // ----------------------------------------------------
-
-        // ----------------------------------------------------
         // Build OLD quantities
         // ----------------------------------------------------
         const oldItems = consumption.items || [];
@@ -402,25 +411,46 @@ operationsRoutes.patch(
           }
         }
         for (const old of oldItems) {
-          await restoreBatchAllocations({
-            godownId, stockItemId: old.stockItemId,
-            allocations: old.batchAllocations, quantity: old.qtyBaseUnit,
-            unitPrice: old.unitPriceAtIssue, session,
-          });
+          const oldQuantity = Number(old.qtyBaseUnit || 0);
+          if (oldQuantity > 0) {
+            await restoreBatchAllocations({
+              godownId, stockItemId: old.stockItemId,
+              allocations: old.batchAllocations, quantity: oldQuantity,
+              unitPrice: old.unitPriceAtIssue, session,
+            });
+          } else if (oldQuantity < 0) {
+            const stock = await GodownStock.findOne({ godownId, stockItemId: old.stockItemId }).session(session);
+            await removeReturnedStock({ item: old, godownId, stockItemId: old.stockItemId, stock, session });
+          }
         }
         const replacementLines = [];
-        for (const item of items.filter((entry) => Number(entry.qtyBaseUnit) > 0)) {
+        for (const item of items.filter((entry) => Number(entry.qtyBaseUnit) !== 0)) {
           const stock = await GodownStock.findOne({ godownId, stockItemId: item.stockItemId }).session(session);
           const quantity = Number(item.qtyBaseUnit);
-          const batchAllocations = await deductFifo({ godownId, stockItemId: item.stockItemId, quantity, stock, session });
-          const batchValuation = valuationFromAllocations(quantity, batchAllocations);
           const existingPrice = originalPrices.get(String(item.stockItemId));
-          const valuation = originalPrices.has(String(item.stockItemId))
-            ? { unitPriceAtIssue: existingPrice, amountAtIssue: existingPrice == null ? null : round2(quantity * existingPrice) }
-            : batchValuation;
+          let batchAllocations = [];
+          let valuation;
+          if (quantity > 0) {
+            batchAllocations = await deductFifo({ godownId, stockItemId: item.stockItemId, quantity, stock, session });
+            const batchValuation = valuationFromAllocations(quantity, batchAllocations);
+            valuation = originalPrices.has(String(item.stockItemId))
+              ? { unitPriceAtIssue: existingPrice, amountAtIssue: existingPrice == null ? null : round2(quantity * existingPrice) }
+              : batchValuation;
+          } else {
+            const [priced] = originalPrices.has(String(item.stockItemId))
+              ? [{ unitPriceAtIssue: existingPrice, amountAtIssue: existingPrice == null ? null : round2(quantity * existingPrice) }]
+              : await priceLines(godownId, [{ stockItemId: item.stockItemId, qtyBaseUnit: quantity }]);
+            valuation = { unitPriceAtIssue: priced.unitPriceAtIssue, amountAtIssue: priced.amountAtIssue };
+            const returnBatch = await createStockBatch({
+              godownId, stockItemId: item.stockItemId, quantity: Math.abs(quantity),
+              unitPrice: valuation.unitPriceAtIssue, sourceType: "return", createdBy: req.user.sub, session,
+            });
+            item.returnBatchId = returnBatch._id;
+          }
           replacementLines.push({
             stockItemId: item.stockItemId, qtyBaseUnit: quantity,
             stockRecordId: item.stockRecordId || undefined, batchAllocations,
+            returnBatchId: item.returnBatchId || undefined,
             ...valuation,
           });
         }
@@ -509,7 +539,7 @@ operationsRoutes.delete(
           const stockItemId = item.stockItemId;
           const qtyToReturn = Number(item.qtyBaseUnit || 0);
 
-          if (!stockItemId || qtyToReturn <= 0) {
+          if (!stockItemId || qtyToReturn === 0) {
             continue;
           }
 
@@ -542,14 +572,19 @@ operationsRoutes.delete(
             );
           }
 
-          stock.qtyBaseUnit =
-            Number(stock.qtyBaseUnit || 0) + qtyToReturn;
+          const nextQuantity = Number(stock.qtyBaseUnit || 0) + qtyToReturn;
+          if (nextQuantity < 0) throw new Error("Insufficient stock to reverse this return");
+          stock.qtyBaseUnit = nextQuantity;
 
           await stock.save({ session });
-          await restoreBatchAllocations({
-            godownId, stockItemId, allocations: item.batchAllocations,
-            quantity: qtyToReturn, unitPrice: item.unitPriceAtIssue, session,
-          });
+          if (qtyToReturn > 0) {
+            await restoreBatchAllocations({
+              godownId, stockItemId, allocations: item.batchAllocations,
+              quantity: qtyToReturn, unitPrice: item.unitPriceAtIssue, session,
+            });
+          } else {
+            await removeReturnedStock({ item, godownId, stockItemId, stock, session });
+          }
         }
 
         // ----------------------------------------------------
@@ -605,260 +640,14 @@ operationsRoutes.delete(
 );
 
 
-// ============================================================
-// ADMIN - EDIT DAILY USAGE
-// ============================================================
-// IMPORTANT:
-// Daily Usage is only a usage/history record.
-// It DOES NOT change GodownStock.
-// ============================================================
-
-operationsRoutes.patch(
-  "/daily-usage/:id",
-  authorize(["admin"]),
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { items } = req.body;
-
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-          error: "Invalid Daily Usage ID"
-        });
-      }
-
-      if (!Array.isArray(items)) {
-        return res.status(400).json({
-          error: "Items must be an array"
-        });
-      }
-
-      const dailyUsage = await DailyUsage.findById(id);
-
-      if (!dailyUsage) {
-        return res.status(404).json({
-          error: "Daily Usage record not found"
-        });
-      }
-
-      const newItems = [];
-
-      for (const item of items) {
-        if (!item.stockItemId) {
-          return res.status(400).json({
-            error: "Invalid stock item"
-          });
-        }
-
-        const rawQty = String(
-          item.qtyBaseUnit ?? ""
-        ).trim();
-
-        // Maximum 3 decimal places
-        if (!/^\d+(\.\d{1,3})?$/.test(rawQty)) {
-          return res.status(400).json({
-            error:
-              "Quantity can have a maximum of 3 decimal places."
-          });
-        }
-
-        const qty = Number(rawQty);
-
-        if (!Number.isFinite(qty) || qty < 0) {
-          return res.status(400).json({
-            error: "Invalid quantity"
-          });
-        }
-
-        // Do not allow duplicate stock items
-        if (
-          newItems.some(
-            existing =>
-              existing.stockItemId.toString() ===
-              item.stockItemId.toString()
-          )
-        ) {
-          return res.status(400).json({
-            error:
-              "The same stock item cannot appear more than once."
-          });
-        }
-
-        // Quantity 0 means item is removed
-        if (qty > 0) {
-          newItems.push({
-            stockItemId: item.stockItemId,
-            qtyBaseUnit: Number(qty.toFixed(3)),
-            stockRecordId:
-              item.stockRecordId || undefined
-          });
-        }
-      }
-
-      // IMPORTANT:
-      // We ONLY modify DailyUsage.
-      // NO GodownStock update here.
-      dailyUsage.items = newItems;
-
-      await dailyUsage.save();
-
-      const updatedDailyUsage =
-        await DailyUsage.findById(id)
-          .populate("userId", "name")
-          .populate("godownId", "name")
-          .populate(deepPopulateItem);
-
-      // Notify admin
-      io.to("admins").emit(
-        "daily_usage_updated",
-        updatedDailyUsage
-      );
-
-      // Notify users in this godown
-      io.to(
-        updatedDailyUsage.godownId._id.toString()
-      ).emit(
-        "daily_usage_updated",
-        updatedDailyUsage
-      );
-
-      res.json(updatedDailyUsage);
-
-    } catch (error) {
-      console.error(
-        "UPDATE DAILY USAGE ERROR:",
-        error
-      );
-
-      res.status(400).json({
-        error:
-          error.message ||
-          "Failed to update Daily Usage"
-      });
-    }
-  }
-);
-
-
-
-// ============================================================
-// ADMIN - DELETE DAILY USAGE
-// ============================================================
-// IMPORTANT:
-// Deleting Daily Usage does NOT restore stock.
-// Daily Usage is only a historical usage record.
-// ============================================================
-
-operationsRoutes.delete(
-  "/daily-usage/:id",
-  authorize(["admin"]),
-  async (req, res) => {
-    try {
-      const { id } = req.params;
-
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({
-          error: "Invalid Daily Usage ID"
-        });
-      }
-
-      const dailyUsage =
-        await DailyUsage.findById(id);
-
-      if (!dailyUsage) {
-        return res.status(404).json({
-          error: "Daily Usage record not found"
-        });
-      }
-
-      const deletedDailyUsage = {
-        _id: dailyUsage._id,
-        godownId: dailyUsage.godownId,
-        userId: dailyUsage.userId
-      };
-
-      await DailyUsage.deleteOne({
-        _id: id
-      });
-
-      // Notify users in the godown
-      io.to(
-        deletedDailyUsage.godownId.toString()
-      ).emit(
-        "daily_usage_deleted",
-        {
-          dailyUsageId:
-            deletedDailyUsage._id,
-          godownId:
-            deletedDailyUsage.godownId
-        }
-      );
-
-      // Notify admins
-      io.to("admins").emit(
-        "daily_usage_deleted",
-        {
-          dailyUsageId:
-            deletedDailyUsage._id,
-          godownId:
-            deletedDailyUsage.godownId
-        }
-      );
-
-      res.json({
-        message:
-          "Daily Usage deleted successfully",
-        dailyUsageId:
-          deletedDailyUsage._id
-      });
-
-    } catch (error) {
-      console.error(
-        "DELETE DAILY USAGE ERROR:",
-        error
-      );
-
-      res.status(400).json({
-        error:
-          error.message ||
-          "Failed to delete Daily Usage"
-      });
-    }
-  }
-);
-
-
-
 operationsRoutes.get("/consumptions", authorize(["admin"]), async (_req, res) => {
   try {
-
     const consumptions = await Consumption.find()
       .populate("godownId", "name")
       .populate("userId", "name")
-      .populate(deepPopulateItem);
-
-    const dailyUsages = await DailyUsage.find()
-      .populate("godownId", "name")
-      .populate("userId", "name")
-      .populate(deepPopulateItem);
-
-    const combined = [
-      ...consumptions.map(item => ({
-        ...item.toObject(),
-        recordType: "consumption"
-      })),
-      ...dailyUsages.map(item => ({
-        ...item.toObject(),
-        recordType: "dailyUsage"
-      }))
-    ].sort((a, b) => {
-  const dateA = new Date(a.date || a.createdAt);
-  const dateB = new Date(b.date || b.createdAt);
-
-  return dateB - dateA;
-});
-
-    res.json(combined);
+      .populate(deepPopulateItem)
+      .sort({ createdAt: -1 });
+    res.json(consumptions);
 
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -900,6 +689,7 @@ operationsRoutes.post("/requests", authorize(["user"]), requireAvailableProducts
   try {
     const created = await Request.create({ 
       ...req.body, 
+      requestType: "usage",
       userId: req.user.sub, 
       godownId: req.user.godownId, 
       status: "pending" 
@@ -947,8 +737,8 @@ operationsRoutes.post("/requests/:id/approve", authorize(["admin"]), async (req,
           const returned = Math.abs(quantity);
           const [pricedReturn] = await priceLines(request.godownId, [{ stockItemId: item.stockItemId, qtyBaseUnit: quantity }]);
           stock.qtyBaseUnit += returned;
-          await createStockBatch({ godownId: request.godownId, stockItemId: item.stockItemId, quantity: returned, unitPrice: pricedReturn.unitPriceAtIssue, sourceType: "return", createdBy: req.user.sub, session });
-          batchLines.push({ ...pricedReturn, batchAllocations: [] });
+          const returnBatch = await createStockBatch({ godownId: request.godownId, stockItemId: item.stockItemId, quantity: returned, unitPrice: pricedReturn.unitPriceAtIssue, sourceType: "return", createdBy: req.user.sub, session });
+          batchLines.push({ ...pricedReturn, returnBatchId: returnBatch._id, batchAllocations: [] });
         }
         await stock.save({ session });
       }
@@ -958,18 +748,15 @@ operationsRoutes.post("/requests/:id/approve", authorize(["admin"]), async (req,
       const today = businessDateOf(approvedAt);
       const target = normalizeBusinessDate(request.targetDate, approvedAt);
       const date = target > today ? today : target;
-      const baseLines = batchLines.map(({ stockItemId, qtyBaseUnit }) => ({ stockItemId, qtyBaseUnit }));
       const record = {
         godownId: request.godownId,
         userId: request.userId,
         date,
-        items: request.requestType === "daily_usage" ? baseLines : batchLines,
+        reason: request.reason,
+        sourceType: "request",
+        items: batchLines,
       };
-      if (request.requestType === "daily_usage") {
-        await DailyUsage.create([{ ...record, reason: request.reason }], { session });
-      } else {
-        await Consumption.create([record], { session });
-      }
+      await Consumption.create([record], { session });
 
       request.status = "approved";
       request.adminDecision = req.body.note || "Approved";

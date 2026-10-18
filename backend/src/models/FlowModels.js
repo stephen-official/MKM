@@ -110,14 +110,19 @@ const consumptionSchema = new mongoose.Schema(
     godownId: { type: mongoose.Schema.Types.ObjectId, ref: "Godown", required: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     date: { type: String, required: true },
+    reason: { type: String, trim: true, default: "" },
+    sourceType: { type: String, enum: ["direct", "request", "migrated_daily_usage"], default: "direct" },
+    legacyDailyUsageId: { type: mongoose.Schema.Types.ObjectId, default: undefined },
     items: [
       { 
         stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: "StockItem" }, 
+        stockRecordId: { type: mongoose.Schema.Types.ObjectId, ref: "GodownStock", default: null },
         qtyBaseUnit: Number, 
         unitDisplay: String, 
         // Captured when the line is recorded (README Decision 5); null = no valid price then.
         unitPriceAtIssue: { type: Number, default: null },
         amountAtIssue: { type: Number, default: null },
+        returnBatchId: { type: mongoose.Schema.Types.ObjectId, ref: "StockBatch", default: null },
         batchAllocations: [{
           batchId: { type: mongoose.Schema.Types.ObjectId, ref: "StockBatch", required: true },
           qtyBaseUnit: { type: Number, required: true },
@@ -135,8 +140,9 @@ const requestSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     requestType: {
   type: String,
-  enum: ["stock_request", "daily_usage"],
-  default: "stock_request"
+  // Legacy values remain readable while new requests use the single usage workflow.
+  enum: ["usage", "stock_request", "daily_usage"],
+  default: "usage"
 },
     targetDate: { type: String, required: true },
     reason: { type: String, required: true },
@@ -297,6 +303,10 @@ consumptionSchema.index({ godownId: 1, date: 1 });
 consumptionSchema.index({ date: 1 });
 consumptionSchema.index({ godownId: 1, createdAt: 1 });
 consumptionSchema.index({ createdAt: 1 });
+consumptionSchema.index(
+  { legacyDailyUsageId: 1 },
+  { unique: true, partialFilterExpression: { legacyDailyUsageId: { $type: "objectId" } } },
+);
 distributionSchema.index({ "allocations.godownId": 1, "allocations.stockItemId": 1, createdAt: -1 });
 distributionSchema.index({ createdAt: 1 });
 purchaseOrderSchema.index({ status: 1 });

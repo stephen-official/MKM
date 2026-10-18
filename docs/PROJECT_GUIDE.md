@@ -38,9 +38,8 @@ The code uses older inventory terms. Use the plain term in anything a user sees.
 | **Purchase order (PO)** | Supplies bought and received centrally (`PurchaseOrder`). |
 | **Distribution** | Splitting received PO stock across kitchens (`Distribution`, with `allocations` and `leftovers`). |
 | **Transfer** | Stock moved from one godown to another. The receiving kitchen accepts or rejects it (`Transfer`). |
-| **Consumption** | Stock a kitchen used (`Consumption`). Prices are captured when it is recorded (`unitPriceAtIssue`). |
-| **Daily usage** | Recurring daily use, stored separately (`DailyUsage`). |
-| **Request** | A kitchen asks admins to approve a usage record (`Request`, `requestType` = `stock_request` or `daily_usage`). Approval deducts kitchen stock and creates a Consumption or DailyUsage record. **This is not the same as an indent request.** |
+| **Usage** | Stock a kitchen used (`Consumption`). Every product, including products labelled `daily_use`, is stock-backed; prices and FIFO batch allocations are captured when usage is recorded. |
+| **Request** | A kitchen asks admins to approve a usage record (`Request`, `requestType` = `usage`; legacy values remain readable). Approval deducts kitchen stock and creates a Consumption record. **This is not the same as an indent request.** |
 
 ---
 
@@ -89,10 +88,9 @@ realtime.js      io proxy so routes can emit without importing server.js
 | `/api/products` | productRoutes | The product catalog (Products page): list with completeness, create/edit, preset units, image upload, archive/restore. Prices and archiving are super-admin only |
 | `/api/product-requests` | productRequestRoutes | Kitchens ask for a missing product; admins approve (creating or linking the product) or reject with a reason |
 | `/api/procurement` | procurementRoutes | Indents, purchase orders, distributions, godown-stock thresholds, stock balance |
-| `/api` **and** `/api/operations` | operationsRoutes | Consumptions, daily-usage edits, requests (approve/reject), transfers and user-transfers, godown-stocks, notifications. **Mounted twice on purpose.** featureGate normalises the alias. |
+| `/api` **and** `/api/operations` | operationsRoutes | Unified usage records, requests (approve/reject), transfers and user-transfers, godown-stocks, notifications. **Mounted twice on purpose.** featureGate normalises the alias. |
 | `/api/reports` | reportRoutes | Generic per-entity listings and Excel exports |
 | `/api/indent-requests` | indentRequestRoutes | Kitchen indent requests: create, confirm, reject, receive |
-| `/api/daily-usage` | dailyUsageRoutes | Kitchen daily-usage creation |
 | `/api/product-ledger` | productLedgerRoutes | Per-item movement history |
 | `/api/features` | featureRoutes | Feature flags, overrides, audit |
 | `/api/executive` | executiveRoutes | Executive report JSON + `export.xlsx` / `export.pdf` (super-admin) |
@@ -104,7 +102,7 @@ realtime.js      io proxy so routes can emit without importing server.js
 - `ProductRequestModel.js`: ProductRequest (a kitchen's request for a product not in the catalog)
 - `FlowModels.js`: IndentRequest, Indent, PurchaseOrder, GodownStock, Distribution, Consumption, Request, Transfer, Notification, plus the **executive report indexes**
 - `StockBatchModel.js`: priced stock batches per kitchen/product, including received date, expiry, lot, condition, notes and remaining quantity
-- `DailyUsageModel.js`: DailyUsage
+- `DailyUsageModel.js`: legacy DailyUsage shape, used only by the one-time usage-log migration
 - `User.js`: User (`role`, `godownId`, `active`, reset token fields, edit version)
 - `FeatureModels.js`: FeatureFlags (versioned singleton `_id: "global"` plus overrides), FeatureFlagAudit (append-only)
 - `AdminAuditModels.js`: UserAdminAudit
@@ -118,13 +116,15 @@ These are the only places that write `GodownStock.qtyBaseUnit`. Every one of the
 | Admin creates a distribution | `routes/procurementRoutes.js` `POST /distributions` | `$inc` each allocated kitchen's stock **at dispatch time** (upsert) |
 | Kitchen receives an indent request | `routes/indentRequestRoutes.js` `POST /:id/receive` | Increases kitchen stock by the received quantity |
 | Kitchen/admin records consumption directly | `routes/operationsRoutes.js` `handleStockProcessing` (`POST /consumptions`, legacy `POST /orders`) | Checks for enough stock, then decrements it. Emits `low_stock_alert` |
-| Admin approves a usage Request | `operationsRoutes.js` `POST /requests/:id/approve` | Decrements stock and creates a Consumption or DailyUsage. A future target date is recorded as the approval day |
+| Admin approves a usage Request | `operationsRoutes.js` `POST /requests/:id/approve` | Decrements FIFO stock and creates a Consumption with the request reason. A future target date is recorded as the approval day |
 | Kitchen accepts a transfer | `operationsRoutes.js` `POST /user-transfers/:id/accept` | Moves stock from source to destination atomically |
-| Edits and deletes of consumption / daily usage | `operationsRoutes.js` `PATCH/DELETE /consumptions/:id`, `/daily-usage/:id` | Adjusts stock by the difference |
+| Edits and deletes of usage | `operationsRoutes.js` `PATCH/DELETE /consumptions/:id` | Replays FIFO allocations and adjusts stock by the difference |
 
 `GodownStock.qtyBaseUnit` remains the fast aggregate balance. `StockBatch.remainingQtyBaseUnit` explains that balance by receipt and price. New inward stock creates a batch; consumption and accepted transfers deduct batches FIFO by `receivedAt` and capture their allocations. Existing balances without batches are treated as an opening batch at the product's current price on first use, or can be initialized ahead of deployment with `npm --prefix backend run migrate-stock-batches` (dry run; add `-- --apply` explicitly).
 
-The README states the *intended* rule: "requesting or approving supplies does not change stock; receipt does." **Distributions do not follow it yet**: they credit kitchen stock as soon as they're dispatched. Also, `POST /api/daily-usage` (`dailyUsageRoutes.js`) does not touch `GodownStock`. Check both before changing anything about stock behaviour, and raise them with the project owner rather than "fixing" them silently.
+The README states the *intended* rule: "requesting or approving supplies does not change stock; receipt does." **Distributions do not follow it yet**: they credit kitchen stock as soon as they're dispatched. Usage always changes `GodownStock`; there is no untracked write-only usage path.
+
+Legacy `DailyUsage` rows can be moved into the unified log with `npm --prefix backend run migrate-usage-log` (dry run; add `-- --apply` explicitly). The dry run also lists every active-kitchen/daily-use-product pair without a stock row. Enter real opening balances before rollout; the migration intentionally does not invent quantities.
 
 ### Feature visibility (feature flags)
 - **Single source of truth:** `features/registry.js`. `FEATURES` lists the 10 toggleable keys: inventory, indent, purchase-orders, stock-distribution, godowns, transfer-stock, requests, consumption, reports, product-ledger. `ROUTE_RULES` maps every HTTP route to `open`, `lookup` or `feature(…)`.
@@ -144,7 +144,7 @@ The README states the *intended* rule: "requesting or approving supplies does no
 - Sockets authenticate with the access token (`server.js`). Rooms: `admins` (all admin-tier users), the godown id (kitchen users), and `user:<id>`.
 - Routes emit through `realtime.js`'s `io` proxy. Before `setIo()` runs (tests, scripts), emits do nothing.
 - When a user's role, kitchen or active flag changes, `disconnectUser` drops their sockets on this instance. `revalidateSockets` runs every 30 s on every instance to catch changes made elsewhere.
-- Common events: `new_request`, `request_approved`, `request_rejected`, `low_stock_alert`, `daily_usage_updated`, `daily_usage_deleted`.
+- Common events: `new_request`, `request_approved`, `request_rejected`, `low_stock_alert`, `consumption_updated`, `consumption_deleted`.
 
 ### Executive report (`executive/`)
 A super-admin dashboard and export built from one function, `buildReport.js`. The JSON API, Excel (`excelExport.js`, exceljs) and PDF (`pdfExport.js`, pdfkit) all use it, so their totals match by construction.
@@ -177,7 +177,7 @@ New endpoints return `{ code: "SCREAMING_SNAKE_CASE", message, ...details }`. Ol
 | Godowns | Stock levels per godown, low-stock thresholds |
 | Transfer Stock | Create godown→godown transfers; activity log |
 | Requests | Approve or reject kitchen usage requests |
-| Consumption | View, edit or delete consumption and daily-usage records |
+| Consumption | View, edit or delete the unified usage log; edits and deletes synchronize stock |
 | Reports | Generic per-entity record browser with Excel export |
 | Product Ledger | Movement history of one item in one godown |
 | Executive Report* | KPI dashboard, charts, kitchen comparison, Excel/PDF export |
@@ -252,7 +252,6 @@ See the README tables. Key backend variables: `MONGODB_URI` (replica set), `JWT_
 - `shared/` at the repo root holds old copies (`PurchaseOrdersPage.jsx`, `procurementRoutes.js`, `types/`). Nothing imports them. Don't edit them by mistake.
 - Stray files at the repo root (`basmati rice.jpg`, `sunflower.jpg`, `images.jpg`, `gcm-diagnose.log`) aren't part of the app.
 - `client-web/README.md` is the untouched Vite template.
-- `dailyUsageRoutes.js` has leftover `console.log` debug output.
 - Older route files mix response shapes and indentation. Don't do sweeping refactors without asking.
 
 ---

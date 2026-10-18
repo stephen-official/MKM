@@ -15,7 +15,6 @@ import { operationsRoutes } from "./routes/operationsRoutes.js";
 import { procurementRoutes } from "./routes/procurementRoutes.js";
 import { reportRoutes } from "./routes/reportRoutes.js";
 import { indentRequestRoutes } from "./routes/indentRequestRoutes.js";
-import { dailyUsageRoutes } from "./routes/dailyUsageRoutes.js";
 import { productLedgerRoutes } from "./routes/productLedgerRoutes.js";
 import { executiveRoutes } from "./routes/executiveRoutes.js";
 import { userRoutes } from "./routes/userRoutes.js";
@@ -133,7 +132,6 @@ export const PROTECTED_MOUNTS = [
   ["/api/reports", reportRoutes],
   ["/api/operations", operationsRoutes],
   ["/api/indent-requests", indentRequestRoutes],
-  ["/api/daily-usage", dailyUsageRoutes],
   ["/api/product-ledger", productLedgerRoutes],
   ["/api/features", featureRoutes],
   ["/api/executive", executiveRoutes],

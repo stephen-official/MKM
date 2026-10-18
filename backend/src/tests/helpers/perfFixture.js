@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import { Godown, StockGroup, StockItem, Unit } from "../../models/InventoryModels.js";
 import { Consumption, Distribution, GodownStock, Indent, IndentRequest, PurchaseOrder, Request, Transfer } from "../../models/FlowModels.js";
-import { DailyUsage } from "../../models/DailyUsageModel.js";
 
 const { ObjectId } = mongoose.Types;
 const DAY = 86_400_000;
@@ -12,7 +11,7 @@ export const PRODUCTION_SIZE = Object.freeze({
   // Consumption also exists for the 366 days before the benchmark window, so the "previous period" comparison has real data to aggregate.
   previousPeriodDays: 366,
   consumptionsPerKitchenPerDay: 2, linesPerConsumption: 6,
-  dailyUsagesPerKitchenPerDay: 1, linesPerDailyUsage: 4,
+  dailyUseRecordsPerKitchenPerDay: 1, linesPerDailyUseRecord: 4,
   indents: 3000,
   distributions: 3000, allocationsPerDistribution: 40,
   purchaseOrders: 1500, linesPerPO: 30,
@@ -28,7 +27,7 @@ export const seedProductionSized = async (size = PRODUCTION_SIZE, end = new Date
   const group = await StockGroup.create({ name: "Perf group" });
   const unit = await Unit.create({ name: "Kilogram", symbol: "kg", stockGroupId: group._id });
   const godowns = Array.from({ length: size.kitchens }, (_, k) => ({ _id: new ObjectId(), name: `Kitchen ${String(k).padStart(3, "0")}`, active: k % 10 !== 9 }));
-  const items = Array.from({ length: size.items }, (_, i) => ({ _id: new ObjectId(), name: `Item ${String(i).padStart(5, "0")}`, stockGroupId: group._id, unitId: unit._id, itemType: "stock", defaultThreshold: 0 }));
+  const items = Array.from({ length: size.items }, (_, i) => ({ _id: new ObjectId(), name: `Item ${String(i).padStart(5, "0")}`, stockGroupId: group._id, unitId: unit._id, itemType: i % 10 === 0 ? "daily_use" : "stock", defaultThreshold: 0 }));
   await Godown.collection.insertMany(godowns);
   await StockItem.collection.insertMany(items);
 
@@ -40,14 +39,16 @@ export const seedProductionSized = async (size = PRODUCTION_SIZE, end = new Date
   }))));
 
   const consumptions = [];
-  const dailyUsages = [];
   for (let d = 0; d < size.days + size.previousPeriodDays; d += 1) {
     for (const [gi, g] of godowns.entries()) {
-      for (let u = 0; u < size.dailyUsagesPerKitchenPerDay; u += 1) {
+      for (let u = 0; u < size.dailyUseRecordsPerKitchenPerDay; u += 1) {
         const createdAt = at(d, u + 3);
-        dailyUsages.push({
+        consumptions.push({
           godownId: g._id, userId: new ObjectId(), date: (d + gi) % 19 === 0 ? String(createdAt) : isoDay(createdAt), createdAt, updatedAt: createdAt,
-          items: Array.from({ length: size.linesPerDailyUsage }, (_, l) => ({ stockItemId: items[(d * 17 + gi * 3 + l) % items.length]._id, qtyBaseUnit: 1 + ((d + l) % 3) }))
+          items: Array.from({ length: size.linesPerDailyUseRecord }, (_, l) => {
+            const qty = 1 + ((d + l) % 3);
+            return { stockItemId: items[(d * 17 + gi * 3 + l) % items.length]._id, qtyBaseUnit: qty, unitPriceAtIssue: 40, amountAtIssue: qty * 40 };
+          })
         });
       }
       for (let c = 0; c < size.consumptionsPerKitchenPerDay; c += 1) {
@@ -66,7 +67,6 @@ export const seedProductionSized = async (size = PRODUCTION_SIZE, end = new Date
     }
   }
   await insertBatches(Consumption.collection, consumptions);
-  await insertBatches(DailyUsage.collection, dailyUsages);
 
   await insertBatches(Indent.collection, Array.from({ length: size.indents }, (_, n) => {
     const createdAt = at(n % size.days);

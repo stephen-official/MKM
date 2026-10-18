@@ -1,5 +1,4 @@
 import { Consumption } from "../../models/FlowModels.js";
-import { DailyUsage } from "../../models/DailyUsageModel.js";
 import { StockItem } from "../../models/InventoryModels.js";
 import { round2, round3 } from "../../utils/money.js";
 import { addDays } from "../params.js";
@@ -81,9 +80,13 @@ export const aggregateConsumption = async ({ scopeIds, from, to, window, tz, opt
 };
 
 const countDailyUseLines = async ({ scopeIds, from, to, window, tz, options = {} }) => {
-  const [row] = await DailyUsage.aggregate([
+  const productIds = await StockItem.find({ itemType: "daily_use" }).distinct("_id");
+  if (!productIds.length) return 0;
+  const [row] = await Consumption.aggregate([
     ...datedPipeline({ scopeIds, from, to, window }, tz),
-    { $group: { _id: null, lines: { $sum: { $size: { $ifNull: ["$items", []] } } } } }
+    { $unwind: "$items" },
+    { $match: { "items.stockItemId": { $in: productIds } } },
+    { $group: { _id: null, lines: { $sum: 1 } } }
   ]).option(options);
   return row?.lines || 0;
 };

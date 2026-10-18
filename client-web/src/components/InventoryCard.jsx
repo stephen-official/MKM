@@ -51,7 +51,6 @@ const InventoryCard = ({
       const maxAvailable = stockAvailable + (parseFloat(cartQty) || 0);
       
       if (
-  !isDailyUse &&
   !isRequestMode &&
   fixedNewVal > maxAvailable
 ){
@@ -67,9 +66,7 @@ const InventoryCard = ({
   return (
     <div
   className={`bg-white rounded-3xl p-3 shadow-sm border border-gray-100 flex flex-col h-full transition-all ${
-    isOutOfStock &&
-    !isRequestMode &&
-    !isDailyUse
+    isOutOfStock && !isRequestMode
       ? "opacity-60 grayscale-[0.5]"
       : "hover:shadow-md"
   }`}
@@ -95,7 +92,6 @@ const InventoryCard = ({
 
       {/* Stock Badge */}
       {/* Stock Badge */}
-{!isDailyUse && (
   <div className="mb-3">
     <div
       className={`flex items-center justify-between px-2 py-1 rounded-lg ${
@@ -113,7 +109,7 @@ const InventoryCard = ({
       </span>
     </div>
   </div>
-)}
+{isDailyUse && <p className="mb-3 text-[7px] font-black uppercase text-blue-700">Daily use</p>}
 
       {/* Controls */}
       <div className="mt-auto space-y-2">
@@ -157,7 +153,6 @@ const InventoryCard = ({
   cartQty > 0
     ? "Update"
     : (
-        isDailyUse ||
         stockAvailable > 0 ||
         isRequestMode
       )

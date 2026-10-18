@@ -22,6 +22,7 @@ export const ConsumptionDetail = ({
     <>
       <Meta label="Date">{recordDisplayDate(record)}</Meta>
       <Meta label="Time">{formatTime(record.createdAt)}</Meta>
+      {record.reason && <Meta label="Reason">{record.reason}</Meta>}
       <Meta label="Authorised by" align="end">
         {record.userId?.name || "-"}
         <span className="page-subtitle" style={{ display: "block", fontWeight: 400 }}>

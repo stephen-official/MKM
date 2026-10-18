@@ -9,8 +9,6 @@ import {
   IndentRequest
 } from "../models/FlowModels.js";
 
-import { DailyUsage } from "../models/DailyUsageModel.js";
-
 import {
   Godown,
   StockItem,
@@ -183,8 +181,7 @@ export const getProducts = async (req, res) => {
 // RECEIVED       -> Distribution
 // TRANSFER IN    -> Transfer destination
 // TRANSFER OUT   -> Transfer source
-// CONSUMPTION    -> Consumption
-// DAILY USAGE    -> DailyUsage
+// USAGE          -> Consumption
 //
 // ============================================================
 
@@ -343,17 +340,6 @@ console.log("============================================");
       })
         .lean();
 
-
-    // ========================================================
-    // GET DAILY USAGE
-    // ========================================================
-
-    const dailyUsageDocs =
-      await DailyUsage.find({
-        godownId,
-        "items.stockItemId": productId
-      })
-        .lean();
 
 const indentDocs =
   await IndentRequest.find({
@@ -624,54 +610,6 @@ for (const transfer of transferDocs) {
   sourceId: consumption._id
 
 });
-
-      }
-
-    }
-
-
-    // ========================================================
-    // 4. DAILY USAGE
-    // ========================================================
-
-    for (const usage of dailyUsageDocs) {
-
-      for (const item of usage.items || []) {
-
-        if (
-          String(item.stockItemId) !==
-          String(productId)
-        ) {
-          continue;
-        }
-
-
-        const qty =
-          Number(item.qtyBaseUnit || 0);
-
-
-        if (qty <= 0) continue;
-
-
-        movements.push({
-
-          date:
-            usage.date ||
-            usage.createdAt,
-
-          type: "DAILY USAGE",
-
-          reference: "DAILY USAGE",
-
-          qtyIn: 0,
-
-          qtyOut: qty,
-
-          source: "daily_usage",
-
-          sourceId: usage._id
-
-        });
 
       }
 
@@ -1021,21 +959,6 @@ export const exportProductLedgerExcel = async (req, res) => {
       }).lean();
 
 
-    // --------------------------------------------------------
-    // DAILY USAGE
-    // --------------------------------------------------------
-
-   // --------------------------------------------------------
-// DAILY USAGE
-// --------------------------------------------------------
-
-const dailyUsageDocs =
-  await DailyUsage.find({
-    godownId,
-    "items.stockItemId": productId
-  }).lean();
-
-
 // --------------------------------------------------------
 // INDENT RECEIVED STOCK
 // IMPORTANT: Excel must include inward received through indent
@@ -1265,48 +1188,6 @@ for (const transfer of transferDocs) {
   type: "CONSUMPTION",
 
   reference: "CONSUMED",
-
-  qtyIn: 0,
-
-  qtyOut: qty
-
-});
-
-      }
-
-    }
-
-
-    // DAILY USAGE
-
-    for (const usage of dailyUsageDocs) {
-
-      for (const item of usage.items || []) {
-
-        if (
-          String(item.stockItemId) !==
-          String(productId)
-        ) {
-          continue;
-        }
-
-
-        const qty =
-          Number(item.qtyBaseUnit || 0);
-
-
-        if (qty <= 0) continue;
-
-
-       movements.push({
-
-  date:
-    usage.date ||
-    usage.createdAt,
-
-  type: "DAILY USAGE",
-
-  reference: "DAILY USAGE",
 
   qtyIn: 0,
 

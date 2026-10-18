@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import { startDb, clearDb, stopDb } from "./helpers/db.js";
-import { consumption, dailyUsage, kitchen, makeCtx, seedCatalog } from "./helpers/fixtures.js";
+import { consumption, kitchen, makeCtx, seedCatalog } from "./helpers/fixtures.js";
 import { Consumption } from "../models/FlowModels.js";
 import { memo } from "../executive/context.js";
 import { aggregateConsumption, consumptionSection, rankTopItems } from "../executive/sections/consumption.js";
@@ -22,6 +22,8 @@ beforeEach(async () => {
   const A = await kitchen("Kitchen A");
   const B = await kitchen("Kitchen B");
   const { Rice, Dal, Oil } = items;
+  Dal.itemType = "daily_use";
+  await Dal.save();
   await consumption(A, { date: "2026-10-01", createdAt: "2026-10-01T05:00:00Z", lines: [[Rice, 2, 100], [Dal, 1, 50]] });
   await consumption(A, { date: "2026-10-10", createdAt: "2026-10-10T05:00:00Z", lines: [[Rice, 1, 50.25]] });
   await consumption(A, { date: "2026-10-11", createdAt: "2026-10-11T05:00:00Z", lines: [[Rice, 5, 999]] });
@@ -31,8 +33,6 @@ beforeEach(async () => {
   await consumption(B, { date: "2026-10-03", createdAt: "2026-10-03T05:00:00Z", lines: [[Oil, -1, -10]] });
   await consumption(B, { date: "garbage", createdAt: "2026-10-10T18:29:59Z", lines: [[Rice, 1, 7]] });
   await consumption(B, { date: "garbage", createdAt: "2026-10-10T18:30:00Z", lines: [[Rice, 1, 1000]] });
-  await dailyUsage(A, { date: "2026-10-02", createdAt: "2026-10-02T05:00:00Z", lines: [[Dal, 1], [Oil, 1]] });
-  await dailyUsage(A, { date: "2026-10-12", createdAt: "2026-10-12T05:00:00Z", lines: [[Dal, 1]] });
   f = { items, A, B };
 });
 
@@ -81,7 +81,7 @@ test("single kitchen scope", async () => {
   assert.equal(sections.consumptionTrend.kitchens, undefined);
   const b = await consumptionSection(await ctxFor({ godownId: String(f.B._id) }));
   assert.equal(b.kpis.consumptionValue.value, 27);
-  assert.equal(b.kpis.dailyUseLines.value, 0);
+  assert.equal(b.kpis.dailyUseLines.value, 1);
 });
 
 test("top items ranked by value, then qty, then name", async () => {

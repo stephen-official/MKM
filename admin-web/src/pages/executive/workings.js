@@ -99,10 +99,10 @@ const STATUS_KINDS = {
   requests: {
     record: ["request", "requests"],
     title: "Requests",
-    basis: "Kitchen stock and daily-use requests raised in the period, grouped by their status now.",
+    basis: "Kitchen usage requests raised in the period, grouped by their status now.",
     meanings: {
       pending: "Waiting for an admin decision. No stock has moved yet.",
-      approved: "Approved by an admin. On approval the kitchen’s stock was reduced and a consumption (or daily-use) record was written.",
+      approved: "Approved by an admin. On approval the kitchen’s stock was reduced and a usage record was written.",
       rejected: "Rejected by an admin. No stock moved.",
     },
   },
@@ -191,7 +191,7 @@ const QUEUES = {
   requests: {
     title: "Pending requests",
     record: ["pending request", "pending requests"],
-    who: "Kitchen stock and daily-use requests still waiting for an admin decision",
+    who: "Kitchen usage requests still waiting for an admin decision",
     waitingFor: "an admin decision",
   },
   transfers: {
@@ -486,7 +486,7 @@ export function kpiWorking(kpi, report) {
         line("Days in the period", days, "count"),
         line("Average lines per day", per(kpi.value, days), "qty"),
       ],
-      formula: `Count daily-use item lines dated inside the selected period. Average = ${formatCount(kpi.value)} ÷ ${countText(days, "day", "days")} = ${formatQty(per(kpi.value, days))}. These items carry no price, so they are counted rather than valued.`,
+      formula: `Count unified usage lines whose product is labelled daily-use. Average = ${formatCount(kpi.value)} ÷ ${countText(days, "day", "days")} = ${formatQty(per(kpi.value, days))}. Priced lines are also included in consumption value.`,
     }],
     pendingRequests: () => [{
       heading: "Working",
@@ -494,7 +494,7 @@ export function kpiWorking(kpi, report) {
         line("Requests waiting now", kpi.value, "count", { total: true }),
         line("Oldest waiting", d.oldestAgeDays, "days"),
       ],
-      formula: "Count current kitchen stock and daily-use requests whose status is pending, whenever they were raised.",
+      formula: "Count current kitchen usage requests whose status is pending, whenever they were raised.",
     }, flow && ageingSection(flow.requests.pendingAgeing)],
     pendingSupplyRequests: () => {
       const raisedPending = procurement?.supplyRequests.find((row) => row.status === "pending")?.count;
@@ -800,7 +800,7 @@ export function kitchenComparisonRowWorking(row, meta) {
           line("Low or out-of-stock items", row.lowOrOutOfStock, "count", {
             note: row.lowOrOutOfStock === null ? "Not calculated for inactive or deleted kitchens" : "At or below threshold, or at zero",
           }),
-          line("Pending requests", row.pendingRequests, "count", { note: "Stock and daily-use requests waiting for a decision" }),
+          line("Pending requests", row.pendingRequests, "count", { note: "Usage requests waiting for a decision" }),
         ],
         formula: `These two figures are current snapshots as of ${generatedText(meta)} and are not limited to the selected dates.`,
       },

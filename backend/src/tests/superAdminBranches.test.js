@@ -122,7 +122,7 @@ test("indent requests: a kitchen user who does not own the request is still forb
 });
 
 test("admin-only routes admit super_admin; user-only routes reject it exactly like admin", async () => {
-  for (const url of ["/api/consumptions", "/api/procurement/indents", "/api/reports/indents", "/api/product-ledger/godowns", "/api/daily-usage"]) {
+  for (const url of ["/api/consumptions", "/api/procurement/indents", "/api/reports/indents", "/api/product-ledger/godowns"]) {
     assert.equal((await as("superAdmin")("get", url)).status, 200, url);
   }
   const create = await as("superAdmin")("post", "/api/requests").send({ targetDate: "2026-10-01", reason: "x", items: [] });

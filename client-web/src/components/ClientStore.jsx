@@ -61,7 +61,6 @@ const ClientStore = () => {
   const [items, setItems] = useState([]);
   const [cart, setCart] = useState([]);
   const [orders, setOrders] = useState([]); 
-  const [dailyUsageHistory, setDailyUsageHistory] = useState([]);
   const [requests, setRequests] = useState([]); 
   const [indents, setIndents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -73,13 +72,8 @@ const [editIndentId, setEditIndentId] = useState(null);
   const [logTab, setLogTab] = useState("usage"); 
 const [activeTransactionType, setActiveTransactionType] = useState("usage"); // usage | request | indent | transfer
 
-const [requestType, setRequestType] = useState("stock_request");
-
-const [mode, setMode] = useState("stock");
-
 const [transferDestination, setTransferDestination] = useState("");
 const [godowns, setGodowns] = useState([]);
-const [dailyItems, setDailyItems] = useState([]);
   const [requestReason, setRequestReason] = useState(""); 
   const [requestDate, setRequestDate] = useState(new Date());
 
@@ -147,27 +141,11 @@ const fetchGodowns = async () => {
   const fetchItems = async (isForIndent = false) => {
    
     try {
-         const dailyRes = await api.get("/inventory/stock-items");
-
-setDailyItems(
-  dailyRes.data
-    .filter(item => item.itemType === "daily_use")
-    .map(item => ({
-      stockItemId: item._id,
-      stockRecordId: item._id,
-      _id: item._id,
-      name: item.name,
-      unit: item.unitId?.symbol || "Nos",
-      image: item.imageUrl || ""
-    }))
-);
       let res;
      if (isForIndent) {
  res = await api.get("/inventory/stock-items");
 
-const formatted = res.data
-  .filter(item => item.itemType !== "daily_use") // ✅ THIS IS THE FIX
-  .map(item => ({
+const formatted = res.data.map(item => ({
     stockRecordId: item._id,
     _id: item._id,
     name: item.name,
@@ -182,9 +160,7 @@ const formatted = res.data
 setItems(formatted);
 } else {
         res = await api.get('/my-kitchen-stock'); 
-        const formattedItems = res.data
-  .filter(item => item.itemType !== "daily_use")
-  .map(item => ({
+        const formattedItems = res.data.map(item => ({
           // False when the product's catalog details are incomplete or it is archived (see backend catalog/).
           available: item.available !== false,
           stockRecordId: item.stockRecordId, 
@@ -211,22 +187,6 @@ setItems(formatted);
       setOrders(res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
     } catch { console.error("Failed to fetch orders"); }
   };
-  const fetchDailyUsage = async () => {
-  try {
-    const res = await api.get("/daily-usage/me");
-
-    setDailyUsageHistory(
-      res.data.sort(
-        (a, b) =>
-          new Date(b.createdAt) -
-          new Date(a.createdAt)
-      )
-    );
-  } catch (error) {
-    console.error("Failed to fetch daily usage", error);
-  }
-};
-
   const fetchMyRequests = async () => {
     try {
       const res = await api.get('/requests');
@@ -239,7 +199,6 @@ setItems(formatted);
     const wants = (key) => isFeatureOn(nextFlags, key) && (!only || only.includes(key));
     return Promise.all([
       wants("consumption") && fetchMyOrders(),
-      wants("consumption") && fetchDailyUsage(),
       wants("requests") && fetchMyRequests(),
       wants("indent") && fetchIndents()
     ]);
@@ -253,7 +212,7 @@ setItems(formatted);
     setFlags(nextFlags);
     const newlyOff = (key) => isFeatureOn(previous, key) && !isFeatureOn(nextFlags, key);
     const newlyOn = ["consumption", "requests", "indent"].filter((key) => !isFeatureOn(previous, key) && isFeatureOn(nextFlags, key));
-    if (newlyOff("consumption")) { setOrders([]); setDailyUsageHistory([]); }
+    if (newlyOff("consumption")) setOrders([]);
     if (newlyOff("requests")) setRequests([]);
     if (newlyOff("indent")) setIndents([]);
     if (newlyOn.length) fetchFeatureData(nextFlags, newlyOn);
@@ -301,9 +260,7 @@ setItems(formatted);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- applyFlags only touches refs and state setters
   }, []);
 
-  const hasDraft = cart.some((item) =>
-    Number(mode === "daily" ? item.qtyBaseUnit : item.requestedQty) > 0
-  );
+  const hasDraft = cart.some((item) => Number(item.requestedQty) > 0);
 
   // A view can become hidden after load (deep link, or flags changed on focus): fall back to home.
   // A draft whose feature was switched off is dropped silently (nothing visible to discard) so it cannot
@@ -318,7 +275,6 @@ setItems(formatted);
       setRequestReason("");
       setEditIndentId(null);
       setTransferDestination("");
-      setMode("stock");
       setActiveTransactionType("usage");
     }
     if (viewHidden) {
@@ -357,38 +313,23 @@ setItems(formatted);
   const usableItems = useMemo(() => items.filter((item) => item.available !== false), [items]);
 
   const filteredItems = useMemo(() => {
-  const source =
-    mode === "daily"
-      ? dailyItems
-      : usableItems;
-
-  return source.filter(item =>
+  return usableItems.filter(item =>
     item.name
       .toLowerCase()
       .includes(searchQuery.toLowerCase())
   );
 }, [
   usableItems,
-  dailyItems,
   searchQuery,
-  mode
 ]);
 
 
 const usageHistory = useMemo(() => {
-  const consumptions = orders.map(order => ({
+  return orders.map(order => ({
     ...order,
     type: "consumption",
     historyTime: order.createdAt
-  }));
-
-  const dailyUsage = dailyUsageHistory.map(row => ({
-    ...row,
-    type: "daily",
-    historyTime: row.createdAt
-  }));
-
-  return [...consumptions, ...dailyUsage]
+  }))
     .filter(row =>
       isSameLocalDate(
         row.date || row.createdAt,
@@ -400,7 +341,7 @@ const usageHistory = useMemo(() => {
         new Date(b.historyTime) -
         new Date(a.historyTime)
     );
-}, [orders, dailyUsageHistory, selectedHistoryDate]);
+}, [orders, selectedHistoryDate]);
 
   const addToCart = (product, newQty) => {
     // Prevent empty or partial decimal issues
@@ -454,80 +395,15 @@ if (isNaN(parsedQty)) return;
   };
 
 
-  const handleDailyUsageAdd = (item, qty) => {
-  setCart(prev => {
-    const existing = prev.find(
-      x => x.stockItemId === item.stockItemId
-    );
-
-    if (existing) {
-  return prev.map(x =>
-    x.stockItemId === item.stockItemId
-      ? {
-          ...x,
-          qtyBaseUnit: qty,
-          image: item.image || x.image
-        }
-      : x
-  );
-}
-
-    return [
-  ...prev,
-  {
-    stockItemId: item.stockItemId,
-    qtyBaseUnit: qty,
-    name: item.name,
-    unit: item.unit,
-    image: item.image || ""
-  }
-];
-  });
-};
-
   const handleSubmit = async () => {
 
   console.log("===== SUBMIT =====");
   if (activeTransactionType === "usage" && !selectedDate) {
     return toast.error("Select a usage date");
   }
-// DIRECT DAILY USAGE ONLY
-if (
-  mode === "daily" &&
-  activeTransactionType === "usage"
-) {
-  try {
-    await api.post("/daily-usage", {
-      date: selectedDate,
-      items: cart.map(item => ({
-        stockItemId: item.stockItemId,
-        qtyBaseUnit: Number(item.qtyBaseUnit)
-      }))
-    });
-
-    toast.success("Daily Usage Saved!");
-
-    await fetchDailyUsage();
-
-    setCart([]);
-    setIsCartOpen(false);
-
-    return;
-  } catch (err) {
-    toast.error(
-      err.response?.data?.message ||
-      err.response?.data?.error ||
-      "Failed to save daily usage"
-    );
-
-    return;
-  }
-}
-
-
   console.log("editIndentId =", editIndentId);
   console.log("activeTransactionType =", activeTransactionType);
-    const validItems = buildTransactionItems(cart, mode, { allowNegative: activeTransactionType === "request" });
+    const validItems = buildTransactionItems(cart, "stock", { allowNegative: activeTransactionType === "request" });
 
     if (validItems.length === 0) return toast.error("Add valid quantities");
     if (
@@ -590,17 +466,13 @@ if (editIndentId !== null && editIndentId !== undefined) {
       } else if (activeTransactionType === "request") {
 
   await api.post("/requests", {
-    requestType,
+    requestType: "usage",
     items: validItems,
     reason: requestReason,
     targetDate: requestDate.toISOString()
   });
 
-  toast.success(
-    requestType === "daily_usage"
-      ? "Daily Usage Request Sent!"
-      : "Stock Request Sent!"
-  );
+  toast.success("Usage Request Sent!");
 } else {
 
 
@@ -620,7 +492,6 @@ if (editIndentId !== null && editIndentId !== undefined) {
         setActiveTab("requests");
       }
       setActiveTransactionType("usage");
-      setRequestType("stock_request");
       await Promise.all([fetchItems(false), fetchIndents(), fetchMyRequests(), fetchMyOrders()]);
     } catch (err) {
       toast.error(err.response?.data?.error || "Failed");
@@ -654,7 +525,6 @@ if (editIndentId !== null && editIndentId !== undefined) {
   const handleEditIndent = async (indent) => {
     console.log("EDIT CLICKED:", indent._id);
     setActiveTransactionType("indent");
-    setMode("stock");
     const mappedCart = indent.items.map(it => {
   const inventoryItem = items.find(
     x => x._id === it.stockItemId?._id ||
@@ -707,7 +577,6 @@ setEditIndentId(indent._id);
     if (skipDraftCheck !== true && hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
     setActiveTab("stock");
     setActiveTransactionType("usage");
-    setMode("stock");
     setCart([]);
     fetchItems(false);
     return true;
@@ -718,7 +587,6 @@ setEditIndentId(indent._id);
     if (skipDraftCheck !== true && hasDraft && activeTab !== "usage" && !window.confirm("Discard your unfinished draft?")) return false;
     setActiveTab("usage");
     setActiveTransactionType("usage");
-    setMode("stock");
     setCart([]);
     setSelectedDate(toLocalDateKey());
     fetchItems(false);
@@ -730,7 +598,6 @@ setEditIndentId(indent._id);
     if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
     setActiveTab("request-builder");
     setActiveTransactionType("indent");
-    setMode("stock");
     setCart([]);
     setRequestReason("");
     setEditIndentId(null);
@@ -810,7 +677,6 @@ setEditIndentId(indent._id);
           items={items}
           requests={requests}
           indents={indents}
-          dailyUsageHistory={dailyUsageHistory}
           orders={orders}
           onRecordUsage={openUsage}
           onViewStock={openStock}
@@ -863,7 +729,6 @@ setEditIndentId(indent._id);
           onCreate={() => {
             setActiveTransactionType("transfer");
             setActiveTab("request-builder");
-            setMode("stock");
             setCart([]);
             setTransferDestination("");
             fetchItems(false);
@@ -958,7 +823,6 @@ setEditIndentId(indent._id);
     onClick={() => {
       setActiveTransactionType("transfer");
       setActiveTab("request-builder");
-      setMode("stock");
       setCart([]);
       setTransferDestination("");
       fetchItems(false);
@@ -1038,34 +902,18 @@ setEditIndentId(indent._id);
                     
                     {logTab === 'requests' && (
                         <>
-                         {isFeatureOn(flags, "requests") && <div className="grid grid-cols-2 gap-2 mb-4">
+                         {isFeatureOn(flags, "requests") && <div className="grid grid-cols-1 gap-2 mb-4">
 
   <button
     onClick={() => {
   setActiveTransactionType("request");
-  setRequestType("stock_request");
-  setMode("stock");
   setCart([]);
   setIsActivityLogOpen(false);
   fetchItems(false);
 }}
     className="bg-blue-600 text-white py-3 rounded-xl font-black text-[11px] uppercase"
   >
-    + Stock Request
-  </button>
-
-  <button
-    onClick={() => {
-  setActiveTransactionType("request");
-  setRequestType("daily_usage");
-  setMode("daily");
-  setCart([]);
-  setIsActivityLogOpen(false);
-  fetchItems(true);
-}}
-    className="bg-indigo-600 text-white py-3 rounded-xl font-black text-[11px] uppercase"
-  >
-    + Daily Usage Request
+    + Usage Request
   </button>
 
 </div>}
@@ -1080,15 +928,9 @@ setEditIndentId(indent._id);
                             <div key={req._id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                               <div className="flex justify-between items-start mb-2">
                                 <span className={`text-[8px] font-black px-2 py-1 rounded uppercase ${req.status === 'approved' ? 'bg-green-100 text-green-600' : 'bg-orange-100 text-orange-600'}`}>{req.status}</span>
-                                {req.requestType === "daily_usage" ? (
-  <span className="ml-2 text-[8px] font-black px-2 py-1 rounded uppercase bg-blue-100 text-blue-700">
-    DAILY USAGE
-  </span>
-) : (
   <span className="ml-2 text-[8px] font-black px-2 py-1 rounded uppercase bg-green-100 text-green-700">
-    STOCK REQUEST
+    USAGE REQUEST
   </span>
-)}
                                 <span className="text-[9px] font-black text-gray-800">
   {new Date(
     req.targetDate || req.createdAt
@@ -1124,7 +966,6 @@ setEditIndentId(indent._id);
                         <>
                           <button onClick={() => {
   setActiveTransactionType("indent");
-  setMode("stock");      // Force Stock mode
   setCart([]);
   setIsActivityLogOpen(false);
   fetchItems(true);
@@ -1363,9 +1204,7 @@ setEditIndentId(indent._id);
               <h2 className="text-lg font-black uppercase italic">
 {
 activeTransactionType === "request"
-? requestType === "daily_usage"
-    ? "Review Daily Usage Request"
-    : "Review Stock Request"
+? "Review Usage Request"
 : activeTransactionType === "indent"
 ? "Review Supply Request"
 : `Review ${activeTransactionType}`
@@ -1398,25 +1237,13 @@ activeTransactionType === "request"
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => {
-                           const current =
-  parseFloat(
-    mode === "daily"
-      ? item.qtyBaseUnit
-      : item.requestedQty
-  ) || 0;
+                           const current = parseFloat(item.requestedQty) || 0;
                             // Only allow decrement if > 0
                             if (current > 0) {
-  if (mode === "daily") {
-    handleDailyUsageAdd(
-      item,
-      limitTo3Decimals(current - 1)
-    );
-  } else {
     addToCart(
       item,
       limitTo3Decimals(current - 1)
     );
-  }
 }
                         }} 
                         className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-sm font-black"
@@ -1427,11 +1254,7 @@ activeTransactionType === "request"
   type="text"
   inputMode="decimal"
   className="text-[11px] font-black w-12 text-center bg-transparent outline-none"
-  value={
-    mode === "daily"
-      ? item.qtyBaseUnit ?? ""
-      : item.requestedQty ?? ""
-  }
+  value={item.requestedQty ?? ""}
                         onChange={(e) => {
                           const val = e.target.value;
                           // REGEX PROTECTION: Only allows positive digits and a single dot. 
@@ -1442,34 +1265,17 @@ activeTransactionType === "request"
     ? /^-?\d*(\.\d{0,3})?$/.test(val)
     : /^\d*(\.\d{0,3})?$/.test(val))
 ) {
-  if (mode === "daily") {
-  handleDailyUsageAdd(item, val);
-} else {
   addToCart(item, val);
-}
 }
                         }}
                       />
                       <button
   onClick={() => {
-    const current =
-      parseFloat(
-        mode === "daily"
-          ? item.qtyBaseUnit
-          : item.requestedQty
-      ) || 0;
-
-    if (mode === "daily") {
-      handleDailyUsageAdd(
-        item,
-        limitTo3Decimals(current + 1)
-      );
-    } else {
+    const current = parseFloat(item.requestedQty) || 0;
       addToCart(
         item,
         limitTo3Decimals(current + 1)
       );
-    }
   }}
   className="w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-sm font-black"
 >
@@ -1478,11 +1284,7 @@ activeTransactionType === "request"
                       <button
   onClick={() => {
     setCart(prev =>
-      prev.filter(i =>
-  mode === "daily"
-    ? i.stockItemId !== item.stockItemId
-    : i.stockRecordId !== item.stockRecordId
-)
+      prev.filter(i => i.stockRecordId !== item.stockRecordId)
     );
   }}
   className="w-7 h-7 rounded-lg bg-red-500 text-white flex items-center justify-center text-sm font-black"
@@ -1548,9 +1350,7 @@ activeTransactionType === "request"
     >
       {
 activeTransactionType === "request"
-? requestType === "daily_usage"
-    ? "Submit Daily Usage Request"
-    : "Submit Stock Request"
+? "Submit Usage Request"
 : activeTransactionType === "indent"
 ? editIndentId ? "Update Supply Request" : "Submit Supply Request"
 : `Submit ${activeTransactionType}`
@@ -1577,8 +1377,8 @@ activeTransactionType === "request"
           onDestinationChange={setTransferDestination}
           destinations={godowns}
           currentGodownId={userInfo?.godown?._id}
-          onQuantityChange={(item, quantity) => mode === "daily" ? handleDailyUsageAdd(item, quantity) : addToCart(item, quantity)}
-          onRemove={(item) => setCart((previous) => previous.filter((entry) => mode === "daily" ? entry.stockItemId !== item.stockItemId : entry.stockRecordId !== item.stockRecordId))}
+          onQuantityChange={addToCart}
+          onRemove={(item) => setCart((previous) => previous.filter((entry) => entry.stockRecordId !== item.stockRecordId))}
           onClose={() => setIsCartOpen(false)}
           onSubmit={handleSubmit}
         />
@@ -1588,7 +1388,7 @@ activeTransactionType === "request"
           <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
             <div className="min-w-0">
               <strong className="block text-sm text-gray-900">
-                {cart.filter(item => Number(mode === "daily" ? item.qtyBaseUnit : item.requestedQty) > 0).length} items selected
+                {cart.filter(item => Number(item.requestedQty) > 0).length} items selected
               </strong>
               <span className="block truncate text-xs text-gray-500">
                 {activeTransactionType === "transfer" ? "Review destination and quantities" : "Review quantities, date and reason"}
@@ -1597,7 +1397,7 @@ activeTransactionType === "request"
             <button
               type="button"
               onClick={() => setIsCartOpen(true)}
-              disabled={!cart.some(item => Number(mode === "daily" ? item.qtyBaseUnit : item.requestedQty) > 0)}
+              disabled={!cart.some(item => Number(item.requestedQty) > 0)}
               className="min-h-11 shrink-0 rounded-xl bg-green-700 px-5 text-sm font-bold text-white disabled:bg-gray-200 disabled:text-gray-500"
             >
               Review &amp; continue

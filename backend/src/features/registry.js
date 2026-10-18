@@ -116,18 +116,13 @@ export const ROUTE_RULES = Object.freeze([
   feature("POST", "/api/requests/:id/approve", ["requests"], "mutation"),
   feature("POST", "/api/requests/:id/reject", ["requests"], "mutation"),
 
-  // --- consumption & daily usage ---
+  // --- unified usage log ---
   feature("GET", "/api/consumptions/me", ["consumption"], "read", "kitchen"),
   feature("GET", "/api/consumptions", ["consumption"], "read"),
   feature("POST", "/api/consumptions", ["consumption"], "mutation", "both"),
   feature("POST", "/api/orders", ["consumption"], "mutation", "both"),
   feature("PATCH", "/api/consumptions/:id", ["consumption"], "mutation"),
   feature("DELETE", "/api/consumptions/:id", ["consumption"], "mutation"),
-  feature("GET", "/api/daily-usage/me", ["consumption"], "read", "both"),
-  feature("GET", "/api/daily-usage", ["consumption"], "read"),
-  feature("POST", "/api/daily-usage", ["consumption"], "mutation", "both"),
-  feature("PATCH", "/api/daily-usage/:id", ["consumption"], "mutation"),
-  feature("DELETE", "/api/daily-usage/:id", ["consumption"], "mutation"),
 
   // --- reports ---
   feature("GET", "/api/reports/:entity/export/excel/:id", ["reports"], "read"),

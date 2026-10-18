@@ -85,12 +85,13 @@ export const exportRecord = (record) => {
     Quantity: item.qtyBaseUnit,
     Unit: item.stockItemId?.unitId?.symbol || "",
     Date: recordDateKey(record),
+    Reason: record.reason || "",
     "Authorised By": record.userId?.name,
     Godown: record.godownId?.name
   }));
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Consumption Report");
-  XLSX.writeFile(workbook, `Consumption_${record.userId?.name || "Report"}_${Date.now()}.xlsx`);
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), "Usage Report");
+  XLSX.writeFile(workbook, `Usage_${record.userId?.name || "Report"}_${Date.now()}.xlsx`);
 };
 
 /* All filtered records -> consolidated section + one section per date. */
@@ -103,7 +104,7 @@ export const exportAllRecords = (records, inventoryItems, fromDate, toDate) => {
     (byDate[key] = byDate[key] || []).push(r);
   });
 
-  const aoa = [["MONTESSORI DAILY CONSUMPTION REPORT"], []];
+  const aoa = [["MONTESSORI USAGE REPORT"], []];
 
   let consolidatedTitle = "CONSOLIDATED";
   if (fromDate || toDate) consolidatedTitle += ` (${fromDate || ""} to ${toDate || ""})`;
@@ -154,11 +155,11 @@ export const exportAllRecords = (records, inventoryItems, fromDate, toDate) => {
   ws["!cols"] = [{ wch: 8 }, { wch: 28 }, { wch: 20 }, { wch: 12 }, ...godowns.map(() => ({ wch: 15 })), { wch: 15 }];
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Consumptions");
+  XLSX.utils.book_append_sheet(wb, ws, "Usage");
   XLSX.writeFile(
     wb,
     fromDate || toDate
-      ? `Consumption_Report_${fromDate || "start"}_to_${toDate || "end"}.xlsx`
-      : "All_Consumption_Report.xlsx"
+      ? `Usage_Report_${fromDate || "start"}_to_${toDate || "end"}.xlsx`
+      : "All_Usage_Report.xlsx"
   );
 };

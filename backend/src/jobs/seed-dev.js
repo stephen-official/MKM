@@ -12,7 +12,6 @@ import {
   Consumption, Distribution, GodownStock, Indent, IndentRequest, Notification,
   PurchaseOrder, Request, Transfer
 } from "../models/FlowModels.js";
-import { DailyUsage } from "../models/DailyUsageModel.js";
 import { User } from "../models/User.js";
 
 if (!/^mongodb:\/\/(127\.0\.0\.1|localhost)[:/]/.test(env.mongoUri)) {
@@ -101,16 +100,19 @@ const run = async () => {
   const [g0, g1, g2] = godowns;
   await IndentRequest.create({ godownId: g0._id, userId: userFor[g0._id]._id, items: pick(stockLike, 2, 1).map((it) => ({ stockItemId: it._id, qtyBaseUnit: 20 })), status: "pending" });
   await IndentRequest.create({ godownId: g1._id, userId: userFor[g1._id]._id, items: pick(stockLike, 1, 2).map((it) => ({ stockItemId: it._id, qtyBaseUnit: 15, receivedQty: 15, status: "approved" })), status: "received", confirmedAt: daysAgo(2), confirmedBy: admin._id });
-  await Request.create({ godownId: g0._id, userId: userFor[g0._id]._id, requestType: "stock_request", targetDate: dateStr(0), reason: "Weekend event, extra stock needed", items: pick(stockLike, 1, 4).map((it) => ({ stockItemId: it._id, qtyBaseUnit: 25 })), status: "pending" });
-  await Request.create({ godownId: g1._id, userId: userFor[g1._id]._id, requestType: "daily_usage", targetDate: dateStr(1), reason: "Missed yesterday's usage entry", items: pick(dailyUse, 1).map((it) => ({ stockItemId: it._id, qtyBaseUnit: 6 })), status: "approved", adminDecision: "Approved" });
+  await Request.create({ godownId: g0._id, userId: userFor[g0._id]._id, requestType: "usage", targetDate: dateStr(0), reason: "Weekend event, extra stock needed", items: pick(stockLike, 1, 4).map((it) => ({ stockItemId: it._id, qtyBaseUnit: 25 })), status: "pending" });
+  await Request.create({ godownId: g1._id, userId: userFor[g1._id]._id, requestType: "usage", targetDate: dateStr(1), reason: "Missed yesterday's usage entry", items: pick(dailyUse, 1).map((it) => ({ stockItemId: it._id, qtyBaseUnit: 6 })), status: "approved", adminDecision: "Approved" });
   await Transfer.create({ fromGodownId: g2._id, toGodownId: g0._id, createdBy: admin._id, items: pick(stockLike, 1, 6).map((it) => ({ stockItemId: it._id, qtyBaseUnit: 10 })), status: "pending" });
 
-  // A week of daily usage and consumption for every godown.
+  // A week of unified usage for every godown. Daily-use is a product label, not a separate log.
   for (let d = 1; d <= 7; d++) {
     for (const gd of godowns) {
       const u = userFor[gd._id];
-      await DailyUsage.create({ godownId: gd._id, userId: u._id, date: dateStr(d), items: pick(dailyUse, 5, d).map((it, k) => ({ stockItemId: it._id, qtyBaseUnit: 2 + ((d + k) % 5) })) });
-      await Consumption.create({ godownId: gd._id, userId: u._id, date: dateStr(d), items: pick(stockLike, 4, d).map((it, k) => ({ stockItemId: it._id, qtyBaseUnit: 1 + ((d + k) % 4), unitDisplay: "", amountAtIssue: (1 + ((d + k) % 4)) * price(it) })) });
+      const used = [...pick(dailyUse, Math.min(5, dailyUse.length), d), ...pick(stockLike, 4, d)];
+      await Consumption.create({ godownId: gd._id, userId: u._id, date: dateStr(d), items: used.map((it, k) => {
+        const qty = 1 + ((d + k) % 5);
+        return { stockItemId: it._id, qtyBaseUnit: qty, unitDisplay: "", unitPriceAtIssue: price(it), amountAtIssue: qty * price(it) };
+      }) });
     }
   }
 

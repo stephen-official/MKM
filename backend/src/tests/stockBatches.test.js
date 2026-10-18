@@ -22,6 +22,8 @@ beforeEach(async () => {
   await clearDb();
   kitchen = await createGodown("FIFO Kitchen");
   ({ items: { Rice: rice } } = await seedCatalog(["Rice"]));
+  rice.itemType = "daily_use";
+  await rice.save();
   stock = await stockRow(kitchen, rice, 20);
   cook = await createUser({ role: "user", godownId: kitchen._id });
   await StockBatch.create([
@@ -30,7 +32,7 @@ beforeEach(async () => {
   ]);
 });
 
-test("consumption deducts oldest received batches first and captures weighted value", async () => {
+test("daily-use products deduct oldest received batches first and capture weighted value", async () => {
   const response = await request(app).post("/api/consumptions")
     .set("Authorization", `Bearer ${cook.token}`)
     .send({ date: "2026-10-18", items: [{ stockRecordId: stock._id, qtyBaseUnit: 10 }] });

@@ -28,8 +28,7 @@ import {
 } from "./consumption/helpers.js";
 
 const PAGE_SIZE = 200;
-const endpointFor = (record) => (record.recordType === "dailyUsage" ? "daily-usage" : "consumptions");
-const labelFor = (record) => (record.recordType === "dailyUsage" ? "Daily usage" : "Consumption");
+const labelFor = () => "Usage";
 
 export const ConsumptionPage = () => {
   const { showToast } = useToast();
@@ -150,19 +149,18 @@ export const ConsumptionPage = () => {
       return;
     }
 
-    const isDaily = activeRecord.recordType === "dailyUsage";
     setSaving(true);
     try {
-      const res = await api.patch(`/${endpointFor(activeRecord)}/${activeRecord._id}`, {
+      const res = await api.patch(`/consumptions/${activeRecord._id}`, {
         items: editItems.map((item) => ({
           stockItemId: item.stockItemId,
           qtyBaseUnit: Number(Number(item.qtyBaseUnit).toFixed(3)),
-          ...(isDaily ? { stockRecordId: item.stockRecordId || undefined } : {})
+          stockRecordId: item.stockRecordId || undefined
         }))
       });
       setRows((prev) =>
         prev.map((row) =>
-          row._id === activeRecord._id ? { ...res.data, recordType: activeRecord.recordType } : row
+          row._id === activeRecord._id ? res.data : row
         )
       );
       stopEditing();
@@ -177,16 +175,9 @@ export const ConsumptionPage = () => {
   const deleteRecord = async () => {
     if (!activeRecord || deleting) return;
     const record = activeRecord;
-    const isDaily = record.recordType === "dailyUsage";
     const ok = await confirm({
-      title: `Delete ${labelFor(record).toLowerCase()} record?`,
-      message: `Delete this ${isDaily ? "daily usage" : "consumption"} record for ${
-        record.userId?.name || "this user"
-      }? ${
-        isDaily
-          ? "This only removes the usage history; godown stock will not change."
-          : "The consumed quantity will be returned to godown stock."
-      }`,
+      title: "Delete usage record?",
+      message: `Delete this usage record for ${record.userId?.name || "this user"}? The used quantity will be returned to godown stock.`,
       confirmLabel: "Delete",
       variant: "danger"
     });
@@ -194,11 +185,11 @@ export const ConsumptionPage = () => {
 
     setDeleting(true);
     try {
-      await api.delete(`/${endpointFor(record)}/${record._id}`);
+      await api.delete(`/consumptions/${record._id}`);
       setRows((prev) => prev.filter((row) => row._id !== record._id));
       stopEditing();
       setSelectedId(null);
-      showToast(isDaily ? "Daily usage deleted." : "Consumption deleted and stock restored.", "success");
+      showToast("Usage deleted and stock restored.", "success");
     } catch (err) {
       showToast(errorMessage(err, `Failed to delete ${labelFor(record).toLowerCase()}.`), "error");
     } finally {
@@ -223,7 +214,7 @@ export const ConsumptionPage = () => {
 
   const railEmpty = (
     <EmptyState title={filtered ? "No matching records" : "No records yet"}>
-      {filtered ? "Try a different search or date range." : "Consumption and daily usage records will appear here."}
+      {filtered ? "Try a different search or date range." : "Usage records will appear here."}
     </EmptyState>
   );
 
@@ -253,7 +244,7 @@ export const ConsumptionPage = () => {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <PageHeader
         title="Usage Records"
-        subtitle="Review, correct and export recorded consumption and daily usage."
+        subtitle="Review, correct and export kitchen usage."
         actions={
           <Button variant="success" onClick={exportAll} disabled={loading || Boolean(loadError)}>
             <FileSpreadsheet size={16} /> Export all
@@ -317,9 +308,7 @@ export const ConsumptionPage = () => {
                         <span className="page-subtitle" style={{ margin: 0 }}>{formatTime(r.createdAt)}</span>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 6 }}>
-                        <Badge variant={r.recordType === "dailyUsage" ? "success" : "info"}>
-                          {r.recordType === "dailyUsage" ? "Daily usage" : "Consumption"}
-                        </Badge>
+                        <Badge variant="info">Usage</Badge>
                         <span className="page-subtitle" style={{ margin: 0 }}>{recordDisplayDate(r)}</span>
                       </div>
                       <div className="page-subtitle" style={{ marginTop: 6 }}>

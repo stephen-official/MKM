@@ -11,7 +11,8 @@
     "seed": "node src/jobs/seed.js",
     "create-super-admin": "node src/jobs/create-super-admin.js",
     "migrate-product-catalog": "node src/jobs/migrate-product-catalog.js",
-    "migrate-stock-batches": "node src/jobs/migrate-stock-batches.js"
+    "migrate-stock-batches": "node src/jobs/migrate-stock-batches.js",
+    "migrate-usage-log": "node src/jobs/migrate-usage-log.js"
   },
   "dependencies": {
     "axios": "^1.15.0",

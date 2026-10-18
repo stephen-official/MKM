@@ -79,7 +79,6 @@ export default function KitchenHome({
   items = [],
   requests = [],
   indents = [],
-  dailyUsageHistory = [],
   orders = [],
   onRecordUsage,
   onViewStock,
@@ -107,7 +106,7 @@ export default function KitchenHome({
   const attentionItems = [...outOfStock, ...lowStock];
   const pendingRequests = [...requests, ...indents].filter((record) => OPEN_REQUEST_STATUSES.has(statusOf(record)));
   const deliveries = indents.filter(isReceivable);
-  const todaysEntries = [...dailyUsageHistory, ...orders].filter(
+  const todaysEntries = orders.filter(
     (entry) => toLocalDateKey(entry?.date || entry?.usageDate || entry?.createdAt) === today,
   );
   const usageComplete = todaysEntries.length > 0;

@@ -56,8 +56,6 @@ const cases = [
   ["GET", "/api/requests", "requests"],
   ["GET", "/api/operations/requests", "requests"],
   ["POST", "/api/requests/abc/approve", "requests"],
-  ["PATCH", "/api/daily-usage/abc", "consumption"],
-  ["POST", "/api/daily-usage", "consumption"],
   ["GET", "/api/product-ledger/godowns", "product-ledger"],
   ["GET", "/api/product-ledger/abc", "product-ledger"],
   ["GET", "/api/reports/indents/export/excel", "reports"],

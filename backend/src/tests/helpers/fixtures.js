@@ -3,7 +3,6 @@ import { Godown, StockGroup, StockItem, Unit } from "../../models/InventoryModel
 import {
   Consumption, Distribution, GodownStock, Indent, IndentRequest, PurchaseOrder, Request, Transfer
 } from "../../models/FlowModels.js";
-import { DailyUsage } from "../../models/DailyUsageModel.js";
 import { parseReportParams } from "../../executive/params.js";
 import { createContext, UI_LIMITS } from "../../executive/context.js";
 
@@ -58,11 +57,6 @@ export const purchaseOrder = async (receivedAt, lines, { status = "pending", cre
 export const consumption = async (godown, { date, createdAt, lines }) => (await insertRaw(Consumption, [{
   godownId: godown._id, userId: oid(), date, createdAt,
   items: lines.map(([item, qty, amount]) => ({ stockItemId: item._id, qtyBaseUnit: qty, ...(amount === undefined ? {} : { amountAtIssue: amount }) }))
-}]))[0];
-
-export const dailyUsage = async (godown, { date, createdAt, lines }) => (await insertRaw(DailyUsage, [{
-  godownId: godown._id, userId: oid(), date, createdAt,
-  items: lines.map(([item, qty]) => ({ stockItemId: item._id, qtyBaseUnit: qty }))
 }]))[0];
 
 export const stockRequest = async (godown, { status = "pending", createdAt, requestType = "stock_request" }) => (await insertRaw(Request, [{

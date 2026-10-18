@@ -6,7 +6,6 @@ import { buildExecutiveReport } from "../executive/buildReport.js";
 import { parseReportParams } from "../executive/params.js";
 import { EXPORT_LIMITS } from "../executive/context.js";
 import { Consumption, Indent } from "../models/FlowModels.js";
-import { DailyUsage } from "../models/DailyUsageModel.js";
 
 const enabled = process.env.PERF === "1";
 const NOW = new Date("2026-10-13T06:00:00Z");
@@ -44,9 +43,8 @@ const run = async (query, limits) => {
 };
 
 test("fixture is production-sized and the report returns real data", { skip: !enabled, timeout: 120_000 }, async () => {
-  const { days, previousPeriodDays, kitchens, consumptionsPerKitchenPerDay, dailyUsagesPerKitchenPerDay, indents } = PRODUCTION_SIZE;
-  assert.equal(await Consumption.countDocuments(), (days + previousPeriodDays) * kitchens * consumptionsPerKitchenPerDay);
-  assert.equal(await DailyUsage.countDocuments(), (days + previousPeriodDays) * kitchens * dailyUsagesPerKitchenPerDay);
+  const { days, previousPeriodDays, kitchens, consumptionsPerKitchenPerDay, dailyUseRecordsPerKitchenPerDay, indents } = PRODUCTION_SIZE;
+  assert.equal(await Consumption.countDocuments(), (days + previousPeriodDays) * kitchens * (consumptionsPerKitchenPerDay + dailyUseRecordsPerKitchenPerDay));
   assert.equal(await Indent.countDocuments(), indents);
   const report = await run({ from: "2025-10-13", to: "2026-10-13" });
   const consumptionValue = report.kpis.find((k) => k.id === "consumptionValue");
