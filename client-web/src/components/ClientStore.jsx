@@ -12,6 +12,7 @@ import KitchenBottomNav from "./kitchen/KitchenBottomNav";
 import KitchenStock from "./kitchen/KitchenStock";
 import KitchenUsageScreen from "./kitchen/KitchenUsageScreen";
 import SupplyRequestsDeliveries from "./kitchen/SupplyRequestsDeliveries";
+import KitchenOrders from "./kitchen/KitchenOrders";
 import KitchenActivity from "./kitchen/KitchenActivity";
 import KitchenTransfers from "./kitchen/KitchenTransfers";
 import KitchenReceiveDelivery from "./kitchen/KitchenReceiveDelivery";
@@ -46,7 +47,7 @@ const limitTo3Decimals = (value) => {
 
   return Number(num.toFixed(3));
 };
-const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "more", "activity", "transfers"]);
+const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "past-requests", "more", "activity", "transfers"]);
 const legacyUiEnabled = import.meta.env.VITE_ENABLE_LEGACY_KITCHEN_UI === "true";
 const viewFromLocation = () => {
   const view = window.location.hash.replace(/^#\/?/, "");
@@ -489,7 +490,7 @@ if (editIndentId !== null && editIndentId !== undefined) {
       setEditIndentId(null);
       if (activeTransactionType === "indent") {
         setSupplyInitialTab("requests");
-        setActiveTab("requests");
+        setActiveTab("past-requests");
       }
       setActiveTransactionType("usage");
       await Promise.all([fetchItems(false), fetchIndents(), fetchMyRequests(), fetchMyOrders()]);
@@ -513,7 +514,7 @@ if (editIndentId !== null && editIndentId !== undefined) {
       setReceiveItems({});
       setReceiveDetails({});
       setSupplyInitialTab("deliveries");
-      setActiveTab("requests");
+      setActiveTab("past-requests");
       await Promise.all([fetchItems(false), fetchIndents()]);
     } catch (err) {
       toast.error(err.response?.data?.message || err.response?.data?.error || "Failed to receive stock");
@@ -593,23 +594,20 @@ setEditIndentId(indent._id);
     return true;
   };
 
-  const openSupplyRequest = () => {
-    if (isBlocked("request-builder", "indent")) return false;
-    if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
-    setActiveTab("request-builder");
-    setActiveTransactionType("indent");
-    setCart([]);
-    setRequestReason("");
-    setEditIndentId(null);
-    fetchItems(true);
-    return true;
-  };
-
   const openDeliveries = () => {
-    if (isBlocked("requests")) return false;
+    if (isBlocked("past-requests")) return false;
     if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
     setCart([]);
     setSupplyInitialTab("deliveries");
+    setActiveTab("past-requests");
+    return true;
+  };
+
+  // "Ask for supplies": shared orders, where every new request now starts.
+  const openOrders = () => {
+    if (isBlocked("requests")) return false;
+    if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
+    setCart([]);
     setActiveTab("requests");
     return true;
   };
@@ -680,8 +678,8 @@ setEditIndentId(indent._id);
           orders={orders}
           onRecordUsage={openUsage}
           onViewStock={openStock}
-          onRequestSupplies={openSupplyRequest}
-          onReceiveDelivery={openDeliveries}
+          onRequestSupplies={openOrders}
+          onReceiveDelivery={openOrders}
           onOpenActivity={openActivity}
           hidden={hidden}
         />
@@ -711,12 +709,19 @@ setEditIndentId(indent._id);
           onReview={() => setIsCartOpen(true)}
         />
       ) : activeTab === "requests" ? (
+        <KitchenOrders
+          products={usableItems}
+          godownId={userInfo?.godown?._id}
+          canShowPast={!hidden.has("past-requests")}
+          onShowPast={() => { setSupplyInitialTab("requests"); setActiveTab("past-requests"); }}
+        />
+      ) : activeTab === "past-requests" ? (
         <SupplyRequestsDeliveries
           key={supplyInitialTab}
           indents={indents}
           loading={loading}
           initialTab={supplyInitialTab}
-          onCreateRequest={openSupplyRequest}
+          onBack={openOrders}
           onEditRequest={handleEditIndent}
           onDeleteRequest={deleteSupplyRequest}
           onReceiveDelivery={receiveDelivery}
@@ -774,7 +779,7 @@ setEditIndentId(indent._id);
           onCancel={() => {
             setCart([]);
             setEditIndentId(null);
-            setActiveTab(activeTransactionType === "transfer" ? "transfers" : "requests");
+            setActiveTab(activeTransactionType === "transfer" ? "transfers" : "past-requests");
           }}
         />
       )}
@@ -1410,7 +1415,7 @@ activeTransactionType === "request"
           activeTab === "request-builder"
             ? activeTransactionType === "transfer" ? "more" : "requests"
             : ["activity", "transfers"].includes(activeTab) ? "more"
-            : activeTab === "receive-delivery" ? "requests"
+            : ["receive-delivery", "past-requests"].includes(activeTab) ? "requests"
             : activeTab
         }
         onTabChange={handleTabChange}

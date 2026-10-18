@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
@@ -17,6 +18,7 @@ import {
   normalizeSupplyRequests,
 } from "../../features/kitchen";
 import "./SupplyRequestsDeliveries.css";
+import "./KitchenOrders.css";
 
 const EDITABLE_STATUSES = new Set(["draft", "pending", "submitted"]);
 const DELETABLE_STATUSES = new Set(["draft", "pending", "submitted"]);
@@ -81,7 +83,7 @@ function EmptyState({ tab, onCreateRequest }) {
           ? "Approved supplies will appear here when they are ready for your kitchen."
           : "Create a request when your kitchen needs ingredients or other supplies."}
       </p>
-      {!deliveries && (
+      {!deliveries && onCreateRequest && (
         <button type="button" className="srd-primary-button" onClick={onCreateRequest}>
           <Plus size={18} aria-hidden="true" /> Create supply request
         </button>
@@ -195,6 +197,7 @@ export default function SupplyRequestsDeliveries({
   onReceiveDelivery,
   refresh,
   initialTab = "requests",
+  onBack,
 }) {
   const [activeTab, setActiveTab] = useState(initialTab === "deliveries" ? "deliveries" : "requests");
   const requests = useMemo(
@@ -210,10 +213,15 @@ export default function SupplyRequestsDeliveries({
 
   return (
     <main className="srd-shell">
+      {onBack && (
+        <button type="button" className="ko-back" onClick={onBack}>
+          <ArrowLeft size={18} aria-hidden="true" /> Back to Ask for supplies
+        </button>
+      )}
       <header className="srd-page-header">
         <div>
           <p>Kitchen supplies</p>
-          <h1>Requests &amp; deliveries</h1>
+          <h1>Past requests &amp; deliveries</h1>
           <span>Request supplies and confirm what arrives at your kitchen.</span>
         </div>
         <button type="button" className="srd-refresh" onClick={refresh} disabled={loading} aria-label="Refresh requests and deliveries">
@@ -230,7 +238,7 @@ export default function SupplyRequestsDeliveries({
         </button>
       </div>
 
-      {activeTab === "requests" && !loading && (
+      {activeTab === "requests" && !loading && onCreateRequest && (
         <button type="button" className="srd-create" onClick={onCreateRequest}>
           <Plus size={20} aria-hidden="true" />
           <span><strong>New supply request</strong><small>Ask the central store for kitchen supplies</small></span>

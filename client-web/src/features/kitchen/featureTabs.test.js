@@ -38,7 +38,9 @@ describe("canOpenView", () => {
   it("is false only for views whose feature is off", () => {
     const flags = { consumption: false, indent: false, "transfer-stock": true };
     assert.equal(canOpenView(flags, "usage"), false);
-    assert.equal(canOpenView(flags, "requests"), false);
+    assert.equal(canOpenView(flags, "past-requests"), false);
+    assert.equal(canOpenView(flags, "requests"), true, "shared orders follow purchase-orders, not indent");
+    assert.equal(canOpenView({ "purchase-orders": false }, "requests"), false);
     assert.equal(canOpenView(flags, "request-builder", "indent"), false);
     assert.equal(canOpenView(flags, "request-builder", "transfer"), true);
     assert.equal(canOpenView(flags, "stock"), true);
@@ -75,9 +77,9 @@ describe("bottom tab targets", () => {
     assert.equal(tabTarget("nope"), null);
   });
 
-  it("targets a view that the indent flag gates", () => {
-    assert.equal(isViewHidden({ indent: false }, tabTarget("requests").view), true);
-    assert.equal(isViewHidden({ indent: true }, tabTarget("requests").view), false);
+  it("targets the shared-order view, which the purchase-orders flag gates", () => {
+    assert.equal(isViewHidden({ "purchase-orders": false }, tabTarget("requests").view), true);
+    assert.equal(isViewHidden({ indent: false }, tabTarget("requests").view), false);
   });
 });
 

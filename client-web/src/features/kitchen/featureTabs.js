@@ -2,7 +2,9 @@
 export const KITCHEN_TAB_FEATURES = Object.freeze({
   usage: "consumption",
   activity: "consumption",
-  requests: "indent",
+  // "Ask for supplies" is the shared-order screen; the older single-kitchen requests live under "past-requests".
+  requests: "purchase-orders",
+  "past-requests": "indent",
   "receive-delivery": "indent",
   transfers: "transfer-stock"
 });
