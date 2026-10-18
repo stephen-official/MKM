@@ -4,7 +4,9 @@ import { authorize } from "../middleware/auth.js";
 import { packQuantityMatchesBase, packSnapshot } from "../catalog/packaging.js";
 import { assertKitchenCanUse, bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
-import { Godown } from "../models/InventoryModels.js";
+import { Godown, StockItem } from "../models/InventoryModels.js";
+import { GodownStock } from "../models/FlowModels.js";
+import { createStockBatch } from "../stock/batchService.js";
 import { isKitchenRole } from "../utils/roles.js";
 import { closesAtFor, neededByFor } from "../ordering/window.js";
 import { readOrderingSettings } from "../ordering/settings.js";
@@ -322,6 +324,46 @@ collaborativePurchaseOrderRoutes.post("/:id/dispatch", adminOnly, async (req, re
     await order.save();
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
+});
+
+/**
+ * Kitchen: "All received". Adds the kitchen's dispatched share to its stock and marks it delivered,
+ * in one transaction. A kitchen with a problem raises a concern instead and does not call this.
+ */
+collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
+    await session.withTransaction(async () => {
+      const order = await CollaborativePurchaseOrder.findById(req.params.id).session(session);
+      if (!order) throw fail(404, "Collaborative purchase order not found");
+      const share = order.contributions.find((entry) => String(entry.godownId) === String(req.user.godownId));
+      if (!share) throw fail(404, "Your kitchen is not on this order");
+      if (share.deliveredAt) throw fail(409, "Your kitchen has already received these items", "ALREADY_DELIVERED");
+      if (order.status !== "ordered" || !share.dispatchedAt) throw fail(409, "These items have not been dispatched yet", "NOT_DISPATCHED");
+      const receivedAt = new Date();
+      for (const line of share.items) {
+        const product = await StockItem.findById(line.stockItemId).select("pricePerUnit").session(session);
+        await GodownStock.findOneAndUpdate(
+          { godownId: share.godownId, stockItemId: line.stockItemId },
+          { $inc: { qtyBaseUnit: line.qtyBaseUnit }, $setOnInsert: { thresholdBaseUnit: 0 } },
+          { upsert: true, new: true, session },
+        );
+        await createStockBatch({
+          godownId: share.godownId, stockItemId: line.stockItemId, quantity: line.qtyBaseUnit,
+          unitPrice: product?.pricePerUnit, sourceType: "collaborative_order", sourceId: order._id,
+          receivedAt, condition: "good", expectedQtyBaseUnit: line.qtyBaseUnit, createdBy: req.user.sub, session,
+        });
+      }
+      Object.assign(share, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
+      await order.save({ session });
+    });
+    return res.json(responseOrder(await loadOrder(req.params.id), req.user));
+  } catch (error) {
+    return sendError(res, error);
+  } finally {
+    await session.endSession();
+  }
 });
 
 collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res) => {

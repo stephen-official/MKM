@@ -104,6 +104,12 @@ Approval works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSE
 
 The order is placed once (`ordered`), but each kitchen's share is sent separately. This sets `dispatchedAt` and `dispatchedBy` on that kitchen's contribution. The order must be `ordered` (otherwise 409 `NOT_ORDERED`), and a share can be dispatched once (409 `ALREADY_DISPATCHED`).
 
+### Receive the kitchen's share (kitchen only)
+
+`POST /:id/receive` (no body)
+
+"All received": adds every line of the kitchen's own share to its stock, creates a stock batch per line (`sourceType: "collaborative_order"`, `sourceId` = the order, priced at the product's `pricePerUnit` for valuation), and sets `deliveredAt` and `deliveredBy` on the share, all in one transaction. The share must be dispatched (409 `NOT_DISPATCHED`) and is received once (409 `ALREADY_DELIVERED`). Expiry, batch and photo details are not captured yet; a kitchen with a problem should not call this. The product ledger lists each received share as a `RECEIVED` row referenced by `orderNo`.
+
 ### Change lifecycle status (admin only)
 
 `PATCH /:id/status`
@@ -127,4 +133,4 @@ Closing the order immediately prevents kitchens from adding, editing, or removin
 
 ## Errors
 
-Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).

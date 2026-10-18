@@ -5,6 +5,8 @@ import { clearDb, startDb, stopDb, syncAllIndexes } from "./helpers/db.js";
 import { createGodown, createUser } from "./helpers/auth.js";
 import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
+import { GodownStock } from "../models/FlowModels.js";
+import { StockBatch } from "../models/StockBatchModel.js";
 
 let app;
 let ctx;
@@ -147,4 +149,68 @@ test("dispatch needs a placed order, an admin and a kitchen on the order", async
   assert.equal((await dispatch(ctx.kitchenA._id, ctx.cookA)).status, 403);
   assert.equal((await dispatch((await createGodown("Kitchen C"))._id)).status, 404);
   assert.equal((await dispatch("nope")).status, 400);
+});
+
+const receive = (actor = ctx.cookA) => call(actor, "post", `/${ctx.order._id}/receive`).send({});
+const stockOf = async (kitchen, product) => Number((await GodownStock.findOne({ godownId: kitchen._id, stockItemId: product._id }).lean())?.qtyBaseUnit || 0);
+
+test("all received adds the kitchen's share to its stock and marks it delivered", async () => {
+  await placeOrder();
+  await dispatch(ctx.kitchenA._id);
+  const res = await receive();
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.ok(share(res.body, ctx.kitchenA).deliveredAt);
+  assert.equal(await stockOf(ctx.kitchenA, ctx.rice), 10);
+  assert.equal(await stockOf(ctx.kitchenB, ctx.rice), 0, "only Kitchen A's share arrives");
+  const batch = await StockBatch.findOne({ godownId: ctx.kitchenA._id, stockItemId: ctx.rice._id }).lean();
+  assert.equal(batch.sourceType, "collaborative_order");
+  assert.equal(String(batch.sourceId), String(ctx.order._id));
+  assert.equal(batch.remainingQtyBaseUnit, 10);
+
+  const twice = await receive();
+  assert.equal(twice.status, 409);
+  assert.equal(twice.body.code, "ALREADY_DELIVERED");
+  assert.equal(await stockOf(ctx.kitchenA, ctx.rice), 10, "receiving twice never adds stock twice");
+});
+
+test("a kitchen can only receive its own share once it has been dispatched", async () => {
+  await placeOrder();
+  const early = await receive();
+  assert.equal(early.status, 409);
+  assert.equal(early.body.code, "NOT_DISPATCHED");
+  assert.equal((await receive(ctx.admin)).status, 403);
+  const kitchenC = await createGodown("Kitchen C");
+  assert.equal((await receive(await createUser({ role: "user", godownId: kitchenC._id }))).status, 404);
+  assert.equal(await stockOf(ctx.kitchenA, ctx.rice), 0);
+});
+
+test("the product ledger shows the received share and still adds up", async () => {
+  await placeOrder();
+  await dispatch(ctx.kitchenA._id);
+  await receive();
+  const ledger = await request(app).get(`/api/product-ledger/${ctx.rice._id}`).query({ godownId: String(ctx.kitchenA._id) })
+    .set("Authorization", `Bearer ${ctx.admin.token}`);
+  assert.equal(ledger.status, 200, JSON.stringify(ledger.body));
+  assert.equal(ledger.body.currentStock, 10);
+  assert.equal(ledger.body.openingStock, 0);
+  assert.deepEqual(ledger.body.ledger.map((row) => [row.type, row.qtyIn, row.balance]), [["RECEIVED", 10, 10]]);
+});
+
+test("the product ledger Excel download includes the received share", async () => {
+  const ExcelJS = (await import("exceljs")).default;
+  await placeOrder();
+  await dispatch(ctx.kitchenA._id);
+  await receive();
+  const res = await request(app).get(`/api/product-ledger/${ctx.rice._id}/export/excel`).query({ godownId: String(ctx.kitchenA._id) })
+    .set("Authorization", `Bearer ${ctx.admin.token}`).buffer(true).parse((stream, done) => {
+      const chunks = [];
+      stream.on("data", (chunk) => chunks.push(chunk));
+      stream.on("end", () => done(null, Buffer.concat(chunks)));
+    });
+  assert.equal(res.status, 200);
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(res.body);
+  const cells = [];
+  book.eachSheet((sheet) => sheet.eachRow((row) => cells.push(row.values.filter((value) => value !== undefined && value !== null).map(String))));
+  assert.ok(cells.some((row) => row.includes(ctx.order.orderNo) && row.includes("10")), "a row for the received order with 10 in");
 });

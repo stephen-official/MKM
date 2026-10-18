@@ -26,6 +26,9 @@ const contributionSchema = new mongoose.Schema({
   // Once the order is placed, each kitchen's share is sent separately.
   dispatchedAt: { type: Date, default: null },
   dispatchedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  // Set when the kitchen confirms everything arrived; its items were added to that kitchen's stock then.
+  deliveredAt: { type: Date, default: null },
+  deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { _id: true });
 
 const collaborativePurchaseOrderSchema = new mongoose.Schema({

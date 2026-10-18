@@ -5,7 +5,7 @@ const stockBatchSchema = new mongoose.Schema({
   stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: "StockItem", required: true, index: true },
   sourceType: {
     type: String,
-    enum: ["distribution", "indent_receipt", "transfer", "opening_balance", "return"],
+    enum: ["distribution", "indent_receipt", "collaborative_order", "transfer", "opening_balance", "return"],
     required: true,
   },
   sourceId: { type: mongoose.Schema.Types.ObjectId, default: null },
