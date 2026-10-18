@@ -1,4 +1,4 @@
-import { Bell, LogOut, School } from "lucide-react";
+import { Bell, LogOut, RotateCw, School } from "lucide-react";
 import "./kitchen-ui.css";
 
 /**
@@ -46,6 +46,16 @@ export default function KitchenHeader({
       </div>
 
       <div className="kitchen-header__actions">
+        {/* Lives here rather than floating, so it never covers the bottom navigation or an open sheet. */}
+        <button
+          type="button"
+          className="kitchen-header__action"
+          aria-label="Reload the app"
+          title="Reload"
+          onClick={() => window.location.reload()}
+        >
+          <RotateCw size={20} aria-hidden="true" />
+        </button>
         <button
           type="button"
           className="kitchen-header__action"
