@@ -22,6 +22,7 @@ import { reportScheduleRoutes } from "./routes/reportScheduleRoutes.js";
 import { productRoutes } from "./routes/productRoutes.js";
 import { productRequestRoutes } from "./routes/productRequestRoutes.js";
 import { collaborativePurchaseOrderRoutes } from "./routes/collaborativePurchaseOrderRoutes.js";
+import { orderingSettingsRoutes } from "./routes/orderingSettingsRoutes.js";
 
 const app = express();
 
@@ -129,6 +130,7 @@ export const PROTECTED_MOUNTS = [
   ["/api/products", productRoutes],
   ["/api/product-requests", productRequestRoutes],
   ["/api/procurement/collaborative-purchase-orders", collaborativePurchaseOrderRoutes],
+  ["/api/ordering-settings", orderingSettingsRoutes],
   ["/api/procurement", procurementRoutes],
   ["/api", operationsRoutes],
   ["/api/reports", reportRoutes],

@@ -6,7 +6,8 @@ import { assertKitchenCanUse, bodyItemIds, requireAvailableProducts } from "../c
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
 import { Godown } from "../models/InventoryModels.js";
 import { isKitchenRole } from "../utils/roles.js";
-import { DEFAULT_ORDERING_SETTINGS, closesAtFor, neededByFor } from "../ordering/window.js";
+import { closesAtFor, neededByFor } from "../ordering/window.js";
+import { readOrderingSettings } from "../ordering/settings.js";
 
 export const collaborativePurchaseOrderRoutes = express.Router();
 const everyone = authorize(["admin", "user"]);
@@ -134,7 +135,7 @@ const openingKitchen = async (req) => {
 
 collaborativePurchaseOrderRoutes.post("/", everyone, requireAvailableProducts(bodyItemIds), async (req, res) => {
   try {
-    const settings = DEFAULT_ORDERING_SETTINGS;
+    const { settings } = await readOrderingSettings();
     const openedAt = new Date();
     const emergency = req.body.emergency === true;
     const neededBy = neededByFor({ neededIn: req.body.neededIn, emergency }, settings, openedAt);

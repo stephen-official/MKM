@@ -40,7 +40,15 @@ The creating kitchen's contribution is added automatically. `items` must contain
 
 When the items are needed is chosen, not typed: send `neededIn` (`1d`, `3d`, `1w`, `2w` or `1m`) or `"emergency": true` (needed within 1 hour). The server stores `neededBy`, `emergency` and `closesAt` on the order; a typed `neededBy` date is ignored and the request fails with 400 unless `neededIn` or `emergency` is given.
 
-`closesAt` is when other kitchens can no longer join. The order stays open for whichever is longer: the time until `neededBy` minus 3 days, or 25% of the time until `neededBy`. For example, needed in 10 days closes after 7 days; needed in 5 hours closes after 1¼ hours; an emergency closes after 15 minutes. The figures live in `backend/src/ordering/window.js`.
+`closesAt` is when other kitchens can no longer join. The order stays open for whichever is longer: the time until `neededBy` minus 3 days, or 25% of the time until `neededBy`. For example, needed in 10 days closes after 7 days; needed in 5 hours closes after 1¼ hours; an emergency closes after 15 minutes. These are the default figures; a super-admin can change them (see below). Orders keep the dates worked out when they were opened.
+
+## Ordering settings
+
+Base path: `/api/ordering-settings`
+
+`GET /` (any signed-in user) returns `{ settings, version }`. `settings` holds `neededInOptions` (`{ key, label, hours }` for the "needed by" dropdown), `emergencyHours`, `closeBeforeHours` and `minOpenShare`. `version` is 0 until the figures are first saved, and the defaults in `backend/src/ordering/window.js` apply until then.
+
+`PUT /` (super-admin only) with `{ expectedVersion, settings }` saves all four figures. If someone else saved since `expectedVersion`, it fails with 409 `VERSION_CONFLICT`. Figures outside these limits fail with 400 `INVALID_INPUT`: 1–10 options with unique short keys, labels up to 30 characters and 1 hour to 1 year each; emergency 15 minutes to 24 hours; closing before delivery 0–60 days; shortest window 5%–95%.
 
 An admin opens an order for a kitchen by also sending `godownId`. The contribution then belongs to that kitchen, which can edit it like its own, and the same product availability rules as for kitchens apply.
 

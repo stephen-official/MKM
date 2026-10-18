@@ -42,6 +42,7 @@ export const ROUTE_RULES = Object.freeze([
   open("*", "/api/users"),
   open("*", "/api/report-schedules/*"),
   open("*", "/api/report-schedules"),
+  open("*", "/api/ordering-settings"),
 
   // --- shared lookups (other modules depend on them) ---
   lookup("GET", "/api/inventory/:type"),
