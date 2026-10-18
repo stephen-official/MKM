@@ -5,6 +5,8 @@ import { GodownStock, IndentRequest } from "../models/FlowModels.js";
 import { isKitchenRole } from "../utils/roles.js";
 import { bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
 import { packQuantityMatchesBase, packSnapshot } from "../catalog/packaging.js";
+import { createStockBatch } from "../stock/batchService.js";
+import { StockItem } from "../models/InventoryModels.js";
 
 const router = express.Router();
 
@@ -147,11 +149,29 @@ router.post("/:id/receive", authorize(["user", "admin"]), async (req, res) => {
           throw Object.assign(new Error("Received quantity exceeds the outstanding quantity"), { status: 400 });
         }
         line.receivedQty = Number(line.receivedQty || 0) + received.qtyBaseUnit;
+        const checklist = (req.body.items || []).find((item) => String(item.stockItemId) === String(received.stockItemId)) || {};
+        const product = await StockItem.findById(line.stockItemId).select("pricePerUnit").session(session);
         await GodownStock.findOneAndUpdate(
           { godownId: request.godownId, stockItemId: line.stockItemId },
           { $inc: { qtyBaseUnit: received.qtyBaseUnit }, $setOnInsert: { thresholdBaseUnit: 0 } },
           { upsert: true, new: true, session },
         );
+        await createStockBatch({
+          godownId: request.godownId,
+          stockItemId: line.stockItemId,
+          quantity: received.qtyBaseUnit,
+          unitPrice: product?.pricePerUnit,
+          sourceType: "indent_receipt",
+          sourceId: request._id,
+          receivedAt: new Date(),
+          expiryDate: checklist.expiryDate || null,
+          lotNumber: checklist.lotNumber,
+          condition: checklist.condition || "good",
+          notes: checklist.notes,
+          expectedQtyBaseUnit: remaining,
+          createdBy: req.user.sub,
+          session,
+        });
       }
 
       const approved = request.items.filter((item) => item.status === "approved");

@@ -24,6 +24,7 @@ export const GodownsPage = () => {
 
   const [godowns, setGodowns] = useState([]);
   const [stocks, setStocks] = useState([]);
+  const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [viewMode, setViewMode] = useState("all");
@@ -40,14 +41,16 @@ export const GodownsPage = () => {
     setLoading(true);
     setLoadError("");
     try {
-      const [godRes, stockRes] = await Promise.all([
+      const [godRes, stockRes, batchRes] = await Promise.all([
         api.get("/inventory/godowns"),
-        api.get("/godown-stocks")
+        api.get("/godown-stocks"),
+        api.get("/procurement/stock-batches")
       ]);
       if (requestId !== requestRef.current) return;
       const godownList = Array.isArray(godRes.data) ? godRes.data : [];
       setGodowns(godownList);
       setStocks(Array.isArray(stockRes.data) ? stockRes.data : []);
+      setBatches(Array.isArray(batchRes.data) ? batchRes.data : []);
       setSelectedGodownId((current) =>
         godownList.some((g) => g._id === current) ? current : godownList[0]?._id || null
       );
@@ -94,6 +97,7 @@ export const GodownsPage = () => {
   }, [stocks, lowStocks, selectedGodownId, lowGodownId, viewMode, searchQuery]);
 
   const visibleStocks = showAll ? activeStocks : activeStocks.slice(0, ROW_LIMIT);
+  const activeBatches = batches.filter((batch) => idOf(batch.godownId) === selectedGodownId);
 
   const currentGodown = godowns.find((g) => g._id === (viewMode === "low-stock" ? lowGodownId : selectedGodownId));
   const detailTitle = viewMode === "low-stock"
@@ -318,6 +322,23 @@ export const GodownsPage = () => {
         {!showAll && activeStocks.length > ROW_LIMIT && (
           <div style={{ display: "flex", justifyContent: "center", paddingTop: 12 }}>
             <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>Show all {activeStocks.length} items</Button>
+          </div>
+        )}
+        {viewMode === "all" && activeBatches.length > 0 && (
+          <div style={{ marginTop: 28 }}>
+            <h3 style={{ marginBottom: 10 }}>Active stock batches</h3>
+            <DataTable className="table--compact">
+              <thead><tr><th>Product</th><th>Received</th><th>Expiry</th><th>Lot</th><th>Condition</th><th>Remaining</th><th>Price / unit</th></tr></thead>
+              <tbody>{activeBatches.map((batch) => <tr key={batch._id}>
+                <td><strong>{batch.stockItemId?.name || "Unknown product"}</strong></td>
+                <td>{new Date(batch.receivedAt).toLocaleDateString("en-GB")}</td>
+                <td>{batch.expiryDate ? new Date(batch.expiryDate).toLocaleDateString("en-GB") : "—"}</td>
+                <td>{batch.lotNumber || "—"}</td>
+                <td><Badge>{String(batch.condition || "unchecked").replace("_", " ")}</Badge></td>
+                <td>{fmtQty(batch.remainingQtyBaseUnit)} {batch.stockItemId?.unitId?.symbol || ""}</td>
+                <td>{batch.unitPrice == null ? "Unpriced" : `₹${Number(batch.unitPrice).toLocaleString("en-IN")}`}</td>
+              </tr>)}</tbody>
+            </DataTable>
           </div>
         )}
       </>

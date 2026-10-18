@@ -18,12 +18,14 @@ test("builds a safe partial receipt and rejects over-receiving", () => {
     { stockItemId: { _id: "oil" }, status: "rejected", qtyBaseUnit: 5, receivedQty: 0 },
   ] };
   assert.equal(outstandingQuantity(indent.items[0]), 6);
-  assert.deepEqual(buildReceiptPayload(indent, { rice: "2.5", oil: "1" }), [{ stockItemId: "rice", receivedQty: 2.5 }]);
+  assert.deepEqual(buildReceiptPayload(indent, { rice: "2.5", oil: "1" }), [{ stockItemId: "rice", receivedQty: 2.5, condition: "good" }]);
   assert.deepEqual(buildReceiptPayload(indent, { rice: "7" }), []);
 
   const packed = { items: [{ stockItemId: { _id: "flour" }, status: "approved", qtyBaseUnit: 75, receivedQty: 25, packId: "bag", packSize: 25 }] };
   assert.equal(outstandingEntryQuantity(packed.items[0]), 2);
-  assert.deepEqual(buildReceiptPayload(packed, { flour: "2" }), [{ stockItemId: "flour", receivedQty: 50 }]);
+  assert.deepEqual(buildReceiptPayload(packed, { flour: "2" }, { flour: { expiryDate: "2026-12-31", condition: "partial_damage", lotNumber: "LOT-7" } }), [{
+    stockItemId: "flour", receivedQty: 50, expiryDate: "2026-12-31", condition: "partial_damage", lotNumber: "LOT-7",
+  }]);
 });
 
 test("builds valid usage and supply-request transaction lines", () => {

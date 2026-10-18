@@ -5,6 +5,7 @@ import { startDb, clearDb, stopDb } from "./helpers/db.js";
 import { createGodown, createUser } from "./helpers/auth.js";
 import { GodownStock } from "../models/FlowModels.js";
 import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
+import { StockBatch } from "../models/StockBatchModel.js";
 
 let app;
 let admin;
@@ -53,6 +54,7 @@ test("pack snapshots survive indent, PO and distribution while stock stays in ba
   });
   assert.equal(po.status, 201, JSON.stringify(po.body));
   assert.equal(po.body.totalAmount, 3000);
+  assert.equal((await StockItem.findById(rice._id)).pricePerUnit, 60);
 
   const distribution = await auth(admin, "post", "/api/procurement/distributions").send({
     purchaseOrderId: po.body._id,
@@ -62,6 +64,9 @@ test("pack snapshots survive indent, PO and distribution while stock stays in ba
   assert.equal(distribution.status, 201, JSON.stringify(distribution.body));
   assert.equal(distribution.body.allocations[0].packName, "Bag");
   assert.equal((await GodownStock.findOne({ godownId: kitchen._id, stockItemId: rice._id })).qtyBaseUnit, 50);
+  const batch = await StockBatch.findOne({ godownId: kitchen._id, stockItemId: rice._id });
+  assert.equal(batch.remainingQtyBaseUnit, 50);
+  assert.equal(batch.unitPrice, 60);
 });
 
 test("a kitchen supply request stores the chosen pack snapshot", async () => {

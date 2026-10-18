@@ -29,7 +29,7 @@ export const canRecordUsage = (available, requested) => {
   return Number.isFinite(stock) && Number.isFinite(quantity) && quantity >= 0 && quantity <= stock;
 };
 
-export const buildReceiptPayload = (indent, values = {}) => Object.entries(values)
+export const buildReceiptPayload = (indent, values = {}, details = {}) => Object.entries(values)
   .map(([stockItemId, value]) => {
     const line = (indent?.items || []).find(
       (item) => String(item.stockItemId?._id || item.stockItemId) === String(stockItemId),
@@ -43,4 +43,9 @@ export const buildReceiptPayload = (indent, values = {}) => Object.entries(value
     receivedQty > 0 &&
     receivedQty <= outstandingQuantity(line),
   )
-  .map(({ stockItemId, receivedQty }) => ({ stockItemId, receivedQty }));
+  .map(({ stockItemId, receivedQty }) => ({
+    stockItemId,
+    receivedQty,
+    condition: "good",
+    ...(details[stockItemId] || {}),
+  }));

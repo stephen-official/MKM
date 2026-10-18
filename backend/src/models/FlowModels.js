@@ -117,7 +117,12 @@ const consumptionSchema = new mongoose.Schema(
         unitDisplay: String, 
         // Captured when the line is recorded (README Decision 5); null = no valid price then.
         unitPriceAtIssue: { type: Number, default: null },
-        amountAtIssue: { type: Number, default: null }
+        amountAtIssue: { type: Number, default: null },
+        batchAllocations: [{
+          batchId: { type: mongoose.Schema.Types.ObjectId, ref: "StockBatch", required: true },
+          qtyBaseUnit: { type: Number, required: true },
+          unitPrice: { type: Number, default: null }
+        }]
       }
     ]
   },
@@ -166,7 +171,12 @@ const transferSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.ObjectId,
         ref: "StockItem"
       },
-      qtyBaseUnit: Number
+      qtyBaseUnit: Number,
+      batchAllocations: [{
+        batchId: { type: mongoose.Schema.Types.ObjectId, ref: "StockBatch" },
+        qtyBaseUnit: Number,
+        unitPrice: { type: Number, default: null }
+      }]
     }
   ],
 

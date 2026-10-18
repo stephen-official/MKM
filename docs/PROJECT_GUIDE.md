@@ -103,6 +103,7 @@ realtime.js      io proxy so routes can emit without importing server.js
 - `InventoryModels.js`: StockGroup, Unit, Godown, StockItem (catalog fields: `pricePerUnit`, `brand`, `productCode`, `soldInPacks` + `packs[{name,size,price}]`, `archived`)
 - `ProductRequestModel.js`: ProductRequest (a kitchen's request for a product not in the catalog)
 - `FlowModels.js`: IndentRequest, Indent, PurchaseOrder, GodownStock, Distribution, Consumption, Request, Transfer, Notification, plus the **executive report indexes**
+- `StockBatchModel.js`: priced stock batches per kitchen/product, including received date, expiry, lot, condition, notes and remaining quantity
 - `DailyUsageModel.js`: DailyUsage
 - `User.js`: User (`role`, `godownId`, `active`, reset token fields, edit version)
 - `FeatureModels.js`: FeatureFlags (versioned singleton `_id: "global"` plus overrides), FeatureFlagAudit (append-only)
@@ -120,6 +121,8 @@ These are the only places that write `GodownStock.qtyBaseUnit`. Every one of the
 | Admin approves a usage Request | `operationsRoutes.js` `POST /requests/:id/approve` | Decrements stock and creates a Consumption or DailyUsage. A future target date is recorded as the approval day |
 | Kitchen accepts a transfer | `operationsRoutes.js` `POST /user-transfers/:id/accept` | Moves stock from source to destination atomically |
 | Edits and deletes of consumption / daily usage | `operationsRoutes.js` `PATCH/DELETE /consumptions/:id`, `/daily-usage/:id` | Adjusts stock by the difference |
+
+`GodownStock.qtyBaseUnit` remains the fast aggregate balance. `StockBatch.remainingQtyBaseUnit` explains that balance by receipt and price. New inward stock creates a batch; consumption and accepted transfers deduct batches FIFO by `receivedAt` and capture their allocations. Existing balances without batches are treated as an opening batch at the product's current price on first use, or can be initialized ahead of deployment with `npm --prefix backend run migrate-stock-batches` (dry run; add `-- --apply` explicitly).
 
 The README states the *intended* rule: "requesting or approving supplies does not change stock; receipt does." **Distributions do not follow it yet**: they credit kitchen stock as soon as they're dispatched. Also, `POST /api/daily-usage` (`dailyUsageRoutes.js`) does not touch `GodownStock`. Check both before changing anything about stock behaviour, and raise them with the project owner rather than "fixing" them silently.
 

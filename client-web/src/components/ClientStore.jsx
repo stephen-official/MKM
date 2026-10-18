@@ -86,6 +86,7 @@ const [dailyItems, setDailyItems] = useState([]);
   const [isReceiveView, setIsReceiveView] = useState(false);
   const [activeReceiveIndent, setActiveReceiveIndent] = useState(null);
   const [receiveItems, setReceiveItems] = useState({});
+  const [receiveDetails, setReceiveDetails] = useState({});
   const [selectedDate, setSelectedDate] = useState(toLocalDateKey());
   const [flags, setFlags] = useState(null);
   const flagsRef = useRef(null);
@@ -629,7 +630,7 @@ if (editIndentId !== null && editIndentId !== undefined) {
   };
 
   const submitReceive = async () => {
-   const payload = buildReceiptPayload(activeReceiveIndent, receiveItems);
+   const payload = buildReceiptPayload(activeReceiveIndent, receiveItems, receiveDetails);
     if (payload.length === 0) return toast.error("Enter items to receive");
 
     const loadingToast = toast.loading("Updating Inventory...");
@@ -639,6 +640,7 @@ if (editIndentId !== null && editIndentId !== undefined) {
       setIsReceiveView(false);
       setActiveReceiveIndent(null);
       setReceiveItems({});
+      setReceiveDetails({});
       setSupplyInitialTab("deliveries");
       setActiveTab("requests");
       await Promise.all([fetchItems(false), fetchIndents()]);
@@ -781,6 +783,7 @@ setEditIndentId(indent._id);
   const receiveDelivery = (indent) => {
     setActiveReceiveIndent(indent);
     setReceiveItems({});
+    setReceiveDetails({});
     setActiveTab("receive-delivery");
   };
 
@@ -870,6 +873,7 @@ setEditIndentId(indent._id);
         <KitchenReceiveDelivery
           indent={activeReceiveIndent}
           values={receiveItems}
+          details={receiveDetails}
           onChange={(stockItemId, raw, remaining) => {
             if (!/^\d*(\.\d{0,3})?$/.test(raw)) return;
             if (raw !== "" && Number(raw) > remaining) {
@@ -878,9 +882,14 @@ setEditIndentId(indent._id);
             }
             setReceiveItems((previous) => ({ ...previous, [stockItemId]: raw }));
           }}
+          onDetailsChange={(stockItemId, change) => setReceiveDetails((previous) => ({
+            ...previous,
+            [stockItemId]: { ...previous[stockItemId], ...change },
+          }))}
           onBack={() => {
             setActiveReceiveIndent(null);
             setReceiveItems({});
+            setReceiveDetails({});
             openDeliveries();
           }}
           onSubmit={submitReceive}

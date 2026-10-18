@@ -6,6 +6,7 @@ import { createGodown, createUser } from "./helpers/auth.js";
 import { GodownStock, IndentRequest, Notification, Request, Transfer } from "../models/FlowModels.js";
 import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
 import { User } from "../models/User.js";
+import { StockBatch } from "../models/StockBatchModel.js";
 
 let app;
 let ctx;
@@ -89,8 +90,20 @@ test("indent requests: super_admin is not subject to kitchen ownership rules", a
     items: [{ stockItemId: ctx.rice._id, qtyBaseUnit: 4, status: "approved" }]
   });
   const received = await as("superAdmin")("post", `/api/indent-requests/${supply._id}/receive`)
-    .send({ items: [{ stockItemId: ctx.rice._id, receivedQty: 4 }] });
+    .send({ items: [{
+      stockItemId: ctx.rice._id,
+      receivedQty: 4,
+      expiryDate: "2027-01-31",
+      lotNumber: "RICE-31",
+      condition: "partial_damage",
+      notes: "One outer sack torn",
+    }] });
   assert.equal(received.status, 200, JSON.stringify(received.body));
+  const batch = await StockBatch.findOne({ sourceType: "indent_receipt", sourceId: supply._id });
+  assert.equal(batch.expiryDate.toISOString().slice(0, 10), "2027-01-31");
+  assert.equal(batch.lotNumber, "RICE-31");
+  assert.equal(batch.condition, "partial_damage");
+  assert.equal(batch.notes, "One outer sack torn");
   const deleted = await as("superAdmin")("delete", `/api/indent-requests/${supply._id}`);
   assert.equal(deleted.status, 200);
 });

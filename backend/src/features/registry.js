@@ -97,6 +97,7 @@ export const ROUTE_RULES = Object.freeze([
   // --- godowns ---
   feature("GET", "/api/procurement/godown-stocks", ["godowns"], "read"),
   feature("GET", "/api/procurement/godown-stocks/:godownId", ["godowns"], "read"),
+  feature("GET", "/api/procurement/stock-batches", ["godowns"], "read"),
   feature("POST", "/api/procurement/godown-stocks/:id/threshold", ["godowns"], "mutation"),
   feature("DELETE", "/api/procurement/godown-stocks/:id", ["godowns"], "mutation"),
 

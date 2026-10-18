@@ -12,6 +12,7 @@ import { isAdminRole, isKitchenRole } from "../utils/roles.js";
 import { pricesForKitchen } from "../executive/valuation.js";
 import { businessDateOf, normalizeBusinessDate } from "../executive/params.js";
 import { round2 } from "../utils/money.js";
+import { createStockBatch, deductFifo, restoreBatchAllocations, valuationFromAllocations } from "../stock/batchService.js";
 
 export const operationsRoutes = express.Router();
 
@@ -121,6 +122,10 @@ const handleStockProcessing = async (req, res) => {
         if (!updatedStock) throw new Error(`Item not found in inventory.`);
 
         const qtyToDeduct = Number(item.qtyBaseUnit || item.quantity);
+        const batchAllocations = await deductFifo({
+          godownId, stockItemId: updatedStock.stockItemId._id,
+          quantity: qtyToDeduct, stock: updatedStock, session,
+        });
         updatedStock.qtyBaseUnit -= qtyToDeduct;
 
         if (updatedStock.qtyBaseUnit < 0) {
@@ -149,7 +154,9 @@ const handleStockProcessing = async (req, res) => {
         orderItems.push({ 
           stockItemId: updatedStock.stockItemId._id, 
           qtyBaseUnit: qtyToDeduct,
-          stockRecordId: updatedStock._id 
+          stockRecordId: updatedStock._id,
+          batchAllocations,
+          ...valuationFromAllocations(qtyToDeduct, batchAllocations),
         });
       }
 
@@ -157,7 +164,7 @@ const handleStockProcessing = async (req, res) => {
         godownId,
         userId: req.user.sub, 
         date: req.body.date,
-        items: await priceLines(godownId, orderItems)
+        items: orderItems
       }], { session });
 
       return consumption[0];
@@ -386,21 +393,38 @@ operationsRoutes.patch(
         // ----------------------------------------------------
         // Save new consumption items
         // ----------------------------------------------------
-        // Every pre-existing line keeps its stored price, including null (legacy/unpriced lines are never backfilled).
-        // Duplicate legacy lines for one item keep the first non-null price (document order), else null.
-        const keptPrices = new Map();
+        // Restore the original batch allocations, then apply the edited lines through FIFO again.
+        const originalPrices = new Map();
         for (const old of oldItems) {
-          const id = String(old.stockItemId);
-          const price = old.unitPriceAtIssue ?? null;
-          if (!keptPrices.has(id) || (keptPrices.get(id) === null && price !== null)) keptPrices.set(id, price);
+          const key = String(old.stockItemId);
+          if (!originalPrices.has(key) || (originalPrices.get(key) === null && old.unitPriceAtIssue != null)) {
+            originalPrices.set(key, old.unitPriceAtIssue ?? null);
+          }
         }
-        consumption.items = await priceLines(
-          godownId,
-          items
-            .filter((item) => Number(item.qtyBaseUnit) > 0)
-            .map((item) => ({ stockItemId: item.stockItemId, qtyBaseUnit: Number(item.qtyBaseUnit), stockRecordId: item.stockRecordId || undefined })),
-          keptPrices
-        );
+        for (const old of oldItems) {
+          await restoreBatchAllocations({
+            godownId, stockItemId: old.stockItemId,
+            allocations: old.batchAllocations, quantity: old.qtyBaseUnit,
+            unitPrice: old.unitPriceAtIssue, session,
+          });
+        }
+        const replacementLines = [];
+        for (const item of items.filter((entry) => Number(entry.qtyBaseUnit) > 0)) {
+          const stock = await GodownStock.findOne({ godownId, stockItemId: item.stockItemId }).session(session);
+          const quantity = Number(item.qtyBaseUnit);
+          const batchAllocations = await deductFifo({ godownId, stockItemId: item.stockItemId, quantity, stock, session });
+          const batchValuation = valuationFromAllocations(quantity, batchAllocations);
+          const existingPrice = originalPrices.get(String(item.stockItemId));
+          const valuation = originalPrices.has(String(item.stockItemId))
+            ? { unitPriceAtIssue: existingPrice, amountAtIssue: existingPrice == null ? null : round2(quantity * existingPrice) }
+            : batchValuation;
+          replacementLines.push({
+            stockItemId: item.stockItemId, qtyBaseUnit: quantity,
+            stockRecordId: item.stockRecordId || undefined, batchAllocations,
+            ...valuation,
+          });
+        }
+        consumption.items = replacementLines;
 
         await consumption.save({ session });
       });
@@ -522,6 +546,10 @@ operationsRoutes.delete(
             Number(stock.qtyBaseUnit || 0) + qtyToReturn;
 
           await stock.save({ session });
+          await restoreBatchAllocations({
+            godownId, stockItemId, allocations: item.batchAllocations,
+            quantity: qtyToReturn, unitPrice: item.unitPriceAtIssue, session,
+          });
         }
 
         // ----------------------------------------------------
@@ -903,22 +931,26 @@ operationsRoutes.post("/requests/:id/approve", authorize(["admin"]), async (req,
       if (!request) throw new Error("Request not found");
       if (request.status !== "pending") throw new Error("Request already processed");
 
+      const batchLines = [];
       for (const item of request.items) {
         const quantity = Number(item.qtyBaseUnit);
         if (!Number.isFinite(quantity) || quantity === 0) throw new Error("Invalid request quantity");
-
-        const filter = { godownId: request.godownId, stockItemId: item.stockItemId };
-        if (quantity > 0) filter.qtyBaseUnit = { $gte: quantity };
-
-        const stock = await GodownStock.findOneAndUpdate(
-          filter,
-          {
-            $inc: { qtyBaseUnit: -quantity },
-            $setOnInsert: { thresholdBaseUnit: 0 },
-          },
-          { session, new: true, upsert: quantity < 0 },
-        );
-        if (!stock) throw new Error("Insufficient kitchen stock for one or more items");
+        let stock = await GodownStock.findOne({ godownId: request.godownId, stockItemId: item.stockItemId }).session(session);
+        if (!stock && quantity > 0) throw new Error("Insufficient kitchen stock for one or more items");
+        if (!stock) stock = new GodownStock({ godownId: request.godownId, stockItemId: item.stockItemId, qtyBaseUnit: 0, thresholdBaseUnit: 0 });
+        if (quantity > 0) {
+          if (Number(stock.qtyBaseUnit) < quantity) throw new Error("Insufficient kitchen stock for one or more items");
+          const batchAllocations = await deductFifo({ godownId: request.godownId, stockItemId: item.stockItemId, quantity, stock, session });
+          stock.qtyBaseUnit -= quantity;
+          batchLines.push({ stockItemId: item.stockItemId, qtyBaseUnit: quantity, batchAllocations, ...valuationFromAllocations(quantity, batchAllocations) });
+        } else {
+          const returned = Math.abs(quantity);
+          const [pricedReturn] = await priceLines(request.godownId, [{ stockItemId: item.stockItemId, qtyBaseUnit: quantity }]);
+          stock.qtyBaseUnit += returned;
+          await createStockBatch({ godownId: request.godownId, stockItemId: item.stockItemId, quantity: returned, unitPrice: pricedReturn.unitPriceAtIssue, sourceType: "return", createdBy: req.user.sub, session });
+          batchLines.push({ ...pricedReturn, batchAllocations: [] });
+        }
+        await stock.save({ session });
       }
 
       // A future target date would fall outside every valid report range; the stock moves today.
@@ -926,12 +958,12 @@ operationsRoutes.post("/requests/:id/approve", authorize(["admin"]), async (req,
       const today = businessDateOf(approvedAt);
       const target = normalizeBusinessDate(request.targetDate, approvedAt);
       const date = target > today ? today : target;
-      const baseLines = request.items.map((item) => ({ stockItemId: item.stockItemId, qtyBaseUnit: item.qtyBaseUnit }));
+      const baseLines = batchLines.map(({ stockItemId, qtyBaseUnit }) => ({ stockItemId, qtyBaseUnit }));
       const record = {
         godownId: request.godownId,
         userId: request.userId,
         date,
-        items: request.requestType === "daily_usage" ? baseLines : await priceLines(request.godownId, baseLines),
+        items: request.requestType === "daily_usage" ? baseLines : batchLines,
       };
       if (request.requestType === "daily_usage") {
         await DailyUsage.create([{ ...record, reason: request.reason }], { session });
@@ -1031,6 +1063,13 @@ throw new Error("Source stock missing");
 if(source.qtyBaseUnit<item.qtyBaseUnit)
 throw new Error("Insufficient stock");
 
+const batchAllocations = await deductFifo({
+  godownId: transfer.fromGodownId,
+  stockItemId: item.stockItemId,
+  quantity: item.qtyBaseUnit,
+  stock: source,
+  session
+});
 source.qtyBaseUnit-=item.qtyBaseUnit;
 
 await source.save({session});
@@ -1056,6 +1095,25 @@ await GodownStock.findOneAndUpdate(
     session
 }
 );
+
+for (const allocation of batchAllocations) {
+  await createStockBatch({
+    godownId: transfer.toGodownId,
+    stockItemId: item.stockItemId,
+    quantity: allocation.qtyBaseUnit,
+    unitPrice: allocation.unitPrice,
+    sourceType: "transfer",
+    sourceId: transfer._id,
+    receivedAt: new Date(),
+    expiryDate: allocation.expiryDate,
+    lotNumber: allocation.lotNumber,
+    condition: allocation.condition,
+    notes: allocation.notes,
+    createdBy: req.user.sub,
+    session
+  });
+}
+item.batchAllocations = batchAllocations;
 
 }
 

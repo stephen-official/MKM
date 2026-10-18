@@ -9,6 +9,9 @@ import {
   PurchaseOrder 
 } from "../models/FlowModels.js";
 import { packQuantityMatchesBase, packSnapshot } from "../catalog/packaging.js";
+import { createStockBatch } from "../stock/batchService.js";
+import { StockItem } from "../models/InventoryModels.js";
+import { StockBatch } from "../models/StockBatchModel.js";
 
 export const procurementRoutes = express.Router();
 const adminOnly = authorize(["admin"]);
@@ -165,6 +168,22 @@ procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
         { status: "stock_received" }, 
         { session }
       );
+      for (const item of items.filter((line) => Number(line.receivedQty) > 0 && Number(line.unitPrice) >= 0)) {
+        const update = {
+          $set: {
+            pricePerUnit: Number(item.unitPrice),
+            priceUpdatedAt: new Date(),
+            priceUpdatedBy: req.user.sub,
+          },
+        };
+        if (item.packId && Number(item.packPrice) >= 0) {
+          update.$set["packs.$[pack].price"] = Number(item.packPrice);
+        }
+        await StockItem.updateOne(
+          { _id: item.stockItemId }, update,
+          { session, ...(item.packId ? { arrayFilters: [{ "pack._id": item.packId }] } : {}) },
+        );
+      }
       
       res.status(201).json(po[0]);
     });
@@ -198,6 +217,8 @@ procurementRoutes.post("/distributions", adminOnly, async (req, res) => {
         { session }
       );
 
+      const po = cleanPOId ? await PurchaseOrder.findById(cleanPOId).session(session) : null;
+
       for (const item of (allocations || [])) {
         await GodownStock.findOneAndUpdate(
           { godownId: item.godownId, stockItemId: item.stockItemId },
@@ -207,6 +228,17 @@ procurementRoutes.post("/distributions", adminOnly, async (req, res) => {
           },
           { upsert: true, session }
         );
+        await createStockBatch({
+          godownId: item.godownId,
+          stockItemId: item.stockItemId,
+          quantity: item.qtyBaseUnit,
+          unitPrice: item.unitPrice,
+          sourceType: "distribution",
+          sourceId: distribution[0]._id,
+          receivedAt: po?.receivedAt || new Date(),
+          createdBy: req.user.sub,
+          session,
+        });
       }
 
       if (cleanPOId) {
@@ -271,6 +303,21 @@ procurementRoutes.get("/godown-stocks/:godownId", adminOnly, async (req, res) =>
     res.json(docs);
   } catch (error) {
     res.status(500).json({ message: "Fetch failed", error: error.message });
+  }
+});
+
+procurementRoutes.get("/stock-batches", adminOnly, async (req, res) => {
+  try {
+    const filter = { remainingQtyBaseUnit: { $gt: 0 } };
+    if (req.query.godownId) filter.godownId = req.query.godownId;
+    if (req.query.stockItemId) filter.stockItemId = req.query.stockItemId;
+    const batches = await StockBatch.find(filter)
+      .populate("godownId", "name")
+      .populate({ path: "stockItemId", select: "name unitId", populate: { path: "unitId", select: "symbol" } })
+      .sort({ receivedAt: 1, _id: 1 });
+    res.json(batches);
+  } catch (error) {
+    res.status(500).json({ message: "Fetch batches failed", error: error.message });
   }
 });
 

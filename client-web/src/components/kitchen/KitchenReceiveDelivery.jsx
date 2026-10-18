@@ -2,7 +2,7 @@ import { ArrowLeft, PackageCheck } from "lucide-react";
 import "./KitchenSecondaryScreens.css";
 import { outstandingEntryQuantity } from "../../features/kitchen/workflows";
 
-export default function KitchenReceiveDelivery({ indent, values = {}, onChange, onBack, onSubmit }) {
+export default function KitchenReceiveDelivery({ indent, values = {}, details = {}, onChange, onDetailsChange, onBack, onSubmit }) {
   const items = (indent?.items || []).filter((item) => item.status === "approved" && Number(item.receivedQty || 0) < Number(item.qtyBaseUnit || 0));
   return <main className="kss-shell">
     <button type="button" className="kss-back" onClick={onBack}><ArrowLeft size={18} /> Back to deliveries</button>
@@ -14,7 +14,8 @@ export default function KitchenReceiveDelivery({ indent, values = {}, onChange, 
         const baseUnit = item.stockItemId?.unitId?.symbol || item.unit || "units";
         const unit = item.packName || baseUnit;
         const received = item.packId ? Number(item.receivedQty || 0) / Number(item.packSize) : Number(item.receivedQty || 0);
-        return <article key={id}><div><h2>{item.stockItemId?.name || "Unknown item"}</h2><p>Previously received: {received.toLocaleString("en-IN", { maximumFractionDigits: 3 })} {unit}</p></div><label><span>Outstanding: <strong>{remaining.toLocaleString("en-IN", { maximumFractionDigits: 3 })} {unit}</strong></span><input type="number" inputMode="decimal" min="0" max={remaining} step="0.001" placeholder="0" value={values[id] ?? ""} onChange={(event) => onChange(id, event.target.value, remaining)} /></label></article>;
+        const checklist = details[id] || {};
+        return <article key={id}><div><h2>{item.stockItemId?.name || "Unknown item"}</h2><p>Previously received: {received.toLocaleString("en-IN", { maximumFractionDigits: 3 })} {unit}</p></div><label><span>Outstanding: <strong>{remaining.toLocaleString("en-IN", { maximumFractionDigits: 3 })} {unit}</strong></span><input type="number" inputMode="decimal" min="0" max={remaining} step="0.001" placeholder="0" value={values[id] ?? ""} onChange={(event) => onChange(id, event.target.value, remaining)} /></label><label><span>Expiry date</span><input type="date" value={checklist.expiryDate || ""} onChange={(event) => onDetailsChange(id, { expiryDate: event.target.value })} /></label><label><span>Condition</span><select value={checklist.condition || "good"} onChange={(event) => onDetailsChange(id, { condition: event.target.value })}><option value="good">Good</option><option value="partial_damage">Partly damaged</option><option value="damaged">Damaged</option></select></label><label><span>Batch / lot number</span><input type="text" value={checklist.lotNumber || ""} onChange={(event) => onDetailsChange(id, { lotNumber: event.target.value })} /></label><label><span>Notes</span><textarea rows="2" value={checklist.notes || ""} onChange={(event) => onDetailsChange(id, { notes: event.target.value })} /></label></article>;
       })}
     </section>
     <footer className="kss-submit"><div><strong>{Object.values(values).filter((value) => Number(value) > 0).length}</strong><span>items entered</span></div><button type="button" onClick={onSubmit} disabled={!Object.values(values).some((value) => Number(value) > 0)}>Confirm received</button></footer>
