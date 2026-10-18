@@ -98,6 +98,12 @@ The kitchen that originally opened the order cannot leave it, but can edit its c
 
 Approval works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSED`). Approved lines and shares carry `approvedAt` and `approvedBy`. A kitchen or product that is not on the order gives 404.
 
+### Dispatch one kitchen's share (admin only)
+
+`POST /:id/dispatch` with `{ "godownId": "KITCHEN_ID" }`
+
+The order is placed once (`ordered`), but each kitchen's share is sent separately. This sets `dispatchedAt` and `dispatchedBy` on that kitchen's contribution. The order must be `ordered` (otherwise 409 `NOT_ORDERED`), and a share can be dispatched once (409 `ALREADY_DISPATCHED`).
+
 ### Change lifecycle status (admin only)
 
 `PATCH /:id/status`
@@ -121,4 +127,4 @@ Closing the order immediately prevents kitchens from adding, editing, or removin
 
 ## Errors
 
-Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).

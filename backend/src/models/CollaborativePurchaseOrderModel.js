@@ -23,6 +23,9 @@ const contributionSchema = new mongoose.Schema({
   // Set when an admin approves the whole share; the kitchen can no longer change it.
   approvedAt: { type: Date, default: null },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  // Once the order is placed, each kitchen's share is sent separately.
+  dispatchedAt: { type: Date, default: null },
+  dispatchedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { _id: true });
 
 const collaborativePurchaseOrderSchema = new mongoose.Schema({

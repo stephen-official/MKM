@@ -117,3 +117,34 @@ test("an edit based on an older copy of the order cannot wipe out an approval", 
   assert.equal(fresh.contributions[0].items[0].qtyBaseUnit, 10);
   assert.ok(fresh.contributions[0].items[0].approvedAt);
 });
+
+const dispatch = (godownId, actor = ctx.admin) => call(actor, "post", `/${ctx.order._id}/dispatch`).send({ godownId });
+const placeOrder = async () => {
+  await approve();
+  await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" });
+};
+
+test("each kitchen's share is dispatched separately once the order is placed", async () => {
+  await placeOrder();
+  const res = await dispatch(ctx.kitchenA._id);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.ok(share(res.body, ctx.kitchenA).dispatchedAt);
+  assert.equal(share(res.body, ctx.kitchenB).dispatchedAt, null);
+  assert.equal(res.body.status, "ordered");
+
+  const again = await dispatch(ctx.kitchenA._id);
+  assert.equal(again.status, 409);
+  assert.equal(again.body.code, "ALREADY_DISPATCHED");
+  assert.equal((await dispatch(ctx.kitchenB._id)).status, 200);
+});
+
+test("dispatch needs a placed order, an admin and a kitchen on the order", async () => {
+  await approve();
+  const early = await dispatch(ctx.kitchenA._id);
+  assert.equal(early.status, 409);
+  assert.equal(early.body.code, "NOT_ORDERED");
+  await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" });
+  assert.equal((await dispatch(ctx.kitchenA._id, ctx.cookA)).status, 403);
+  assert.equal((await dispatch((await createGodown("Kitchen C"))._id)).status, 404);
+  assert.equal((await dispatch("nope")).status, 400);
+});

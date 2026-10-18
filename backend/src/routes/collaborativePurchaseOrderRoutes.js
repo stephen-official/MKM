@@ -307,6 +307,23 @@ collaborativePurchaseOrderRoutes.post("/:id/approve", adminOnly, async (req, res
   } catch (error) { return sendError(res, error); }
 });
 
+/** Admin: { godownId } marks that kitchen's share as sent. The order must be placed (status "ordered") first. */
+collaborativePurchaseOrderRoutes.post("/:id/dispatch", adminOnly, async (req, res) => {
+  try {
+    const godownId = req.body?.godownId;
+    if (!mongoose.isValidObjectId(godownId)) throw fail(400, "Choose a kitchen on this order");
+    const order = await CollaborativePurchaseOrder.findById(req.params.id);
+    if (!order) throw fail(404, "Collaborative purchase order not found");
+    if (order.status !== "ordered") throw fail(409, "Mark the order as ordered before dispatching it", "NOT_ORDERED");
+    const share = order.contributions.find((entry) => String(entry.godownId) === String(godownId));
+    if (!share) throw fail(404, "That kitchen is not on this order");
+    if (share.dispatchedAt) throw fail(409, "This kitchen's items have already been dispatched", "ALREADY_DISPATCHED");
+    Object.assign(share, { dispatchedAt: new Date(), dispatchedBy: req.user.sub });
+    await order.save();
+    return res.json(responseOrder(await loadOrder(order._id), req.user));
+  } catch (error) { return sendError(res, error); }
+});
+
 collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res) => {
   try {
     await closeExpiredOrders();
