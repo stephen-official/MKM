@@ -6,6 +6,7 @@ import { assertKitchenCanUse, bodyItemIds, requireAvailableProducts } from "../c
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
 import { Godown, StockItem } from "../models/InventoryModels.js";
 import { GodownStock } from "../models/FlowModels.js";
+import { Supplier } from "../models/SupplierModel.js";
 import { createStockBatch } from "../stock/batchService.js";
 import { isKitchenRole } from "../utils/roles.js";
 import { closesAtFor, neededByFor } from "../ordering/window.js";
@@ -91,6 +92,7 @@ const populateOrder = (query) => query
   .populate("createdBy", "name")
   .populate("createdByGodown", "name")
   .populate("statusChangedBy", "name")
+  .populate("supplierId", "name fssaiLicence")
   .populate("contributions.userId", "name")
   .populate("contributions.godownId", "name")
   .populate({
@@ -122,8 +124,14 @@ const responseOrder = (order, viewer) => {
       totals.set(id, current);
     }
   }
-  const full = { ...value, kitchenCount: value.contributions?.length || 0, combinedItems: [...totals.values()] };
-  return isKitchenRole(viewer?.role) ? otherKitchensHidden(full, viewer) : full;
+  // The populated supplier moves to `supplier`; admins also keep the raw id for their picker.
+  const supplier = value.supplierId && typeof value.supplierId === "object" ? value.supplierId : null;
+  const full = {
+    ...value, supplierId: supplier ? supplier._id : value.supplierId, supplier,
+    kitchenCount: value.contributions?.length || 0, combinedItems: [...totals.values()],
+  };
+  if (!isKitchenRole(viewer?.role)) return full;
+  return otherKitchensHidden({ ...full, supplierId: undefined }, viewer);
 };
 
 const loadOrder = async (id) => {
@@ -387,6 +395,41 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
   }
 });
 
+/**
+ * Applies the admin's purchase details (`supplierId`, `invoiceNo`) from `body` to `order` without saving.
+ * Only keys present in `body` change. Returns how many changed.
+ */
+const applyPurchaseDetails = async (order, body) => {
+  let changed = 0;
+  if (body.supplierId !== undefined) {
+    if (body.supplierId === null || body.supplierId === "") order.supplierId = null;
+    else {
+      const supplier = mongoose.isValidObjectId(body.supplierId) ? await Supplier.findById(body.supplierId).select("active") : null;
+      if (!supplier || !supplier.active) throw fail(400, "Choose an active supplier");
+      order.supplierId = supplier._id;
+    }
+    changed += 1;
+  }
+  if (body.invoiceNo !== undefined) {
+    order.invoiceNo = text(body.invoiceNo, 60, "Invoice number");
+    changed += 1;
+  }
+  return changed;
+};
+
+/** Admin: supplier and invoice number for an approved or ordered order. Kitchens see both read-only. */
+collaborativePurchaseOrderRoutes.patch("/:id/purchase", adminOnly, async (req, res) => {
+  try {
+    await closeExpiredOrders();
+    const order = await CollaborativePurchaseOrder.findById(req.params.id);
+    if (!order) throw fail(404, "Collaborative purchase order not found");
+    if (!["approved", "ordered"].includes(order.status)) throw fail(409, "Approve the order before adding supplier or invoice details", "NOT_APPROVED");
+    if ((await applyPurchaseDetails(order, req.body || {})) === 0) throw fail(400, "Send a supplierId or an invoiceNo");
+    await order.save();
+    return res.json(responseOrder(await loadOrder(order._id), req.user));
+  } catch (error) { return sendError(res, error); }
+});
+
 collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res) => {
   try {
     await closeExpiredOrders();
@@ -395,6 +438,8 @@ collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res
     const order = await CollaborativePurchaseOrder.findById(req.params.id);
     if (!order) throw fail(404, "Collaborative purchase order not found");
     if (next !== order.status && !TRANSITIONS[order.status].has(next)) throw fail(409, `An ${order.status} order cannot move to ${next}`);
+    // "Mark as ordered" may name the supplier in the same call.
+    if (next === "ordered" && req.body.supplierId !== undefined) await applyPurchaseDetails(order, { supplierId: req.body.supplierId });
     order.status = next;
     order.statusChangedAt = new Date();
     order.statusChangedBy = req.user.sub;

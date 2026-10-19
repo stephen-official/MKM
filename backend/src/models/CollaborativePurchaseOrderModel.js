@@ -48,6 +48,9 @@ const collaborativePurchaseOrderSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   createdByGodown: { type: mongoose.Schema.Types.ObjectId, ref: "Godown", required: true },
   contributions: { type: [contributionSchema], default: [] },
+  // Who the admin bought from and the paid invoice; kitchens see both read-only and every batch they receive copies the supplier.
+  supplierId: { type: mongoose.Schema.Types.ObjectId, ref: "Supplier", default: null },
+  invoiceNo: { type: String, trim: true, maxlength: 60, default: "" },
   status: { type: String, enum: ["open", "closed", "approved", "ordered", "cancelled"], default: "open" },
   statusChangedAt: { type: Date, default: null },
   statusChangedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },

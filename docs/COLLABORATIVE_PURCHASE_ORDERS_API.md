@@ -116,6 +116,16 @@ The order is placed once (`ordered`), but lines are sent separately: each line g
 
 "All received": adds every line of the kitchen's own share that is on the way (sent, not yet received) to its stock, creates a stock batch per line (`sourceType: "collaborative_order"`, `sourceId` = the order, priced at the product's `pricePerUnit` for valuation), and sets `deliveredAt` and `deliveredBy` on those lines, all in one transaction. Lines sent later are received later. The contribution gets `deliveredAt` once every line is received. If nothing is on the way, 409 `NOT_DISPATCHED`; once everything is received, 409 `ALREADY_DELIVERED`. Expiry, batch and photo details are not captured yet; a kitchen with a problem should not call this. The product ledger lists each received line as a `RECEIVED` row on the day it arrived, referenced by `orderNo`.
 
+### Supplier and invoice (admin only)
+
+`PATCH /:id/purchase`
+
+```json
+{ "supplierId": "<supplier id>", "invoiceNo": "INV-2026-0042" }
+```
+
+Either key may be sent alone; only the keys present change. `supplierId` must be an active supplier (see Suppliers below), or `null` to clear it. `invoiceNo` is up to 60 characters and is meant to be filled in after payment. The order must be `approved` or `ordered` (otherwise 409 `NOT_APPROVED`). Every response then carries `supplier` (`{ _id, name, fssaiLicence }` or `null`) and `invoiceNo`; admins also get the raw `supplierId`. Kitchens see `supplier` and `invoiceNo` read-only, and every stock batch they receive copies the supplier (see Receive).
+
 ### Change lifecycle status (admin only)
 
 `PATCH /:id/status`
@@ -123,6 +133,8 @@ The order is placed once (`ordered`), but lines are sent separately: each line g
 ```json
 { "status": "closed" }
 ```
+
+When moving to `ordered`, "Mark as ordered" may name the supplier in the same call: `{ "status": "ordered", "supplierId": "<supplier id>" }`. The supplier is optional at this point.
 
 Allowed transitions:
 
@@ -151,4 +163,4 @@ Errors use the shared `{ code, message }` shape: `INVALID_INPUT` (400), `NOT_FOU
 
 ## Errors
 
-Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
