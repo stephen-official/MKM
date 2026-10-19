@@ -90,6 +90,7 @@ realtime.js      io proxy so routes can emit without importing server.js
 | `/api/procurement/collaborative-purchase-orders` | collaborativePurchaseOrderRoutes | Shared orders kitchens start and join; admin approve, supplier/invoice, dispatch; kitchen photo upload and receive with FSSAI details. See `docs/COLLABORATIVE_PURCHASE_ORDERS_API.md` |
 | `/api/ordering-settings` | orderingSettingsRoutes | Needed-by options, emergency period and ordering window (super-admin writes) |
 | `/api/suppliers` | supplierRoutes | Admin supplier records (name, 14-digit FSSAI licence, phone, active) |
+| `/api/delivery-tickets` | deliveryTicketRoutes | Delivery problems kitchens raise while receiving (list, settle: accept a quantity into stock, follow-up order for the shortfall) |
 | `/api/procurement` | procurementRoutes | Indents, purchase orders, distributions, godown-stock thresholds, stock balance |
 | `/api` **and** `/api/operations` | operationsRoutes | Unified usage records, requests (approve/reject), transfers and user-transfers, godown-stocks, notifications. **Mounted twice on purpose.** featureGate normalises the alias. |
 | `/api/reports` | reportRoutes | Generic per-entity listings and Excel exports |
@@ -104,6 +105,7 @@ realtime.js      io proxy so routes can emit without importing server.js
 - `InventoryModels.js`: StockGroup, Unit, Godown, StockItem (catalog fields: `pricePerUnit`, `brand`, `productCode`, `soldInPacks` + `packs[{name,size,price}]`, `expiryRequired` (default true; kitchens must enter an expiry when receiving), `archived`)
 - `CollaborativePurchaseOrderModel.js`: shared orders (`contributions[]` per kitchen with lines; `neededBy`, `closesAt`, `supplierId`, `invoiceNo`; lines carry approval, dispatch, delivery times and the `trackingId` of the batch they became)
 - `SupplierModel.js`: Supplier (name unique ignoring case, `fssaiLicence` 14 digits, phone, active)
+- `DeliveryTicketModel.js`: DeliveryTicket (one problem line: reason short/excess/damaged/wrong_item/expired, usable `receivedQtyBaseUnit`, note, voice note URL, the receiving details for the usable part, `resolution` once settled)
 - `CounterModel.js`: named running numbers; `stock/trackingId.js` turns `batch-YYMM` into `MKM-YYMM-NNNN`
 - `ProductRequestModel.js`: ProductRequest (a kitchen's request for a product not in the catalog)
 - `FlowModels.js`: IndentRequest, Indent, PurchaseOrder, GodownStock, Distribution, Consumption, Request, Transfer, Notification, plus the **executive report indexes**
@@ -121,7 +123,8 @@ These are the only places that write `GodownStock.qtyBaseUnit`. Every one of the
 |---|---|---|
 | Admin creates a distribution | `routes/procurementRoutes.js` `POST /distributions` | `$inc` each allocated kitchen's stock **at dispatch time** (upsert) |
 | Kitchen receives an indent request | `routes/indentRequestRoutes.js` `POST /:id/receive` | Increases kitchen stock by the received quantity |
-| Kitchen receives a shared order | `routes/collaborativePurchaseOrderRoutes.js` `POST /:id/receive` | Adds every line on the way to kitchen stock and creates one StockBatch per line with a tracking ID, photos, expiry and the order's supplier. Refuses the whole receipt if any line lacks a photo or a required expiry |
+| Kitchen receives a shared order | `routes/collaborativePurchaseOrderRoutes.js` `POST /:id/receive` | Adds every line on the way to kitchen stock and creates one StockBatch per line with a tracking ID, photos, expiry and the order's supplier. Refuses the whole receipt if any line lacks a photo or a required expiry. A line sent with `problem` becomes a DeliveryTicket instead and stays out of stock |
+| Admin settles a delivery problem | `routes/deliveryTicketRoutes.js` `POST /:id/settle` | Adds the accepted quantity (0 up to what usably arrived) as a StockBatch from the ticket's details, marks the order line delivered with that quantity, optionally opens a follow-up shared order for the shortfall |
 | Kitchen/admin records consumption directly | `routes/operationsRoutes.js` `handleStockProcessing` (`POST /consumptions`, legacy `POST /orders`) | Checks for enough stock, then decrements it. Emits `low_stock_alert` |
 | Admin approves a usage Request | `operationsRoutes.js` `POST /requests/:id/approve` | Decrements FIFO stock and creates a Consumption with the request reason. A future target date is recorded as the approval day |
 | Kitchen accepts a transfer | `operationsRoutes.js` `POST /user-transfers/:id/accept` | Moves stock from source to destination atomically |
@@ -179,7 +182,7 @@ New endpoints return `{ code: "SCREAMING_SNAKE_CASE", message, ...details }`. Ol
 | Products | The master product list: add/edit popup (unit, price, packs, threshold, type, brand, code), completeness status, archive, kitchen product requests |
 | Inventory Setup | Product groups and godowns; preset units (read-only) |
 | Indent | Review kitchen indent requests; create indents; mark purchased; logs |
-| Purchase Orders | Receive goods against purchased indents (Intake) and history; **Shared orders** tab (approve, supplier + invoice, mark ordered, dispatch); **Suppliers** tab (`pages/suppliers/`) |
+| Purchase Orders | Receive goods against purchased indents (Intake) and history; **Shared orders** tab (approve, supplier + invoice + bulk expiry, mark ordered, dispatch); **Problems** tab (`pages/problems/`, settle delivery problems); **Suppliers** tab (`pages/suppliers/`) |
 | Stock Distribution | Allocate received PO stock to kitchens (splits, leftovers) |
 | Godowns | Stock levels per godown, low-stock thresholds |
 | Transfer Stock | Create godown→godown transfers; activity log |
@@ -199,7 +202,7 @@ New endpoints return `{ code: "SCREAMING_SNAKE_CASE", message, ...details }`. Ol
 ## 6. Kitchen app (`client-web/src`)
 
 - Mobile-first, with a bottom tab bar (`components/kitchen/KitchenBottomNav.jsx`): **Home · Stock · Use (record usage) · Requests · More**.
-- `components/ClientStore.jsx` is the main container and state holder. Screens live in `components/kitchen/`: KitchenHome, KitchenStock, KitchenUsageScreen, KitchenOrders ("Ask for supplies", shared orders) with KitchenReceiveItems (per-item photos, expiry, batch, storage on receipt), SupplyRequestsDeliveries, KitchenReceiveDelivery (old indent flow), KitchenTransfers, KitchenActivity, KitchenMore, and others.
+- `components/ClientStore.jsx` is the main container and state holder. Screens live in `components/kitchen/`: KitchenHome, KitchenStock, KitchenUsageScreen, KitchenOrders ("Ask for supplies", shared orders) with KitchenReceiveItems (per-item photos, expiry, batch, storage on receipt, or a problem report with reason, usable amount, note and voice note), SupplyRequestsDeliveries, KitchenReceiveDelivery (old indent flow), KitchenTransfers, KitchenActivity, KitchenMore, and others.
 - Pure logic lives in `features/kitchen/`: `workflows.js`, `selectors.js`, `normalize.js`, `status.js`, `featureTabs.js`, `orders.js` and `receiving.js`. Tests run with `node --test`. **Put new logic there and test it.**
 - `features.js` / `featureToast.js`: kitchen-side feature flags. Disabled controls are **hidden**, not just blocked with a toast.
 - `socket.js`: Socket.IO client. `App.jsx` shows toasts for realtime events.
