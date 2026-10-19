@@ -1,5 +1,5 @@
-import { AlertTriangle, ArrowLeft, Camera, Check, Loader2, PackageCheck, RotateCcw, Truck } from "lucide-react";
-import { useRef, useState } from "react";
+import { AlertTriangle, ArrowLeft, Camera, Check, Loader2, Mic, PackageCheck, RotateCcw, Square, Trash2, Truck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { EXPIRY_CHIPS, PROBLEM_REASONS, STORAGE_OPTIONS, adminExpiryFor, arrivingProducts, emptyProblem, emptyReceipt, usableQty, expiryFromChip, expiryNeeded, productIdOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
@@ -41,6 +41,67 @@ function PhotoButton({ label, url, busy, onPick }) {
     </button>
     <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onPick(file); }} />
   </div>;
+}
+
+const canRecord = () => typeof window !== "undefined" && Boolean(window.MediaRecorder && navigator.mediaDevices?.getUserMedia);
+const recordingType = () => ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => window.MediaRecorder?.isTypeSupported?.(type)) || "";
+
+/** Tap to record, tap to stop; the note uploads straight away. Hidden where the browser cannot record. */
+function VoiceNote({ orderId, url, onChange }) {
+  const [state, setState] = useState("idle"); // idle | recording | uploading
+  const [seconds, setSeconds] = useState(0);
+  const recorder = useRef(null);
+  useEffect(() => {
+    if (state !== "recording") return undefined;
+    const timer = setInterval(() => setSeconds((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [state]);
+  useEffect(() => () => { try { recorder.current?.stream?.getTracks().forEach((track) => track.stop()); } catch { /* nothing to stop */ } }, []);
+  if (!canRecord()) return null;
+
+  const start = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const type = recordingType();
+      const media = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+      const chunks = [];
+      media.ondataavailable = (event) => { if (event.data.size > 0) chunks.push(event.data); };
+      media.onstop = async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        setState("uploading");
+        try {
+          const blob = new Blob(chunks, { type: media.mimeType || type || "audio/webm" });
+          const body = new FormData();
+          body.append("audio", blob, `note.${(blob.type.includes("mp4") ? "m4a" : "webm")}`);
+          const { data } = await api.post(`${BASE}/${orderId}/voice-notes`, body, { headers: { "Content-Type": "multipart/form-data" } });
+          onChange(data.url);
+        } catch (error) {
+          toast.error(errorText(error, "Voice note did not upload. Try again."));
+        } finally {
+          setState("idle");
+        }
+      };
+      recorder.current = media;
+      media.start();
+      setSeconds(0);
+      setState("recording");
+      // Stop by itself after two minutes so a forgotten recording does not grow.
+      setTimeout(() => { if (media.state === "recording") media.stop(); }, 120_000);
+    } catch {
+      toast.error("Could not use the microphone. Allow it in the phone's settings and try again.");
+    }
+  };
+  const stop = () => recorder.current?.stop();
+
+  if (url) return <div className="kr-voice is-done">
+    <audio controls src={url} preload="none" />
+    <button type="button" className="kr-voice__remove" onClick={() => onChange("")} aria-label="Remove voice note"><Trash2 size={16} /> Remove</button>
+  </div>;
+  return <button type="button" className={`kr-voice__record${state === "recording" ? " is-recording" : ""}`} disabled={state === "uploading"} onClick={state === "recording" ? stop : start}>
+    {state === "uploading" ? <><Loader2 size={18} className="kr-spin" /> Uploading…</>
+      : state === "recording" ? <><Square size={18} /> Stop ({seconds}s)</>
+        : <><Mic size={18} /> Record a voice note (optional)</>}
+  </button>;
 }
 
 function Chips({ options, value, onPick, label }) {
@@ -104,6 +165,7 @@ function ItemCard({ order, line, form, today, onChange }) {
         <span className="kr-label">Tell the central store (optional)</span>
         <textarea rows={2} value={problem.note} maxLength={500} placeholder="e.g. two bags torn and wet" aria-label={`Note about ${product.name}`} onChange={(event) => onChange({ problem: { ...problem, note: event.target.value } })} />
       </div>
+      <VoiceNote orderId={order._id} url={problem.voiceNoteUrl} onChange={(url) => onChange({ problem: { ...problem, voiceNoteUrl: url } })} />
       <p className="kr-hint">The central store will check this and decide what goes into your stock. The usable part still needs its details below.</p>
     </div>}
 

@@ -79,8 +79,8 @@ export function ProblemsPanel() {
                       <div style={{ display: "flex", gap: 10, marginTop: 4, fontSize: 12 }}>
                         {row.details?.photos?.goods && <a href={row.details.photos.goods} target="_blank" rel="noreferrer">Photo <ExternalLink size={11} /></a>}
                         {row.details?.photos?.label && <a href={row.details.photos.label} target="_blank" rel="noreferrer">Label <ExternalLink size={11} /></a>}
-                        {row.voiceNoteUrl && <a href={row.voiceNoteUrl} target="_blank" rel="noreferrer">Voice note <ExternalLink size={11} /></a>}
                       </div>
+                      {row.voiceNoteUrl && <audio controls src={row.voiceNoteUrl} preload="none" style={{ display: "block", marginTop: 6, height: 32, maxWidth: 260 }} aria-label="Voice note from the kitchen" />}
                     </td>
                     <td>{qtyText(row.orderedQtyBaseUnit, row)}</td>
                     <td>{qtyText(row.receivedQtyBaseUnit, row)}</td>

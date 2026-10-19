@@ -9,6 +9,10 @@ import { v2 as cloudinary } from "cloudinary";
 
 const uploadsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../uploads");
 const EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+// Voice notes recorded in the browser: Chrome/Android give webm (opus), iPhones mp4.
+const AUDIO_EXT = { "audio/webm": "webm", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/ogg": "ogg", "audio/wav": "wav", "audio/x-m4a": "m4a" };
+/** "audio/webm;codecs=opus" → "audio/webm". */
+export const baseType = (mimetype) => String(mimetype || "").split(";")[0].trim().toLowerCase();
 
 /** Reads CLOUDINARY_URL or the three CLOUDINARY_* keys; true when Cloudinary can be used. */
 export const cloudinaryConfigured = () => {
@@ -21,20 +25,20 @@ export const cloudinaryConfigured = () => {
   return false;
 };
 
-export const isPhotoType = (mimetype) => Boolean(EXT[mimetype]);
+export const isPhotoType = (mimetype) => Boolean(EXT[baseType(mimetype)]);
+export const isAudioType = (mimetype) => Boolean(AUDIO_EXT[baseType(mimetype)]);
 
-const toCloudinary = (buffer, folder) => new Promise((resolve, reject) => {
-  const stream = cloudinary.uploader.upload_stream(
-    { folder, resource_type: "image", transformation: [{ width: 1600, height: 1600, crop: "limit" }] },
-    (error, result) => (error ? reject(error) : resolve(result.secure_url)),
-  );
+const toCloudinary = (buffer, folder, audio) => new Promise((resolve, reject) => {
+  // Cloudinary files audio under its "video" type.
+  const options = audio ? { folder, resource_type: "video" } : { folder, resource_type: "image", transformation: [{ width: 1600, height: 1600, crop: "limit" }] };
+  const stream = cloudinary.uploader.upload_stream(options, (error, result) => (error ? reject(error) : resolve(result.secure_url)));
   stream.end(buffer);
 });
 
 const toDisk = async (buffer, mimetype, folder, baseUrl) => {
   const dir = path.join(uploadsDir, folder);
   await fs.mkdir(dir, { recursive: true });
-  const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${EXT[mimetype]}`;
+  const name = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}.${EXT[baseType(mimetype)] || AUDIO_EXT[baseType(mimetype)]}`;
   await fs.writeFile(path.join(dir, name), buffer);
   return `${baseUrl}/uploads/${folder}/${name}`;
 };
@@ -42,5 +46,11 @@ const toDisk = async (buffer, mimetype, folder, baseUrl) => {
 /** Stores one image and returns its public URL. `baseUrl` (scheme + host of this API) is used for the disk fallback. */
 export const storePhoto = async ({ buffer, mimetype, folder = "receipts", baseUrl }) => {
   if (!isPhotoType(mimetype)) throw Object.assign(new Error("Photos must be JPEG, PNG or WebP"), { status: 400, code: "INVALID_INPUT" });
-  return cloudinaryConfigured() ? toCloudinary(buffer, `mkm/${folder}`) : toDisk(buffer, mimetype, folder, baseUrl);
+  return cloudinaryConfigured() ? toCloudinary(buffer, `mkm/${folder}`, false) : toDisk(buffer, mimetype, folder, baseUrl);
+};
+
+/** Stores one voice note (webm, mp4/m4a, mp3, ogg or wav) and returns its public URL. */
+export const storeVoiceNote = async ({ buffer, mimetype, folder = "voice-notes", baseUrl }) => {
+  if (!isAudioType(mimetype)) throw Object.assign(new Error("Voice notes must be a recording (webm, m4a, mp3, ogg or wav)"), { status: 400, code: "INVALID_INPUT" });
+  return cloudinaryConfigured() ? toCloudinary(buffer, `mkm/${folder}`, true) : toDisk(buffer, mimetype, folder, baseUrl);
 };

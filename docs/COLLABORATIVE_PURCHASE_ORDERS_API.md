@@ -116,6 +116,12 @@ The order is placed once (`ordered`), but lines are sent separately: each line g
 
 Returns 201 `{ url }`. The kitchen must be on the order (otherwise 404). The URL goes into `photos.goods` or `photos.label` of the receive body below. Photos are stored on Cloudinary (folder `mkm/receipts`, limited to 1600 px) when `CLOUDINARY_URL` or the three `CLOUDINARY_*` keys are set; otherwise they are written under the API's own `/uploads/receipts/` and the URL points at this API (local development and tests). Errors: `INVALID_INPUT` (400, not an image), `PHOTO_TOO_LARGE` (400), `PHOTO_REQUIRED` (400, no file).
 
+### Upload a voice note (kitchen only)
+
+`POST /:id/voice-notes` — multipart form, one field `audio` (webm, m4a/mp4, mp3, ogg or wav, up to 5 MB)
+
+Returns 201 `{ url }` for `problem.voiceNoteUrl` in the receive body. Same storage and kitchen check as photos (Cloudinary folder `mkm/voice-notes`, else `/uploads/voice-notes/`). The note is kept as audio only; there is no transcription.
+
 ### Receive what has arrived (kitchen only)
 
 `POST /:id/receive`

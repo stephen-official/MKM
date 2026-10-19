@@ -42,6 +42,11 @@
 .kr-problem-toggle.is-on { background: #fff1d5; border-color: #e0a84a; }
 .kr-problem { background: #fffaf0; border: 1px solid #f3dcb0; border-radius: 12px; display: grid; gap: 12px; padding: 12px; }
 .kr-problem textarea { border: 1px solid #cfd9d3; border-radius: 10px; font: inherit; font-size: .95rem; padding: 10px 12px; resize: vertical; width: 100%; }
+.kr-voice__record { align-items: center; background: #fff; border: 1px solid #cfd9d3; border-radius: 12px; color: #335543; display: flex; font-size: .86rem; font-weight: 750; gap: 8px; justify-content: center; min-height: 48px; padding: 0 12px; width: 100%; }
+.kr-voice__record.is-recording { background: #fbe4e1; border-color: #e3a39b; color: #9e2c20; }
+.kr-voice { align-items: center; display: flex; gap: 8px; }
+.kr-voice audio { flex: 1; min-width: 0; height: 40px; }
+.kr-voice__remove { align-items: center; background: #fff; border: 1px solid #cfd9d3; border-radius: 10px; color: #9e2c20; display: inline-flex; font-size: .78rem; font-weight: 750; gap: 4px; min-height: 40px; padding: 0 10px; }
 .kr-hint { color: #5d7068; font-size: .78rem; line-height: 1.4; margin: 0; }
 .kr-prefill { color: #0f766e; font-size: .78rem; font-weight: 700; line-height: 1.35; }
 

@@ -11,7 +11,7 @@ import { Supplier } from "../models/SupplierModel.js";
 import { DeliveryTicket, TICKET_REASONS } from "../models/DeliveryTicketModel.js";
 import { createStockBatch } from "../stock/batchService.js";
 import { nextTrackingId } from "../stock/trackingId.js";
-import { isPhotoType, storePhoto } from "../stock/photoStorage.js";
+import { isAudioType, isPhotoType, storePhoto, storeVoiceNote } from "../stock/photoStorage.js";
 import { businessDateOf, isIsoDate, startOfBusinessDay } from "../executive/params.js";
 import { isKitchenRole } from "../utils/roles.js";
 import { closesAtFor, neededByFor } from "../ordering/window.js";
@@ -365,11 +365,37 @@ const photoUpload = multer({
   limits: { fileSize: PHOTO_LIMIT_MB * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, done) => (isPhotoType(file.mimetype) ? done(null, true) : done(fail(400, "Photos must be JPEG, PNG or WebP"))),
 }).single("photo");
+const VOICE_LIMIT_MB = 5;
+const voiceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: VOICE_LIMIT_MB * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, done) => (isAudioType(file.mimetype) ? done(null, true) : done(fail(400, "Voice notes must be a recording (webm, m4a, mp3, ogg or wav)"))),
+}).single("audio");
 /** multer's own errors as { code, message } like every other error here. */
-const readPhoto = (req, res, next) => photoUpload(req, res, (error) => {
+const readUpload = (upload, what, limitMb) => (req, res, next) => upload(req, res, (error) => {
   if (!error) return next();
-  if (error.code === "LIMIT_FILE_SIZE") return sendError(res, fail(400, `The photo is too big. Keep it under ${PHOTO_LIMIT_MB} MB.`, "PHOTO_TOO_LARGE"));
+  if (error.code === "LIMIT_FILE_SIZE") return sendError(res, fail(400, `The ${what} is too big. Keep it under ${limitMb} MB.`, "PHOTO_TOO_LARGE"));
   return sendError(res, error.status ? error : fail(400, error.message));
+});
+const readPhoto = readUpload(photoUpload, "photo", PHOTO_LIMIT_MB);
+const readVoice = readUpload(voiceUpload, "voice note", VOICE_LIMIT_MB);
+
+/** The kitchen must be on the order to attach files to it. */
+const assertOnOrder = async (req) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
+  const order = await CollaborativePurchaseOrder.findById(req.params.id).select("contributions.godownId").lean();
+  if (!order) throw fail(404, "Collaborative purchase order not found");
+  if (!order.contributions.some((entry) => String(entry.godownId) === String(req.user.godownId))) throw fail(404, "Your kitchen is not on this order");
+};
+
+/** Kitchen: upload a voice note for a delivery problem on an order it is on. Returns `{ url }` for `problem.voiceNoteUrl`. */
+collaborativePurchaseOrderRoutes.post("/:id/voice-notes", kitchenOnly, readVoice, async (req, res) => {
+  try {
+    await assertOnOrder(req);
+    if (!req.file) throw fail(400, "Record a voice note first", "PHOTO_REQUIRED");
+    const url = await storeVoiceNote({ buffer: req.file.buffer, mimetype: req.file.mimetype, baseUrl: `${req.protocol}://${req.get("host")}` });
+    return res.status(201).json({ url });
+  } catch (error) { return sendError(res, error); }
 });
 
 /**
@@ -378,10 +404,7 @@ const readPhoto = (req, res, next) => photoUpload(req, res, (error) => {
  */
 collaborativePurchaseOrderRoutes.post("/:id/photos", kitchenOnly, readPhoto, async (req, res) => {
   try {
-    if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
-    const order = await CollaborativePurchaseOrder.findById(req.params.id).select("contributions.godownId").lean();
-    if (!order) throw fail(404, "Collaborative purchase order not found");
-    if (!order.contributions.some((entry) => String(entry.godownId) === String(req.user.godownId))) throw fail(404, "Your kitchen is not on this order");
+    await assertOnOrder(req);
     if (!req.file) throw fail(400, "Choose a photo to upload", "PHOTO_REQUIRED");
     const url = await storePhoto({ buffer: req.file.buffer, mimetype: req.file.mimetype, baseUrl: `${req.protocol}://${req.get("host")}` });
     return res.status(201).json({ url });

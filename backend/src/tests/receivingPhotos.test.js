@@ -78,3 +78,17 @@ test("the uploaded URLs are accepted by receive end to end", async () => {
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.deepEqual((await StockBatch.findOne({ stockItemId: ctx.rice._id }).lean()).photos, { goods, label });
 });
+
+test("a kitchen uploads a voice note for a problem; only recordings are accepted", async () => {
+  const webm = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(60, 2)]);
+  const res = await call(ctx.cookA, "post", `/${ctx.order._id}/voice-notes`).attach("audio", webm, { filename: "note.webm", contentType: "audio/webm;codecs=opus" });
+  assert.equal(res.status, 201, JSON.stringify(res.body));
+  assert.match(res.body.url, /\/uploads\/voice-notes\/\d+-[0-9a-f]{12}\.webm$/);
+  const served = await request(app).get(new URL(res.body.url).pathname);
+  assert.equal(served.status, 200);
+  assert.match(served.headers["content-type"], /webm/, "express static labels webm as video; the audio player plays it");
+  const image = await call(ctx.cookA, "post", `/${ctx.order._id}/voice-notes`).attach("audio", jpeg(), { filename: "x.jpg", contentType: "image/jpeg" });
+  assert.equal(image.status, 400);
+  assert.match(image.body.message, /recording/);
+  assert.equal((await call(ctx.cookB, "post", `/${ctx.order._id}/voice-notes`).attach("audio", webm, { filename: "n.webm", contentType: "audio/webm" })).status, 404);
+});
