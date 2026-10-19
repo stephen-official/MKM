@@ -19,6 +19,8 @@ const collaborativeLineSchema = new mongoose.Schema({
   deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   // Tracking ID of the stock batch this line became when it was received (MKM-YYMM-NNNN).
   trackingId: { type: String, default: null },
+  // Set when the kitchen raised a problem with this line instead of receiving it; the line waits for the admin.
+  ticketId: { type: mongoose.Schema.Types.ObjectId, ref: "DeliveryTicket", default: null },
 }, { _id: false });
 
 const contributionSchema = new mongoose.Schema({

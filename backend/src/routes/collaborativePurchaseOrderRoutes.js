@@ -8,6 +8,7 @@ import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrder
 import { Godown, StockItem } from "../models/InventoryModels.js";
 import { GodownStock } from "../models/FlowModels.js";
 import { Supplier } from "../models/SupplierModel.js";
+import { DeliveryTicket, TICKET_REASONS } from "../models/DeliveryTicketModel.js";
 import { createStockBatch } from "../stock/batchService.js";
 import { nextTrackingId } from "../stock/trackingId.js";
 import { isPhotoType, storePhoto } from "../stock/photoStorage.js";
@@ -97,6 +98,7 @@ const populateOrder = (query) => query
   .populate("createdByGodown", "name")
   .populate("statusChangedBy", "name")
   .populate("supplierId", "name fssaiLicence")
+  .populate("contributions.items.ticketId", "status reason receivedQtyBaseUnit resolution.acceptedQtyBaseUnit resolution.reorderShortfall raisedAt")
   .populate("contributions.userId", "name")
   .populate("contributions.godownId", "name")
   .populate({
@@ -400,13 +402,14 @@ const receiptDate = (value, label) => {
  * Validates one product's receiving details against the product's rules. `today` is the business date.
  * Photos of the goods and the label are always required; expiry is required unless the product says otherwise.
  */
-export const receiptDetails = (input, product, today) => {
+export const receiptDetails = (input, product, today, { labelRequired = true, expiryRequired = product?.expiryRequired !== false } = {}) => {
   const name = product?.name || "This item";
   const photos = { goods: String(input?.photos?.goods || "").trim(), label: String(input?.photos?.label || "").trim() };
   if (!PHOTO_URL.test(photos.goods)) throw fail(400, `${name}: take a photo of the goods`, "PHOTO_REQUIRED");
-  if (!PHOTO_URL.test(photos.label)) throw fail(400, `${name}: take a photo of the brand label`, "PHOTO_REQUIRED");
+  if (labelRequired && !PHOTO_URL.test(photos.label)) throw fail(400, `${name}: take a photo of the brand label`, "PHOTO_REQUIRED");
+  if (!labelRequired && photos.label && !PHOTO_URL.test(photos.label)) throw fail(400, `${name}: the label photo is not valid`, "PHOTO_REQUIRED");
   const expiryDate = receiptDate(input?.expiryDate, `${name}: expiry date`);
-  if (!expiryDate && product?.expiryRequired !== false) throw fail(400, `${name}: enter the expiry date`, "EXPIRY_REQUIRED");
+  if (!expiryDate && expiryRequired) throw fail(400, `${name}: enter the expiry date`, "EXPIRY_REQUIRED");
   if (expiryDate && String(input.expiryDate) < today) {
     throw fail(400, `${name}: the expiry date has already passed. Do not accept it; call the central store.`, "EXPIRED_GOODS");
   }
@@ -419,6 +422,27 @@ export const receiptDetails = (input, product, today) => {
     lotNumber: text(input?.lotNumber, 60, `${name}: batch number`),
     notes: text(input?.notes, 500, `${name}: notes`),
   };
+};
+
+/**
+ * A problem the kitchen reports on one line instead of receiving it: reason, usable quantity that arrived, note,
+ * optional voice note. Short must be less than ordered, excess more; the usable part still needs a goods photo,
+ * and an expiry only when something usable arrived.
+ */
+export const problemDetails = (input, line, product, today) => {
+  const name = product?.name || "This item";
+  const problem = input?.problem || {};
+  const reason = String(problem.reason || "");
+  if (!TICKET_REASONS.includes(reason)) throw fail(400, `${name}: choose what went wrong (short, excess, damaged, wrong item or expired)`);
+  const ordered = Number(line.qtyBaseUnit);
+  const received = problem.receivedQtyBaseUnit === undefined || problem.receivedQtyBaseUnit === "" ? 0 : Number(problem.receivedQtyBaseUnit);
+  if (!Number.isFinite(received) || received < 0) throw fail(400, `${name}: enter how much usable stock arrived`);
+  if (reason === "short" && received >= ordered) throw fail(400, `${name}: a short delivery means less than ${ordered} arrived`);
+  if (reason === "excess" && received <= ordered) throw fail(400, `${name}: an excess delivery means more than ${ordered} arrived`);
+  const voiceNoteUrl = String(problem.voiceNoteUrl || "").trim();
+  if (voiceNoteUrl && !PHOTO_URL.test(voiceNoteUrl)) throw fail(400, `${name}: the voice note is not valid`);
+  const details = receiptDetails(input, product, today, { labelRequired: false, expiryRequired: received > 0 && product?.expiryRequired !== false });
+  return { reason, receivedQtyBaseUnit: received, note: text(problem.note, 500, `${name}: note`), voiceNoteUrl, details };
 };
 
 /**
@@ -440,7 +464,8 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
       const share = order.contributions.find((entry) => String(entry.godownId) === String(req.user.godownId));
       if (!share) throw fail(404, "Your kitchen is not on this order");
       if (share.deliveredAt) throw fail(409, "Your kitchen has already received these items", "ALREADY_DELIVERED");
-      const arriving = order.status === "ordered" ? share.items.filter((line) => isSent(line, share) && !isReceived(line, share)) : [];
+      // Lines with an open problem wait for the admin; they are neither on the way nor received.
+      const arriving = order.status === "ordered" ? share.items.filter((line) => isSent(line, share) && !isReceived(line, share) && !line.ticketId) : [];
       if (arriving.length === 0) throw fail(409, "Nothing is on the way to your kitchen right now", "NOT_DISPATCHED");
       const receivedAt = new Date();
       const today = businessDateOf(receivedAt);
@@ -449,6 +474,15 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
         const product = await StockItem.findById(line.stockItemId).select("name pricePerUnit expiryRequired").session(session);
         const input = details.get(String(line.stockItemId));
         if (!input) throw fail(400, `${product?.name || "An item"} is missing its receiving details`, "MISSING_ITEM_DETAILS");
+        if (input.problem) {
+          const problem = problemDetails(input, line, product, today);
+          const [ticket] = await DeliveryTicket.create([{
+            orderId: order._id, orderNo: order.orderNo, godownId: share.godownId, stockItemId: line.stockItemId, packId: line.packId || null,
+            orderedQtyBaseUnit: line.qtyBaseUnit, raisedBy: req.user.sub, raisedAt: receivedAt, ...problem,
+          }], { session });
+          line.ticketId = ticket._id;
+          continue;
+        }
         const checked = receiptDetails(input, product, today);
         await GodownStock.findOneAndUpdate(
           { godownId: share.godownId, stockItemId: line.stockItemId },

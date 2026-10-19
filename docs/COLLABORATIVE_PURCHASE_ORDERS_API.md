@@ -149,7 +149,16 @@ Returns 201 `{ url }`. The kitchen must be on the order (otherwise 404). The URL
 
 Each stock batch (`sourceType: "collaborative_order"`, `sourceId` = the order, priced at the product's `pricePerUnit` for valuation) stores these fields plus `trackingId` (`MKM-YYMM-NNNN`: year and month of receipt, then a running number that restarts each month and is unique across kitchens), `condition: "good"`, and a copy of the order's supplier as `supplierName` and `supplierFssaiLicence` (blank when the order has no supplier). `GET /api/procurement/stock-batches` (admin) returns them.
 
-If nothing is on the way, 409 `NOT_DISPATCHED`; once everything is received, 409 `ALREADY_DELIVERED`. Damaged or short deliveries are not handled here yet (Phase 3 tickets); a kitchen with a problem should not call this. The product ledger lists each received line as a `RECEIVED` row on the day it arrived, referenced by `orderNo`.
+**Problem with an item (Phase 3).** Instead of receiving an item, the kitchen reports a problem on it in the same call by adding `problem` to that item's entry:
+
+```json
+{ "stockItemId": "<product id>", "photos": { "goods": "<url>" }, "expiryDate": "2027-03-31",
+  "problem": { "reason": "short", "receivedQtyBaseUnit": 60, "note": "Only 60 kg came", "voiceNoteUrl": "<url>" } }
+```
+
+`reason` is `short`, `excess`, `damaged`, `wrong_item` or `expired`. `receivedQtyBaseUnit` is the usable quantity that actually arrived (default 0; `short` must be below the ordered quantity, `excess` above it). The goods photo is always required; the label photo is optional; an expiry is required only when some usable quantity arrived and the product needs one. The item is **not** added to stock: a `DeliveryTicket` is created, the line gets `ticketId` (populated as `{ status, reason, receivedQtyBaseUnit, resolution, raisedAt }`) and stays undelivered, and it no longer counts as on the way. The other items in the call are received as normal. The share is delivered only once every line, including settled problems, is delivered. Settlement by the admin is described under Delivery problems below.
+
+If nothing is on the way, 409 `NOT_DISPATCHED`; once everything is received, 409 `ALREADY_DELIVERED`. The product ledger lists each received line as a `RECEIVED` row on the day it arrived, referenced by `orderNo`.
 
 ### Supplier and invoice (admin only)
 
@@ -183,6 +192,15 @@ Allowed transitions:
 A closed order is never reopened; a kitchen that still needs items starts a new order, or an admin opens one on its behalf.
 
 Closing the order immediately prevents kitchens from adding, editing, or removing contributions. Once `closesAt` passes, the order is closed automatically (with `statusChangedBy: null`) the next time any order is read or changed.
+
+## Delivery problems (admin only)
+
+Base path: `/api/delivery-tickets`. Part of the `purchase-orders` feature.
+
+- `GET /` lists tickets, `?status=open` (default), `settled` or `all`, optionally `&godownId=`. Each ticket: `{ _id, orderId, orderNo, godownId: { name }, stockItemId: { name, unitId: { symbol } }, packId, orderedQtyBaseUnit, reason, receivedQtyBaseUnit, note, voiceNoteUrl, details: { photos, expiryDate, mfgDate, lotNumber, storage }, status, raisedBy: { name }, raisedAt, resolution }`.
+- `GET /:id` returns one ticket.
+
+Settling a ticket (admin accepts a quantity into stock and may open a follow-up order for the shortfall) is the next step and not available yet.
 
 ## Suppliers (admin only)
 
