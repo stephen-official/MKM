@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canApprove, canDispatch, canMarkOrdered, closesInText, shareStage, lineLabel } from "./sharedOrders.js";
+import { allSharesApproved, canApprove, canDispatch, canMarkOrdered, closesInText, shareStage, lineLabel } from "./sharedOrders.js";
 
 const now = new Date("2026-10-18T04:30:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
@@ -10,6 +10,12 @@ describe("shared orders (admin)", () => {
     expect(canApprove({ status: "open" })).toBe(true);
     expect(canApprove({ status: "closed" })).toBe(true);
     for (const status of ["approved", "ordered", "cancelled"]) expect(canApprove({ status })).toBe(false);
+  });
+
+  it("knows when every kitchen on the order has been approved", () => {
+    expect(allSharesApproved({ contributions: [share({ approvedAt: at(-1) }), share({ approvedAt: at(-2) })] })).toBe(true);
+    expect(allSharesApproved({ contributions: [share({ approvedAt: at(-1) }), share()] })).toBe(false);
+    expect(allSharesApproved({ contributions: [] })).toBe(false);
   });
 
   it("an order is marked ordered only after approval, and shares are dispatched once after that", () => {

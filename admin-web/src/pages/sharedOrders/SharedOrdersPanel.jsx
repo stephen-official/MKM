@@ -6,7 +6,7 @@ import {
   Badge, Button, Card, DetailPanel, EmptyState, ErrorState, Meta, RailItem, RailList, SplitView, StatusBadge
 } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
-import { canApprove, canDispatch, canMarkOrdered, closesInText, lineLabel, shareStage } from "./sharedOrders.js";
+import { allSharesApproved, canApprove, canDispatch, canMarkOrdered, closesInText, lineLabel, shareStage } from "./sharedOrders.js";
 
 const BASE = "/procurement/collaborative-purchase-orders";
 const errorMessage = (error, fallback) => error?.response?.data?.message || error?.response?.data?.error || fallback;
@@ -108,13 +108,24 @@ export function SharedOrdersPanel() {
             }
             foot={
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", width: "100%" }}>
-                {approvable && (
+                {approvable && (allSharesApproved(order) ? (
+                  <>
+                    <span style={{ alignSelf: "center", color: "var(--muted)", fontSize: 13, marginRight: "auto" }}>
+                      All kitchens are approved. Close the order so no one else can join, then mark it as ordered.
+                    </span>
+                    <Button disabled={busy} onClick={() => act("approve", {}, "Order closed and approved", {
+                      title: "Close and finish approval?",
+                      message: "No other kitchen can join or change this order after this.",
+                      confirmLabel: "Close & finish approval",
+                    })}><CheckCircle2 size={18} /> Close &amp; finish approval</Button>
+                  </>
+                ) : (
                   <Button disabled={busy} onClick={() => act("approve", {}, "Order approved", {
                     title: "Approve the whole order?",
                     message: "Every kitchen's items are approved and the order closes, so no kitchen can add or change anything.",
                     confirmLabel: "Approve all",
                   })}><CheckCircle2 size={18} /> Approve all</Button>
-                )}
+                ))}
                 {canMarkOrdered(order) && (
                   <Button disabled={busy} onClick={() => act("status", { status: "ordered" }, "Marked as ordered", {
                     title: "Mark as ordered?",
