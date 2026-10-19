@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allSharesApproved, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, closesInText, lineDelivery, shareStage, lineLabel } from "./sharedOrders.js";
+import { allSharesApproved, canSetPurchaseDetails, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, closesInText, lineDelivery, shareStage, lineLabel } from "./sharedOrders.js";
 
 const now = new Date("2026-10-18T04:30:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
@@ -64,5 +64,10 @@ describe("shared orders (admin)", () => {
     const unit = { stockItemId: { unitId: { symbol: "kg" } } };
     expect(lineLabel({ ...unit, qtyBaseUnit: 12.5 })).toBe("12.5 kg");
     expect(lineLabel({ ...unit, qtyBaseUnit: 50, packId: "p", packName: "25 kg bag", packQuantity: 2 })).toBe("2 × 25 kg bag (50 kg)");
+  });
+
+  it("allows supplier and invoice details once approved, and after ordering", () => {
+    expect(["open", "closed", "cancelled"].map((status) => canSetPurchaseDetails({ status }))).toEqual([false, false, false]);
+    expect(["approved", "ordered"].map((status) => canSetPurchaseDetails({ status }))).toEqual([true, true]);
   });
 });

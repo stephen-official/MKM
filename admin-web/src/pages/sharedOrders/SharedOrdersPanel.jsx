@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, ShoppingCart, Truck } from "lucide-react";
+import { CheckCircle2, Save, ShoppingCart, Truck } from "lucide-react";
 import { api } from "../../api.js";
 import { useToast } from "../../useToast.js";
 import {
-  Badge, Button, Card, DetailPanel, EmptyState, ErrorState, Meta, RailItem, RailList, SplitView, StatusBadge
+  Badge, Button, Card, DetailPanel, EmptyState, ErrorState, Field, Meta, RailItem, RailList, Select, SplitView, StatusBadge
 } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
-import { allSharesApproved, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, closesInText, lineDelivery, lineLabel, shareStage } from "./sharedOrders.js";
+import { allSharesApproved, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canSetPurchaseDetails, closesInText, lineDelivery, lineLabel, shareStage } from "./sharedOrders.js";
 
 const BASE = "/procurement/collaborative-purchase-orders";
 const errorMessage = (error, fallback) => error?.response?.data?.message || error?.response?.data?.error || fallback;
@@ -27,6 +27,9 @@ export function SharedOrdersPanel() {
   const [selectedId, setSelectedId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [suppliers, setSuppliers] = useState([]);
+  // Supplier and invoice as typed per order (keyed by order id); "Mark as ordered" sends the chosen supplier too.
+  const [purchaseEdits, setPurchaseEdits] = useState({});
   const requestId = useRef(0);
 
   const fetchList = () => api.get(BASE, { params: { limit: 100 } }).then((res) => res.data.items || []);
@@ -51,9 +54,12 @@ export function SharedOrdersPanel() {
   }, [run]);
 
   useEffect(() => { run(fetchList()); }, [run]);
+  useEffect(() => { api.get("/suppliers").then((res) => setSuppliers(res.data || [])).catch(() => setSuppliers([])); }, []);
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
 
   const order = useMemo(() => orders.find((candidate) => candidate._id === selectedId) || null, [orders, selectedId]);
+  const purchase = purchaseEdits[order?._id] || { supplierId: order?.supplierId || "", invoiceNo: order?.invoiceNo || "" };
+  const setPurchase = (change) => setPurchaseEdits((edits) => ({ ...edits, [order._id]: { ...purchase, ...change } }));
 
   /** Runs one admin action, optionally after a confirmation, then reloads so every kitchen's state is current. */
   const act = async (path, body, success, question) => {
@@ -61,9 +67,10 @@ export function SharedOrdersPanel() {
     if (question && !(await confirm(question))) return;
     setBusy(true);
     try {
-      if (path === "status") await api.patch(`${BASE}/${order._id}/status`, body);
+      if (path === "status" || path === "purchase") await api.patch(`${BASE}/${order._id}/${path}`, body);
       else await api.post(`${BASE}/${order._id}/${path}`, body);
       showToast(success, "success");
+      setPurchaseEdits((edits) => ({ ...edits, [order._id]: undefined }));
     } catch (error) {
       showToast(errorMessage(error, "That did not work. Reload and try again."), "error");
     } finally {
@@ -135,15 +142,40 @@ export function SharedOrdersPanel() {
                   })}><Truck size={18} /> Dispatch all</Button>
                 )}
                 {canMarkOrdered(order) && (
-                  <Button disabled={busy} onClick={() => act("status", { status: "ordered" }, "Marked as ordered", {
+                  <Button disabled={busy} onClick={() => act("status", { status: "ordered", supplierId: purchase.supplierId || null }, "Marked as ordered", {
                     title: "Mark as ordered?",
-                    message: "Do this once the combined order has been placed with the supplier. Kitchens will see it as Ordered.",
+                    message: purchase.supplierId
+                      ? `Placed with ${suppliers.find((s) => s._id === purchase.supplierId)?.name || "the chosen supplier"}. Kitchens will see it as Ordered.`
+                      : "No supplier is chosen, so kitchens will not see a supplier or FSSAI licence on this delivery. Continue anyway?",
                     confirmLabel: "Mark as ordered",
                   })}><ShoppingCart size={18} /> Mark as ordered</Button>
                 )}
               </div>
             }
           >
+            {canSetPurchaseDetails(order) && (
+              <Card tight style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
+                  <Field label="Supplier" className="field--grow">
+                    <Select value={purchase.supplierId} placeholder="Choose a supplier" onChange={(e) => setPurchase({ supplierId: e.target.value })}>
+                      <option value="">No supplier</option>
+                      {suppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.name}</option>)}
+                      {order.supplier && !suppliers.some((s) => s._id === order.supplier._id) && <option value={order.supplier._id}>{order.supplier.name} (archived)</option>}
+                    </Select>
+                  </Field>
+                  <Field label="Invoice number" className="field--grow">
+                    <input type="text" value={purchase.invoiceNo} maxLength={60} placeholder="After payment" onChange={(e) => setPurchase({ invoiceNo: e.target.value })} />
+                  </Field>
+                  <Button variant="ghost" disabled={busy || (purchase.supplierId === (order.supplierId || "") && purchase.invoiceNo === (order.invoiceNo || ""))}
+                    onClick={() => act("purchase", { supplierId: purchase.supplierId || null, invoiceNo: purchase.invoiceNo }, "Supplier and invoice saved")}>
+                    <Save size={16} /> Save
+                  </Button>
+                </div>
+                <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--muted)" }}>
+                  {order.supplier ? `Kitchens see ${order.supplier.name}, FSSAI licence ${order.supplier.fssaiLicence}` : "Kitchens see the supplier's name and FSSAI licence on the delivery"}{order.invoiceNo ? ` and invoice ${order.invoiceNo}.` : "."}
+                </p>
+              </Card>
+            )}
             {order.contributions.map((share) => {
               const kitchenId = share.godownId?._id || share.godownId;
               const stage = shareStage(order, share);

@@ -5,6 +5,8 @@ const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFract
 /** Lines, kitchens or the whole order can be approved until the order is approved, ordered or cancelled. */
 export const canApprove = (order) => ["open", "closed"].includes(order?.status);
 export const canMarkOrdered = (order) => order?.status === "approved";
+/** Supplier and invoice number can be set once the order is approved, and changed after it is ordered. */
+export const canSetPurchaseDetails = (order) => ["approved", "ordered"].includes(order?.status);
 /** True when every kitchen's share is approved; "Approve all" then only closes the order to new kitchens. */
 export const allSharesApproved = (order) =>
   (order?.contributions || []).length > 0 && order.contributions.every((share) => Boolean(share.approvedAt));
