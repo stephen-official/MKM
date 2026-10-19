@@ -159,7 +159,7 @@ If nothing is on the way, 409 `NOT_DISPATCHED`; once everything is received, 409
 { "supplierId": "<supplier id>", "invoiceNo": "INV-2026-0042" }
 ```
 
-Either key may be sent alone; only the keys present change. `supplierId` must be an active supplier (see Suppliers below), or `null` to clear it. `invoiceNo` is up to 60 characters and is meant to be filled in after payment. The order must be `approved` or `ordered` (otherwise 409 `NOT_APPROVED`). Every response then carries `supplier` (`{ _id, name, fssaiLicence }` or `null`) and `invoiceNo`; admins also get the raw `supplierId`. Kitchens see `supplier` and `invoiceNo` read-only, and every stock batch they receive copies the supplier (see Receive).
+Either key may be sent alone; only the keys present change. `supplierId` must be an active supplier (see Suppliers below), or `null` to clear it while the order is still `approved` (an `ordered` order must keep a supplier: 400 `SUPPLIER_REQUIRED`). `invoiceNo` is up to 60 characters and is meant to be filled in after payment. The order must be `approved` or `ordered` (otherwise 409 `NOT_APPROVED`). Every response then carries `supplier` (`{ _id, name, fssaiLicence }` or `null`) and `invoiceNo`; admins also get the raw `supplierId`. Kitchens see `supplier` and `invoiceNo` read-only, and every stock batch they receive copies the supplier (see Receive).
 
 ### Change lifecycle status (admin only)
 
@@ -169,7 +169,7 @@ Either key may be sent alone; only the keys present change. `supplierId` must be
 { "status": "closed" }
 ```
 
-When moving to `ordered`, "Mark as ordered" may name the supplier in the same call: `{ "status": "ordered", "supplierId": "<supplier id>" }`. The supplier is optional at this point.
+Moving to `ordered` requires a supplier: either already set through `PATCH /:id/purchase`, or named in the same call as `{ "status": "ordered", "supplierId": "<supplier id>" }`. Without one, 400 `SUPPLIER_REQUIRED` and the order stays `approved`.
 
 Allowed transitions:
 
@@ -198,4 +198,4 @@ Errors use the shared `{ code, message }` shape: `INVALID_INPUT` (400), `NOT_FOU
 
 ## Errors
 
-Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `SUPPLIER_REQUIRED` (400), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).

@@ -4,6 +4,7 @@ import request from "supertest";
 import { clearDb, startDb, stopDb, syncAllIndexes } from "./helpers/db.js";
 import { createGodown, createUser } from "./helpers/auth.js";
 import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
+import { Supplier } from "../models/SupplierModel.js";
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
 import { GodownStock } from "../models/FlowModels.js";
 import { StockBatch } from "../models/StockBatchModel.js";
@@ -24,6 +25,7 @@ beforeEach(async () => {
   ]);
   ctx = {
     kitchenA, kitchenB, rice, dal, oil,
+    supplier: await Supplier.create({ name: "Sri Lakshmi Traders", nameKey: "sri lakshmi traders", fssaiLicence: "12345678901234" }),
     cookA: await createUser({ role: "user", godownId: kitchenA._id }),
     cookB: await createUser({ role: "user", godownId: kitchenB._id }),
     admin: await createUser({ role: "admin" }),
@@ -104,7 +106,10 @@ test("ordering needs approval first, and finished orders cannot be approved", as
   assert.equal((await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" })).status, 409);
   assert.equal((await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "approved" })).status, 409);
   assert.equal((await approve()).body.status, "approved");
-  assert.equal((await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" })).body.status, "ordered");
+  const noSupplier = await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" });
+  assert.equal(noSupplier.status, 400);
+  assert.equal(noSupplier.body.code, "SUPPLIER_REQUIRED");
+  assert.equal((await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id })).body.status, "ordered");
   const again = await approve();
   assert.equal(again.status, 409);
   assert.equal(again.body.code, "ORDER_CLOSED");
@@ -123,7 +128,7 @@ test("an edit based on an older copy of the order cannot wipe out an approval", 
 const dispatch = (godownId, actor = ctx.admin) => call(actor, "post", `/${ctx.order._id}/dispatch`).send({ godownId });
 const placeOrder = async () => {
   await approve();
-  await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" });
+  await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id });
 };
 
 test("each kitchen's share is dispatched separately once the order is placed", async () => {
@@ -145,7 +150,7 @@ test("dispatch needs a placed order, an admin and a kitchen on the order", async
   const early = await dispatch(ctx.kitchenA._id);
   assert.equal(early.status, 409);
   assert.equal(early.body.code, "NOT_ORDERED");
-  await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" });
+  await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id });
   assert.equal((await dispatch(ctx.kitchenA._id, ctx.cookA)).status, 403);
   assert.equal((await dispatch((await createGodown("Kitchen C"))._id)).status, 404);
   assert.equal((await dispatch("nope")).status, 400);

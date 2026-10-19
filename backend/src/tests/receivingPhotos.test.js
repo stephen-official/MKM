@@ -5,6 +5,7 @@ import { clearDb, startDb, stopDb, syncAllIndexes } from "./helpers/db.js";
 import { createGodown, createUser } from "./helpers/auth.js";
 import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
 import { StockBatch } from "../models/StockBatchModel.js";
+import { Supplier } from "../models/SupplierModel.js";
 import { cloudinaryConfigured } from "../stock/photoStorage.js";
 
 // Kitchen receiving photos. Tests run without Cloudinary keys, so files land under backend/uploads/receipts.
@@ -21,6 +22,7 @@ beforeEach(async () => {
   const rice = await StockItem.create({ name: "Rice", stockGroupId: group._id, unitId: unit._id, pricePerUnit: 50 });
   ctx = {
     rice,
+    supplier: await Supplier.create({ name: "Sri Lakshmi Traders", nameKey: "sri lakshmi traders", fssaiLicence: "12345678901234" }),
     cookA: await createUser({ role: "user", godownId: kitchenA._id }),
     cookB: await createUser({ role: "user", godownId: kitchenB._id }),
     admin: await createUser({ role: "admin" }),
@@ -68,7 +70,7 @@ test("non-images, oversized files and an empty form are refused with plain messa
 
 test("the uploaded URLs are accepted by receive end to end", async () => {
   await call(ctx.admin, "post", `/${ctx.order._id}/approve`).send({});
-  await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" });
+  await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id });
   await call(ctx.admin, "post", `/${ctx.order._id}/dispatch`).send({ godownId: ctx.cookA.user.godownId });
   const goods = (await upload(ctx.cookA)).body.url;
   const label = (await upload(ctx.cookA, jpeg(), "label.png", "image/png")).body.url;

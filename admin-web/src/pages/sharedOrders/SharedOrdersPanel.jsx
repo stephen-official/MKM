@@ -141,12 +141,13 @@ export function SharedOrdersPanel() {
                     confirmLabel: "Dispatch all",
                   })}><Truck size={18} /> Dispatch all</Button>
                 )}
+                {canMarkOrdered(order) && !purchase.supplierId && (
+                  <span style={{ alignSelf: "center", color: "var(--muted)", fontSize: 13 }}>Choose a supplier above to mark as ordered.</span>
+                )}
                 {canMarkOrdered(order) && (
-                  <Button disabled={busy} onClick={() => act("status", { status: "ordered", supplierId: purchase.supplierId || null }, "Marked as ordered", {
+                  <Button disabled={busy || !purchase.supplierId} onClick={() => act("status", { status: "ordered", supplierId: purchase.supplierId }, "Marked as ordered", {
                     title: "Mark as ordered?",
-                    message: purchase.supplierId
-                      ? `Placed with ${suppliers.find((s) => s._id === purchase.supplierId)?.name || "the chosen supplier"}. Kitchens will see it as Ordered.`
-                      : "No supplier is chosen, so kitchens will not see a supplier or FSSAI licence on this delivery. Continue anyway?",
+                    message: `Placed with ${suppliers.find((s) => s._id === purchase.supplierId)?.name || "the chosen supplier"}. Kitchens will see it as Ordered.`,
                     confirmLabel: "Mark as ordered",
                   })}><ShoppingCart size={18} /> Mark as ordered</Button>
                 )}
@@ -158,7 +159,7 @@ export function SharedOrdersPanel() {
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
                   <Field label="Supplier" className="field--grow">
                     <Select value={purchase.supplierId} placeholder="Choose a supplier" onChange={(e) => setPurchase({ supplierId: e.target.value })}>
-                      <option value="">No supplier</option>
+                      {order.status !== "ordered" && <option value="">Choose a supplier</option>}
                       {suppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.name}</option>)}
                       {order.supplier && !suppliers.some((s) => s._id === order.supplier._id) && <option value={order.supplier._id}>{order.supplier.name} (archived)</option>}
                     </Select>

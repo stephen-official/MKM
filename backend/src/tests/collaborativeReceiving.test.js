@@ -36,10 +36,10 @@ const photos = { goods: "https://res.cloudinary.com/x/goods.jpg", label: "/uploa
 const riceDetails = (extra = {}) => ({ stockItemId: ctx.rice._id, photos, expiryDate: "2030-01-31", mfgDate: "2026-09-01", lotNumber: "B-4471", storage: "room", ...extra });
 
 /** Opens, approves, orders (with supplier unless told not to) and dispatches an order for the given lines. */
-const dispatched = async (items, { supplierId = ctx.supplier._id } = {}) => {
+const dispatched = async (items) => {
   const order = (await call(ctx.cookA, "post", "/").send({ neededIn: "1w", items })).body;
   await call(ctx.admin, "post", `/${order._id}/approve`).send({});
-  await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered", supplierId });
+  await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id });
   await call(ctx.admin, "post", `/${order._id}/dispatch`).send({ godownId: ctx.kitchenA._id });
   return order;
 };
@@ -133,12 +133,4 @@ test("every arriving product needs its details; an empty body is refused", async
   assert.equal(partial.body.code, "MISSING_ITEM_DETAILS");
   assert.match(partial.body.message, /Salt is missing its receiving details/);
   assert.equal(await stockOf(ctx.rice), 0, "all or nothing");
-});
-
-test("an order placed without a supplier leaves the supplier fields blank on the batch", async () => {
-  const order = await dispatched([{ stockItemId: ctx.rice._id, qtyBaseUnit: 10 }], { supplierId: null });
-  assert.equal((await receive(order, { items: [riceDetails()] })).status, 200);
-  const batch = await StockBatch.findOne({ stockItemId: ctx.rice._id }).lean();
-  assert.equal(batch.supplierName, "");
-  assert.equal(batch.supplierFssaiLicence, "");
 });

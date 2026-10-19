@@ -46,10 +46,21 @@ test("marking an order ordered with a supplier shows the supplier's name and lic
   assert.equal(seen.supplier.phone, undefined);
 });
 
-test("an order can still be marked ordered without a supplier", async () => {
+test("an order cannot be marked ordered without a supplier, and an ordered order keeps one", async () => {
+  const refused = await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.body.code, "SUPPLIER_REQUIRED");
+  assert.equal((await call(ctx.admin, "get", `/${ctx.order._id}`)).body.status, "approved", "the order is unchanged");
+
+  // A supplier chosen earlier through /purchase counts.
+  await purchase(ctx.admin, { supplierId: ctx.supplier._id });
   const ordered = await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" });
   assert.equal(ordered.status, 200, JSON.stringify(ordered.body));
-  assert.equal(ordered.body.supplier, null);
+  assert.equal(ordered.body.supplier.name, "Sri Lakshmi Traders");
+
+  const cleared = await purchase(ctx.admin, { supplierId: null });
+  assert.equal(cleared.status, 400);
+  assert.equal(cleared.body.code, "SUPPLIER_REQUIRED");
 });
 
 test("the admin sets the invoice number after ordering; kitchens read it, never write it", async () => {
@@ -67,6 +78,7 @@ test("the supplier can be chosen before ordering and changed after, but only to 
   assert.equal(early.status, 200, JSON.stringify(early.body));
   assert.equal(early.body.status, "approved");
   assert.equal(early.body.supplier.name, "Sri Lakshmi Traders");
+  assert.equal((await purchase(ctx.admin, { supplierId: null })).body.supplier, null, "an approved order may still drop its supplier");
 
   const archived = await purchase(ctx.admin, { supplierId: ctx.archived._id });
   assert.equal(archived.status, 400);

@@ -482,8 +482,10 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
 const applyPurchaseDetails = async (order, body) => {
   let changed = 0;
   if (body.supplierId !== undefined) {
-    if (body.supplierId === null || body.supplierId === "") order.supplierId = null;
-    else {
+    if (body.supplierId === null || body.supplierId === "") {
+      if (order.status === "ordered") throw fail(400, "An ordered order must keep a supplier", "SUPPLIER_REQUIRED");
+      order.supplierId = null;
+    } else {
       const supplier = mongoose.isValidObjectId(body.supplierId) ? await Supplier.findById(body.supplierId).select("active") : null;
       if (!supplier || !supplier.active) throw fail(400, "Choose an active supplier");
       order.supplierId = supplier._id;
@@ -518,8 +520,10 @@ collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res
     const order = await CollaborativePurchaseOrder.findById(req.params.id);
     if (!order) throw fail(404, "Collaborative purchase order not found");
     if (next !== order.status && !TRANSITIONS[order.status].has(next)) throw fail(409, `An ${order.status} order cannot move to ${next}`);
-    // "Mark as ordered" may name the supplier in the same call.
+    // "Mark as ordered" may name the supplier in the same call, and must end up with one: kitchens see the
+    // supplier's name and FSSAI licence on every batch they receive.
     if (next === "ordered" && req.body.supplierId !== undefined) await applyPurchaseDetails(order, { supplierId: req.body.supplierId });
+    if (next === "ordered" && !order.supplierId) throw fail(400, "Choose a supplier before marking the order as ordered", "SUPPLIER_REQUIRED");
     order.status = next;
     order.statusChangedAt = new Date();
     order.statusChangedBy = req.user.sub;

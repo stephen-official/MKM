@@ -5,6 +5,7 @@ import { clearDb, startDb, stopDb, syncAllIndexes } from "./helpers/db.js";
 import { createGodown, createUser } from "./helpers/auth.js";
 import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
+import { Supplier } from "../models/SupplierModel.js";
 
 let app;
 let ctx;
@@ -21,6 +22,7 @@ beforeEach(async () => {
   ]);
   ctx = {
     kitchenA, kitchenB, rice, dal,
+    supplier: await Supplier.create({ name: "Sri Lakshmi Traders", nameKey: "sri lakshmi traders", fssaiLicence: "12345678901234" }),
     cookA: await createUser({ role: "user", godownId: kitchenA._id }),
     cookB: await createUser({ role: "user", godownId: kitchenB._id }),
     admin: await createUser({ role: "admin" }),
@@ -83,7 +85,7 @@ test("admins control lifecycle and closed orders reject kitchen changes", async 
   assert.equal(closed.body.status, "closed");
   assert.equal((await call(ctx.cookB, "post", `/${order._id}/contributions`).send({ items: [{ stockItemId: ctx.dal._id, qtyBaseUnit: 2 }] })).status, 409);
   assert.equal((await call(ctx.admin, "post", `/${order._id}/approve`).send({})).body.status, "approved");
-  assert.equal((await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered" })).body.status, "ordered");
+  assert.equal((await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id })).body.status, "ordered");
   assert.equal((await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "open" })).status, 409);
 });
 
