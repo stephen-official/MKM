@@ -1,5 +1,6 @@
 import express from "express";
 import mongoose from "mongoose";
+import multer from "multer";
 import { authorize } from "../middleware/auth.js";
 import { packQuantityMatchesBase, packSnapshot } from "../catalog/packaging.js";
 import { assertKitchenCanUse, bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
@@ -9,6 +10,7 @@ import { GodownStock } from "../models/FlowModels.js";
 import { Supplier } from "../models/SupplierModel.js";
 import { createStockBatch } from "../stock/batchService.js";
 import { nextTrackingId } from "../stock/trackingId.js";
+import { isPhotoType, storePhoto } from "../stock/photoStorage.js";
 import { businessDateOf, isIsoDate, startOfBusinessDay } from "../executive/params.js";
 import { isKitchenRole } from "../utils/roles.js";
 import { closesAtFor, neededByFor } from "../ordering/window.js";
@@ -352,6 +354,35 @@ collaborativePurchaseOrderRoutes.post("/:id/dispatch", adminOnly, async (req, re
     if (sent === 0) throw fail(409, "These items have already been dispatched", "ALREADY_DISPATCHED");
     await order.save();
     return res.json(responseOrder(await loadOrder(order._id), req.user));
+  } catch (error) { return sendError(res, error); }
+});
+
+const PHOTO_LIMIT_MB = 8;
+const photoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: PHOTO_LIMIT_MB * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, done) => (isPhotoType(file.mimetype) ? done(null, true) : done(fail(400, "Photos must be JPEG, PNG or WebP"))),
+}).single("photo");
+/** multer's own errors as { code, message } like every other error here. */
+const readPhoto = (req, res, next) => photoUpload(req, res, (error) => {
+  if (!error) return next();
+  if (error.code === "LIMIT_FILE_SIZE") return sendError(res, fail(400, `The photo is too big. Keep it under ${PHOTO_LIMIT_MB} MB.`, "PHOTO_TOO_LARGE"));
+  return sendError(res, error.status ? error : fail(400, error.message));
+});
+
+/**
+ * Kitchen: upload one receiving photo (goods or label) for an order it is on. Returns `{ url }` to put in the
+ * receive body. Stored on Cloudinary when configured, else under this API's /uploads.
+ */
+collaborativePurchaseOrderRoutes.post("/:id/photos", kitchenOnly, readPhoto, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
+    const order = await CollaborativePurchaseOrder.findById(req.params.id).select("contributions.godownId").lean();
+    if (!order) throw fail(404, "Collaborative purchase order not found");
+    if (!order.contributions.some((entry) => String(entry.godownId) === String(req.user.godownId))) throw fail(404, "Your kitchen is not on this order");
+    if (!req.file) throw fail(400, "Choose a photo to upload", "PHOTO_REQUIRED");
+    const url = await storePhoto({ buffer: req.file.buffer, mimetype: req.file.mimetype, baseUrl: `${req.protocol}://${req.get("host")}` });
+    return res.status(201).json({ url });
   } catch (error) { return sendError(res, error); }
 });
 

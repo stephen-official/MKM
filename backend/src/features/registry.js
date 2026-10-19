@@ -99,6 +99,7 @@ export const ROUTE_RULES = Object.freeze([
   feature("DELETE", "/api/procurement/collaborative-purchase-orders/:id/contributions/me", ["purchase-orders"], "mutation", "kitchen"),
   feature("POST", "/api/procurement/collaborative-purchase-orders/:id/approve", ["purchase-orders"], "mutation"),
   feature("POST", "/api/procurement/collaborative-purchase-orders/:id/dispatch", ["purchase-orders"], "mutation"),
+  feature("POST", "/api/procurement/collaborative-purchase-orders/:id/photos", ["purchase-orders"], "mutation", "kitchen"),
   feature("POST", "/api/procurement/collaborative-purchase-orders/:id/receive", ["purchase-orders"], "mutation", "kitchen"),
   feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/status", ["purchase-orders"], "mutation"),
   feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/purchase", ["purchase-orders"], "mutation"),

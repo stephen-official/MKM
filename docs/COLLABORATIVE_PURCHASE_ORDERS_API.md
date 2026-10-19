@@ -110,6 +110,12 @@ Approval works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSE
 
 The order is placed once (`ordered`), but lines are sent separately: each line gets `dispatchedAt` and `dispatchedBy`, and the contribution gets them too once all its lines are sent. Whole lines only; a short quantity is a delivery problem, not a partial dispatch. The order must be `ordered` (otherwise 409 `NOT_ORDERED`); if nothing in the request is left to send, 409 `ALREADY_DISPATCHED`. Contributions dispatched before lines were tracked carry `dispatchedAt` only on the contribution; read a line as sent when either is set.
 
+### Upload a receiving photo (kitchen only)
+
+`POST /:id/photos` — multipart form, one field `photo` (JPEG, PNG or WebP, up to 8 MB)
+
+Returns 201 `{ url }`. The kitchen must be on the order (otherwise 404). The URL goes into `photos.goods` or `photos.label` of the receive body below. Photos are stored on Cloudinary (folder `mkm/receipts`, limited to 1600 px) when `CLOUDINARY_URL` or the three `CLOUDINARY_*` keys are set; otherwise they are written under the API's own `/uploads/receipts/` and the URL points at this API (local development and tests). Errors: `INVALID_INPUT` (400, not an image), `PHOTO_TOO_LARGE` (400), `PHOTO_REQUIRED` (400, no file).
+
 ### Receive what has arrived (kitchen only)
 
 `POST /:id/receive`
@@ -192,4 +198,4 @@ Errors use the shared `{ code, message }` shape: `INVALID_INPUT` (400), `NOT_FOU
 
 ## Errors
 
-Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
