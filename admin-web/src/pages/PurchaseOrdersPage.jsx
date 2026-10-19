@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useToast } from "../useToast.js";
-import { Search, CheckCircle2, PackageCheck, History, Download, Users, Building2 } from "lucide-react";
+import { Search, CheckCircle2, PackageCheck, History, Download, Users, Building2, AlertTriangle } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
   PageHeader, Button, Badge, EmptyState, Field, Tabs, StatusBadge, SplitView,
@@ -11,11 +11,13 @@ import { useConfirm } from "../components/ui/useConfirm.jsx";
 import { lineQuantityLabel, packagingLineFromSnapshot } from "./procurementPackaging.js";
 import { SharedOrdersPanel } from "./sharedOrders/SharedOrdersPanel.jsx";
 import { SuppliersPanel } from "./suppliers/SuppliersPanel.jsx";
+import { ProblemsPanel } from "./problems/ProblemsPanel.jsx";
 
 const VIEW_TABS = [
   { value: "history", label: "History", icon: <History size={14} /> },
   { value: "create", label: "Intake", icon: <PackageCheck size={14} /> },
   { value: "shared", label: "Shared orders", icon: <Users size={14} /> },
+  { value: "problems", label: "Problems", icon: <AlertTriangle size={14} /> },
   { value: "suppliers", label: "Suppliers", icon: <Building2 size={14} /> }
 ];
 
@@ -397,7 +399,7 @@ export const PurchaseOrdersPage = () => {
         <Tabs items={VIEW_TABS} value={view} onChange={setView} label="Purchase order views" />
       </PageHeader>
 
-      {view === "history" ? renderHistory() : view === "shared" ? <SharedOrdersPanel /> : view === "suppliers" ? <SuppliersPanel /> : renderIntake()}
+      {view === "history" ? renderHistory() : view === "shared" ? <SharedOrdersPanel /> : view === "suppliers" ? <SuppliersPanel /> : view === "problems" ? <ProblemsPanel /> : renderIntake()}
       {dialog}
     </div>
   );

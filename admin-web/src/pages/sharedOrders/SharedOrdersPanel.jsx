@@ -15,7 +15,7 @@ const when = (value, withTime = false) => (value ? new Intl.DateTimeFormat("en-I
 }).format(new Date(value)) : "—");
 const itemNames = (order) => [...new Set((order.combinedItems || []).map((line) => line.stockItemId?.name).filter(Boolean))].join(", ");
 const STAGE_VARIANT = { Requested: "warn", Approved: "info", Ordered: "info", "Partly dispatched": "info", Dispatched: "info", "Partly received": "info", Delivered: "success", Cancelled: "alert" };
-const DELIVERY_VARIANT = { "Not sent": "neutral", "On the way": "info", Received: "success" };
+const DELIVERY_VARIANT = { "Not sent": "neutral", "On the way": "info", "Problem raised": "warn", Received: "success" };
 
 /** Kitchens' shared orders: approve lines, kitchens or everything, mark the order as placed, and dispatch each kitchen. */
 export function SharedOrdersPanel() {

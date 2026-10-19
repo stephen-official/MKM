@@ -19,8 +19,8 @@ export const canDispatchLine = (order, line, share) => order?.status === "ordere
 export const canDispatch = (order, share) => order?.status === "ordered" && (share?.items || []).some((line) => !isSent(line, share));
 export const canDispatchAll = (order) => (order?.contributions || []).some((share) => canDispatch(order, share));
 
-/** "Not sent", "On the way" or "Received" for one line. */
-export const lineDelivery = (line, share) => (isReceived(line, share) ? "Received" : isSent(line, share) ? "On the way" : "Not sent");
+/** "Not sent", "On the way", "Problem raised" or "Received" for one line. */
+export const lineDelivery = (line, share) => (isReceived(line, share) ? "Received" : line?.ticketId ? "Problem raised" : isSent(line, share) ? "On the way" : "Not sent");
 
 /** One kitchen's progress in plain words, from Requested to Delivered (with Partly dispatched / Partly received). */
 export const shareStage = (order, share) => {

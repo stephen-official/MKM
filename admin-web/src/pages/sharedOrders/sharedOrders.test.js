@@ -66,6 +66,11 @@ describe("shared orders (admin)", () => {
     expect(lineLabel({ ...unit, qtyBaseUnit: 50, packId: "p", packName: "25 kg bag", packQuantity: 2 })).toBe("2 × 25 kg bag (50 kg)");
   });
 
+  it("shows a line with an open problem as such until the admin settles it", () => {
+    expect(lineDelivery({ dispatchedAt: at(-2), ticketId: { status: "open" } }, share())).toBe("Problem raised");
+    expect(lineDelivery({ dispatchedAt: at(-2), deliveredAt: at(-1), ticketId: { status: "settled" } }, share())).toBe("Received");
+  });
+
   it("allows supplier and invoice details once approved, and after ordering", () => {
     expect(["open", "closed", "cancelled"].map((status) => canSetPurchaseDetails({ status }))).toEqual([false, false, false]);
     expect(["approved", "ordered"].map((status) => canSetPurchaseDetails({ status }))).toEqual([true, true]);
