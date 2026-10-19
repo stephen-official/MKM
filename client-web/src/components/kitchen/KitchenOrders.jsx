@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { productPacks } from "../../features/kitchen";
-import { canEditShare, closesInText, deliveryDateText, kitchenStage, myOrders, myShare, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
+import { canEditShare, closesInText, deliveryDateText, hasArriving, kitchenStage, lineState, myOrders, myShare, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
 import "./SupplyRequestsDeliveries.css";
 import "./KitchenOrders.css";
 
@@ -12,6 +12,7 @@ const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFract
 const errorText = (error, fallback) => error?.response?.data?.message || fallback;
 const productName = (line) => line.stockItemId?.name || "Item";
 const unitOf = (line) => line.stockItemId?.unitId?.symbol || "";
+const LINE_STATE = { not_sent: { label: "Not sent yet", tone: "neutral" }, on_the_way: { label: "On the way", tone: "info" }, received: { label: "Received", tone: "positive" } };
 const lineAmount = (line) => (line.packId ? `${qty(line.packQuantity)} × ${line.packName}` : `${qty(line.qtyBaseUnit)} ${unitOf(line)}`);
 
 /** Cart entries ({ qty, packId }) keyed by product id → API item lines. */
@@ -39,6 +40,8 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
   const share = myShare(order, godownId);
   const stage = kitchenStage(order, godownId);
   const others = order.kitchenCount - 1;
+  const arriving = hasArriving(order, godownId);
+  const notSent = share.items.filter((line) => lineState(line, share) === "not_sent").length;
   return <article className="srd-card ko-card">
     <header className="srd-card__header">
       <div><p className="srd-card__eyebrow">{order.emergency ? "Emergency order" : "Shared order"}</p><h2>{order.title || share.items.map(productName).join(", ")}</h2></div>
@@ -53,12 +56,14 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
     <ul className="srd-lines" aria-label="Your items">
       {share.items.map((line) => <li key={`${line.stockItemId?._id}:${line.packId || "base"}`} className="ko-line">
         <strong>{productName(line)}</strong><span>{lineAmount(line)}</span>
-        {line.approvedAt && <small className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved</small>}
+        {order.status === "ordered"
+          ? <span className={`srd-status srd-status--${LINE_STATE[lineState(line, share)].tone}`}>{LINE_STATE[lineState(line, share)].label}</span>
+          : line.approvedAt && <small className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved</small>}
       </li>)}
     </ul>
     {canEditShare(order, godownId, now) && <footer className="srd-card__actions"><button type="button" onClick={() => onEdit(order)}>Edit my items</button></footer>}
-    {stage === "dispatched" && (confirming
-      ? <footer className="ko-confirm"><p>Did everything arrive?</p><button type="button" className="srd-primary-button" onClick={() => onReceive(order)}>Yes, all received</button><button type="button" className="ko-secondary" onClick={() => setConfirming(false)}>Not yet</button></footer>
+    {arriving && (confirming
+      ? <footer className="ko-confirm"><p>{notSent ? "Did the items marked “On the way” arrive? The rest will come later." : "Did everything arrive?"}</p><button type="button" className="srd-primary-button" onClick={() => onReceive(order)}>Yes, all received</button><button type="button" className="ko-secondary" onClick={() => setConfirming(false)}>Not yet</button></footer>
       : <footer className="ko-confirm"><p className="ko-hint"><Truck size={15} aria-hidden="true" /> On the way. Problem with the delivery? Don’t tap below — call the central store.</p><button type="button" className="srd-primary-button" onClick={() => setConfirming(true)}>All received <ChevronRight size={17} aria-hidden="true" /></button></footer>)}
   </article>;
 }

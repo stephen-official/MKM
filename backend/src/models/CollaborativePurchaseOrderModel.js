@@ -11,6 +11,12 @@ const collaborativeLineSchema = new mongoose.Schema({
   // Set when an admin approves this line; the kitchen can no longer change or add to this product.
   approvedAt: { type: Date, default: null },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  // Lines can be sent and received on different days. Shares dispatched before lines were tracked
+  // carry these on the share instead, so read them as line.x || share.x.
+  dispatchedAt: { type: Date, default: null },
+  dispatchedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  deliveredAt: { type: Date, default: null },
+  deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { _id: false });
 
 const contributionSchema = new mongoose.Schema({
@@ -23,10 +29,10 @@ const contributionSchema = new mongoose.Schema({
   // Set when an admin approves the whole share; the kitchen can no longer change it.
   approvedAt: { type: Date, default: null },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-  // Once the order is placed, each kitchen's share is sent separately.
+  // Set once every line of the share has been sent (each kitchen's share is sent separately).
   dispatchedAt: { type: Date, default: null },
   dispatchedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-  // Set when the kitchen confirms everything arrived; its items were added to that kitchen's stock then.
+  // Set once every line has been received; each line was added to the kitchen's stock as it arrived.
   deliveredAt: { type: Date, default: null },
   deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { _id: true });

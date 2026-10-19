@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canJoin, closesInText, deliveryDateText, kitchenStage, myShare, orderTimeline, otherOpenOrders, myOrders } from "./orders.js";
+import { canJoin, closesInText, deliveryDateText, hasArriving, kitchenStage, lineState, myShare, orderTimeline, otherOpenOrders, myOrders } from "./orders.js";
 
 const me = "kitchenA";
 const now = new Date("2026-10-18T04:30:00.000Z"); // 10:00 in India
@@ -55,4 +55,24 @@ test("closing time reads simply", () => {
 test("delivery dates read as Indian dates, with a time for emergencies", () => {
   assert.equal(deliveryDateText(at(168)), "Sun, 25 Oct");
   assert.equal(deliveryDateText(at(1), { withTime: true }), "Sun, 18 Oct, 11:00 am");
+});
+
+test("lines sent on different days: the stage, each line and what can be received", () => {
+  const rice = { stockItemId: "rice", dispatchedAt: at(-2), deliveredAt: null };
+  const dal = { stockItemId: "dal", dispatchedAt: null, deliveredAt: null };
+  const partly = order({ status: "ordered", contributions: [share(me, { items: [rice, dal] })] });
+  assert.equal(kitchenStage(partly, me), "dispatched", "something is on the way");
+  assert.equal(hasArriving(partly, me), true);
+  assert.deepEqual([lineState(rice, myShare(partly, me)), lineState(dal, myShare(partly, me))], ["on_the_way", "not_sent"]);
+  assert.equal(orderTimeline(partly, me)[3].at, at(-2), "dispatched shows when the first line left");
+
+  const riceIn = order({ status: "ordered", contributions: [share(me, { items: [{ ...rice, deliveredAt: at(-1) }, dal] })] });
+  assert.equal(hasArriving(riceIn, me), false, "the dal has not been sent yet");
+  assert.equal(lineState(riceIn.contributions[0].items[0], myShare(riceIn, me)), "received");
+  assert.equal(kitchenStage(riceIn, me), "dispatched", "not delivered until every line has arrived");
+
+  // Shares dispatched whole before lines were tracked.
+  const old = order({ status: "ordered", contributions: [share(me, { dispatchedAt: at(-1), items: [{ stockItemId: "rice" }] })] });
+  assert.equal(hasArriving(old, me), true);
+  assert.equal(lineState(old.contributions[0].items[0], myShare(old, me)), "on_the_way");
 });

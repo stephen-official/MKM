@@ -6,7 +6,7 @@ import {
   Badge, Button, Card, DetailPanel, EmptyState, ErrorState, Meta, RailItem, RailList, SplitView, StatusBadge
 } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
-import { allSharesApproved, canApprove, canDispatch, canMarkOrdered, closesInText, lineLabel, shareStage } from "./sharedOrders.js";
+import { allSharesApproved, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, closesInText, lineDelivery, lineLabel, shareStage } from "./sharedOrders.js";
 
 const BASE = "/procurement/collaborative-purchase-orders";
 const errorMessage = (error, fallback) => error?.response?.data?.message || error?.response?.data?.error || fallback;
@@ -14,7 +14,8 @@ const when = (value, withTime = false) => (value ? new Intl.DateTimeFormat("en-I
   timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", ...(withTime ? { hour: "numeric", minute: "2-digit" } : {})
 }).format(new Date(value)) : "—");
 const itemNames = (order) => [...new Set((order.combinedItems || []).map((line) => line.stockItemId?.name).filter(Boolean))].join(", ");
-const STAGE_VARIANT = { Requested: "warn", Approved: "info", Ordered: "info", Dispatched: "info", Delivered: "success", Cancelled: "alert" };
+const STAGE_VARIANT = { Requested: "warn", Approved: "info", Ordered: "info", "Partly dispatched": "info", Dispatched: "info", "Partly received": "info", Delivered: "success", Cancelled: "alert" };
+const DELIVERY_VARIANT = { "Not sent": "neutral", "On the way": "info", Received: "success" };
 
 /** Kitchens' shared orders: approve lines, kitchens or everything, mark the order as placed, and dispatch each kitchen. */
 export function SharedOrdersPanel() {
@@ -126,6 +127,13 @@ export function SharedOrdersPanel() {
                     confirmLabel: "Approve all",
                   })}><CheckCircle2 size={18} /> Approve all</Button>
                 ))}
+                {canDispatchAll(order) && (
+                  <Button disabled={busy} onClick={() => act("dispatch", {}, "Everything dispatched", {
+                    title: "Dispatch everything that is left?",
+                    message: "Every kitchen's items that have not been sent yet are marked as on the way.",
+                    confirmLabel: "Dispatch all",
+                  })}><Truck size={18} /> Dispatch all</Button>
+                )}
                 {canMarkOrdered(order) && (
                   <Button disabled={busy} onClick={() => act("status", { status: "ordered" }, "Marked as ordered", {
                     title: "Mark as ordered?",
@@ -139,6 +147,7 @@ export function SharedOrdersPanel() {
             {order.contributions.map((share) => {
               const kitchenId = share.godownId?._id || share.godownId;
               const stage = shareStage(order, share);
+              const placed = order.status === "ordered";
               return (
                 <Card key={share._id || kitchenId} tight style={{ marginBottom: 12 }}>
                   <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -157,14 +166,14 @@ export function SharedOrdersPanel() {
                       {canDispatch(order, share) && (
                         <Button size="sm" disabled={busy} onClick={() => act("dispatch", { godownId: kitchenId }, `Dispatched to ${share.godownId?.name || "the kitchen"}`, {
                           title: `Dispatch to ${share.godownId?.name || "this kitchen"}?`,
-                          message: "The kitchen will see its items as on the way and confirm when they arrive.",
+                          message: "Its items that have not been sent yet are marked as on the way; the kitchen confirms when they arrive.",
                           confirmLabel: "Dispatch",
-                        })}><Truck size={16} /> Dispatch</Button>
+                        })}><Truck size={16} /> {stage === "Partly dispatched" || stage === "Partly received" ? "Dispatch the rest" : "Dispatch kitchen"}</Button>
                       )}
                     </div>
                   </div>
                   <table className="table">
-                    <thead><tr><th scope="col">Item</th><th scope="col">Quantity</th><th scope="col" style={{ textAlign: "right" }}>Approval</th></tr></thead>
+                    <thead><tr><th scope="col">Item</th><th scope="col">Quantity</th><th scope="col" style={{ textAlign: "right" }}>{placed ? "Delivery" : "Approval"}</th></tr></thead>
                     <tbody>
                       {share.items.map((line) => {
                         const productId = line.stockItemId?._id || line.stockItemId;
@@ -173,7 +182,17 @@ export function SharedOrdersPanel() {
                             <td>{line.stockItemId?.name || "Item"}</td>
                             <td>{lineLabel(line)}</td>
                             <td style={{ textAlign: "right" }}>
-                              {line.approvedAt ? <Badge variant="success">Approved</Badge> : approvable ? (
+                              {placed ? (
+                                <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                                  <Badge variant={DELIVERY_VARIANT[lineDelivery(line, share)]}>{lineDelivery(line, share)}</Badge>
+                                  {canDispatchLine(order, line, share) && (
+                                    <Button size="sm" variant="ghost" disabled={busy}
+                                      onClick={() => act("dispatch", { godownId: kitchenId, items: [{ stockItemId: productId, packId: line.packId || undefined }] }, `${line.stockItemId?.name || "Item"} dispatched`)}>
+                                      Dispatch
+                                    </Button>
+                                  )}
+                                </span>
+                              ) : line.approvedAt ? <Badge variant="success">Approved</Badge> : approvable ? (
                                 <Button size="sm" variant="ghost" disabled={busy}
                                   onClick={() => act("approve", { godownId: kitchenId, items: [{ stockItemId: productId, packId: line.packId || undefined }] }, `${line.stockItemId?.name || "Item"} approved`)}>
                                   Approve

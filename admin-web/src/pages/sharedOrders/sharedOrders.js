@@ -8,13 +8,26 @@ export const canMarkOrdered = (order) => order?.status === "approved";
 /** True when every kitchen's share is approved; "Approve all" then only closes the order to new kitchens. */
 export const allSharesApproved = (order) =>
   (order?.contributions || []).length > 0 && order.contributions.every((share) => Boolean(share.approvedAt));
-export const canDispatch = (order, share) => order?.status === "ordered" && !share?.dispatchedAt;
+// Lines carry their own dispatch and receipt times; shares sent whole before that carry them on the share.
+const isSent = (line, share) => Boolean(line?.dispatchedAt || share?.dispatchedAt);
+const isReceived = (line, share) => Boolean(line?.deliveredAt || share?.deliveredAt);
 
-/** One kitchen's progress in plain words: Requested, Approved, Ordered, Dispatched, Delivered or Cancelled. */
+/** Each line, each kitchen and the whole order can be dispatched while anything in them is still unsent. */
+export const canDispatchLine = (order, line, share) => order?.status === "ordered" && !isSent(line, share);
+export const canDispatch = (order, share) => order?.status === "ordered" && (share?.items || []).some((line) => !isSent(line, share));
+export const canDispatchAll = (order) => (order?.contributions || []).some((share) => canDispatch(order, share));
+
+/** "Not sent", "On the way" or "Received" for one line. */
+export const lineDelivery = (line, share) => (isReceived(line, share) ? "Received" : isSent(line, share) ? "On the way" : "Not sent");
+
+/** One kitchen's progress in plain words, from Requested to Delivered (with Partly dispatched / Partly received). */
 export const shareStage = (order, share) => {
   if (order?.status === "cancelled") return "Cancelled";
+  const lines = share?.items || [];
   if (share?.deliveredAt) return "Delivered";
-  if (share?.dispatchedAt) return "Dispatched";
+  if (lines.some((line) => isReceived(line, share))) return "Partly received";
+  if (lines.length && lines.every((line) => isSent(line, share))) return "Dispatched";
+  if (lines.some((line) => isSent(line, share))) return "Partly dispatched";
   if (order?.status === "ordered") return "Ordered";
   if (order?.status === "approved" || share?.approvedAt) return "Approved";
   return "Requested";

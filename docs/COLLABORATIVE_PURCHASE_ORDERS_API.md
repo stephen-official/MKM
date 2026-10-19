@@ -98,17 +98,23 @@ The kitchen that originally opened the order cannot leave it, but can edit its c
 
 Approval works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSED`). Approved lines and shares carry `approvedAt` and `approvedBy`. A kitchen or product that is not on the order gives 404.
 
-### Dispatch one kitchen's share (admin only)
+### Dispatch (admin only)
 
-`POST /:id/dispatch` with `{ "godownId": "KITCHEN_ID" }`
+`POST /:id/dispatch`
 
-The order is placed once (`ordered`), but each kitchen's share is sent separately. This sets `dispatchedAt` and `dispatchedBy` on that kitchen's contribution. The order must be `ordered` (otherwise 409 `NOT_ORDERED`), and a share can be dispatched once (409 `ALREADY_DISPATCHED`).
+| Body | Effect |
+| --- | --- |
+| `{}` | Dispatch all: sends every kitchen's lines that have not been sent yet |
+| `{ "godownId": "KITCHEN_ID" }` | Sends that kitchen's remaining lines |
+| `{ "godownId": "KITCHEN_ID", "items": [{ "stockItemId": "PRODUCT_ID", "packId": "optional" }] }` | Sends just those lines; the rest can follow later |
 
-### Receive the kitchen's share (kitchen only)
+The order is placed once (`ordered`), but lines are sent separately: each line gets `dispatchedAt` and `dispatchedBy`, and the contribution gets them too once all its lines are sent. Whole lines only; a short quantity is a delivery problem, not a partial dispatch. The order must be `ordered` (otherwise 409 `NOT_ORDERED`); if nothing in the request is left to send, 409 `ALREADY_DISPATCHED`. Contributions dispatched before lines were tracked carry `dispatchedAt` only on the contribution; read a line as sent when either is set.
+
+### Receive what has arrived (kitchen only)
 
 `POST /:id/receive` (no body)
 
-"All received": adds every line of the kitchen's own share to its stock, creates a stock batch per line (`sourceType: "collaborative_order"`, `sourceId` = the order, priced at the product's `pricePerUnit` for valuation), and sets `deliveredAt` and `deliveredBy` on the share, all in one transaction. The share must be dispatched (409 `NOT_DISPATCHED`) and is received once (409 `ALREADY_DELIVERED`). Expiry, batch and photo details are not captured yet; a kitchen with a problem should not call this. The product ledger lists each received share as a `RECEIVED` row referenced by `orderNo`.
+"All received": adds every line of the kitchen's own share that is on the way (sent, not yet received) to its stock, creates a stock batch per line (`sourceType: "collaborative_order"`, `sourceId` = the order, priced at the product's `pricePerUnit` for valuation), and sets `deliveredAt` and `deliveredBy` on those lines, all in one transaction. Lines sent later are received later. The contribution gets `deliveredAt` once every line is received. If nothing is on the way, 409 `NOT_DISPATCHED`; once everything is received, 409 `ALREADY_DELIVERED`. Expiry, batch and photo details are not captured yet; a kitchen with a problem should not call this. The product ledger lists each received line as a `RECEIVED` row on the day it arrived, referenced by `orderNo`.
 
 ### Change lifecycle status (admin only)
 

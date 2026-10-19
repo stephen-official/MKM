@@ -309,26 +309,45 @@ collaborativePurchaseOrderRoutes.post("/:id/approve", adminOnly, async (req, res
   } catch (error) { return sendError(res, error); }
 });
 
-/** Admin: { godownId } marks that kitchen's share as sent. The order must be placed (status "ordered") first. */
+const isSent = (line, share) => Boolean(line.dispatchedAt || share.dispatchedAt);
+const isReceived = (line, share) => Boolean(line.deliveredAt || share.deliveredAt);
+
+/**
+ * Admin, once the order is placed: {} sends every kitchen's remaining lines; { godownId } sends that kitchen's
+ * remaining lines; { godownId, items: [{ stockItemId, packId? }] } sends just those lines (others can follow later).
+ */
 collaborativePurchaseOrderRoutes.post("/:id/dispatch", adminOnly, async (req, res) => {
   try {
-    const godownId = req.body?.godownId;
-    if (!mongoose.isValidObjectId(godownId)) throw fail(400, "Choose a kitchen on this order");
+    const { godownId, items } = req.body || {};
+    if (godownId !== undefined && !mongoose.isValidObjectId(godownId)) throw fail(400, "Choose a kitchen on this order");
+    if (items !== undefined && (!godownId || !Array.isArray(items) || items.length === 0)) throw fail(400, "Choose the kitchen and the items to dispatch");
     const order = await CollaborativePurchaseOrder.findById(req.params.id);
     if (!order) throw fail(404, "Collaborative purchase order not found");
     if (order.status !== "ordered") throw fail(409, "Mark the order as ordered before dispatching it", "NOT_ORDERED");
-    const share = order.contributions.find((entry) => String(entry.godownId) === String(godownId));
-    if (!share) throw fail(404, "That kitchen is not on this order");
-    if (share.dispatchedAt) throw fail(409, "This kitchen's items have already been dispatched", "ALREADY_DISPATCHED");
-    Object.assign(share, { dispatchedAt: new Date(), dispatchedBy: req.user.sub });
+
+    const shares = godownId ? order.contributions.filter((entry) => String(entry.godownId) === String(godownId)) : order.contributions;
+    if (shares.length === 0) throw fail(404, "That kitchen is not on this order");
+    const stamp = { dispatchedAt: new Date(), dispatchedBy: req.user.sub };
+    let sent = 0;
+    for (const share of shares) {
+      let lines = share.items;
+      if (items) {
+        lines = share.items.filter((line) => items.some((pick) => String(pick?.stockItemId) === productOf(line)
+          && (!pick.packId || String(pick.packId) === String(line.packId))));
+        if (lines.length === 0) throw fail(404, "Those items are not in this kitchen's share");
+      }
+      for (const line of lines.filter((candidate) => !isSent(candidate, share))) { Object.assign(line, stamp); sent += 1; }
+      if (!share.dispatchedAt && share.items.every((line) => isSent(line, share))) Object.assign(share, stamp);
+    }
+    if (sent === 0) throw fail(409, "These items have already been dispatched", "ALREADY_DISPATCHED");
     await order.save();
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
 /**
- * Kitchen: "All received". Adds the kitchen's dispatched share to its stock and marks it delivered,
- * in one transaction. A kitchen with a problem raises a concern instead and does not call this.
+ * Kitchen: "All received". Adds every line that is on the way to the kitchen's stock and marks it received,
+ * in one transaction; lines dispatched later are received later. A kitchen with a problem raises a concern instead.
  */
 collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, res) => {
   const session = await mongoose.startSession();
@@ -340,9 +359,10 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
       const share = order.contributions.find((entry) => String(entry.godownId) === String(req.user.godownId));
       if (!share) throw fail(404, "Your kitchen is not on this order");
       if (share.deliveredAt) throw fail(409, "Your kitchen has already received these items", "ALREADY_DELIVERED");
-      if (order.status !== "ordered" || !share.dispatchedAt) throw fail(409, "These items have not been dispatched yet", "NOT_DISPATCHED");
+      const arriving = order.status === "ordered" ? share.items.filter((line) => isSent(line, share) && !isReceived(line, share)) : [];
+      if (arriving.length === 0) throw fail(409, "Nothing is on the way to your kitchen right now", "NOT_DISPATCHED");
       const receivedAt = new Date();
-      for (const line of share.items) {
+      for (const line of arriving) {
         const product = await StockItem.findById(line.stockItemId).select("pricePerUnit").session(session);
         await GodownStock.findOneAndUpdate(
           { godownId: share.godownId, stockItemId: line.stockItemId },
@@ -354,8 +374,9 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
           unitPrice: product?.pricePerUnit, sourceType: "collaborative_order", sourceId: order._id,
           receivedAt, condition: "good", expectedQtyBaseUnit: line.qtyBaseUnit, createdBy: req.user.sub, session,
         });
+        Object.assign(line, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
       }
-      Object.assign(share, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
+      if (share.items.every((line) => isReceived(line, share))) Object.assign(share, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
       await order.save({ session });
     });
     return res.json(responseOrder(await loadOrder(req.params.id), req.user));

@@ -9,12 +9,27 @@ const LABELS = Object.freeze({ requested: "Requested", approved: "Approved", ord
 export const myShare = (order, godownId) =>
   (order?.contributions || []).find((share) => idOf(share.godownId) === String(godownId)) || null;
 
+/** One line of a share: not_sent | on_the_way | received. Older shares carry these times on the share itself. */
+export const lineState = (line, share) => {
+  if (line?.deliveredAt || share?.deliveredAt) return "received";
+  if (line?.dispatchedAt || share?.dispatchedAt) return "on_the_way";
+  return "not_sent";
+};
+
+/** True when something has been sent to this kitchen and not yet received ("All received" applies to it). */
+export const hasArriving = (order, godownId) => {
+  const share = myShare(order, godownId);
+  return order?.status === "ordered" && Boolean(share) && share.items.some((line) => lineState(line, share) === "on_the_way");
+};
+
+const firstSent = (share) => share?.dispatchedAt || (share?.items || []).map((line) => line.dispatchedAt).filter(Boolean).sort()[0] || null;
+
 /** Where this kitchen's share is: requested | approved | ordered | dispatched | delivered | cancelled. */
 export const kitchenStage = (order, godownId) => {
   if (order?.status === "cancelled") return "cancelled";
   const share = myShare(order, godownId);
   if (share?.deliveredAt) return "delivered";
-  if (share?.dispatchedAt) return "dispatched";
+  if (firstSent(share)) return "dispatched";
   if (order?.status === "ordered") return "ordered";
   if (order?.status === "approved" || share?.approvedAt) return "approved";
   return "requested";
@@ -30,7 +45,7 @@ export const orderTimeline = (order, godownId) => {
     requested: share?.addedAt || order?.createdAt || null,
     approved: share?.approvedAt || null,
     ordered,
-    dispatched: share?.dispatchedAt || null,
+    dispatched: firstSent(share),
     delivered: share?.deliveredAt || null,
   };
   return STAGES.map((key, index) => ({ key, label: LABELS[key], done: index <= reached, current: index === reached, at: when[key] }));

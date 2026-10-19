@@ -27,7 +27,7 @@ import { FEATURE_DISABLED_EVENT, canOpenView, draftFeature, featureForView, fetc
 import { toastFeatureDisabled } from "../featureToast.js";
 import Select from "./ui/Select";
 import { useConfirm } from "./ui/ConfirmDialog";
-import { kitchenStage } from "../features/kitchen/orders";
+import { hasArriving } from "../features/kitchen/orders";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
   <button
@@ -700,7 +700,7 @@ setEditIndentId(indent._id);
   const oldDeliveriesWaiting = indents.filter((indent) =>
     ["confirmed", "partially_received"].includes(indent.status)
   ).length;
-  const sharedToReceive = sharedOrders.filter((order) => kitchenStage(order, userInfo?.godown?._id) === "dispatched").length;
+  const sharedToReceive = sharedOrders.filter((order) => hasArriving(order, userInfo?.godown?._id)).length;
   const attentionCount =
     requests.filter((request) => request.status === "pending").length + oldDeliveriesWaiting + sharedToReceive;
 

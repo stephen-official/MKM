@@ -214,3 +214,75 @@ test("the product ledger Excel download includes the received share", async () =
   book.eachSheet((sheet) => sheet.eachRow((row) => cells.push(row.values.filter((value) => value !== undefined && value !== null).map(String))));
   assert.ok(cells.some((row) => row.includes(ctx.order.orderNo) && row.includes("10")), "a row for the received order with 10 in");
 });
+
+const dispatchBody = (body) => call(ctx.admin, "post", `/${ctx.order._id}/dispatch`).send(body);
+const lineOf = (body, kitchen, product) => share(body, kitchen).items.find((line) => line.stockItemId.name === product.name);
+const riceAndDalOrdered = async () => {
+  await editA([line(ctx.rice, 10), line(ctx.dal, 4)]);
+  await placeOrder();
+};
+
+test("lines can be dispatched separately, and the kitchen receives only what is on the way", async () => {
+  await riceAndDalOrdered();
+  const riceOnly = await dispatchBody({ godownId: ctx.kitchenA._id, items: [{ stockItemId: ctx.rice._id }] });
+  assert.equal(riceOnly.status, 200, JSON.stringify(riceOnly.body));
+  assert.ok(lineOf(riceOnly.body, ctx.kitchenA, ctx.rice).dispatchedAt);
+  assert.equal(lineOf(riceOnly.body, ctx.kitchenA, ctx.dal).dispatchedAt, null);
+  assert.equal(share(riceOnly.body, ctx.kitchenA).dispatchedAt, null, "the share is not fully dispatched yet");
+
+  const first = await receive();
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(await stockOf(ctx.kitchenA, ctx.rice), 10);
+  assert.equal(await stockOf(ctx.kitchenA, ctx.dal), 0, "the dal has not come yet");
+  assert.ok(lineOf(first.body, ctx.kitchenA, ctx.rice).deliveredAt);
+  assert.equal(share(first.body, ctx.kitchenA).deliveredAt, null);
+  assert.equal((await receive()).body.code, "NOT_DISPATCHED", "nothing else is on the way");
+
+  const rest = await dispatchBody({ godownId: ctx.kitchenA._id });
+  assert.ok(share(rest.body, ctx.kitchenA).dispatchedAt, "every line has now been sent");
+  const second = await receive();
+  assert.equal(await stockOf(ctx.kitchenA, ctx.dal), 4);
+  assert.equal(await stockOf(ctx.kitchenA, ctx.rice), 10, "the rice is not added twice");
+  assert.ok(share(second.body, ctx.kitchenA).deliveredAt);
+  assert.equal((await receive()).body.code, "ALREADY_DELIVERED");
+});
+
+test("dispatch all sends every kitchen's remaining lines", async () => {
+  await riceAndDalOrdered();
+  await dispatchBody({ godownId: ctx.kitchenA._id, items: [{ stockItemId: ctx.rice._id }] });
+  const all = await dispatchBody({});
+  assert.equal(all.status, 200, JSON.stringify(all.body));
+  assert.ok(all.body.contributions.every((entry) => entry.dispatchedAt && entry.items.every((item) => item.dispatchedAt)));
+  assert.equal((await dispatchBody({})).body.code, "ALREADY_DISPATCHED");
+});
+
+test("a line is dispatched once and must be on the order", async () => {
+  await riceAndDalOrdered();
+  await dispatchBody({ godownId: ctx.kitchenA._id, items: [{ stockItemId: ctx.rice._id }] });
+  assert.equal((await dispatchBody({ godownId: ctx.kitchenA._id, items: [{ stockItemId: ctx.rice._id }] })).body.code, "ALREADY_DISPATCHED");
+  assert.equal((await dispatchBody({ godownId: ctx.kitchenB._id, items: [{ stockItemId: ctx.dal._id }] })).status, 404);
+  assert.equal((await dispatchBody({ items: [{ stockItemId: ctx.rice._id }] })).status, 400, "lines need their kitchen");
+});
+
+test("the ledger records each line on the day it was received", async () => {
+  await riceAndDalOrdered();
+  await dispatchBody({ godownId: ctx.kitchenA._id, items: [{ stockItemId: ctx.dal._id }] });
+  await receive();
+  const ledger = (product) => request(app).get(`/api/product-ledger/${product._id}`).query({ godownId: String(ctx.kitchenA._id) })
+    .set("Authorization", `Bearer ${ctx.admin.token}`);
+  assert.deepEqual((await ledger(ctx.dal)).body.ledger.map((row) => [row.type, row.qtyIn]), [["RECEIVED", 4]]);
+  assert.deepEqual((await ledger(ctx.rice)).body.ledger, [], "rice is not received yet");
+});
+
+test("shares dispatched before lines were tracked are still received whole", async () => {
+  await placeOrder();
+  await CollaborativePurchaseOrder.updateOne(
+    { _id: ctx.order._id, "contributions.godownId": ctx.kitchenA._id },
+    { $set: { "contributions.$.dispatchedAt": new Date() } },
+  );
+  const res = await receive();
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(await stockOf(ctx.kitchenA, ctx.rice), 10);
+  assert.ok(share(res.body, ctx.kitchenA).deliveredAt);
+  assert.equal((await dispatchBody({ godownId: ctx.kitchenA._id })).body.code, "ALREADY_DISPATCHED");
+});
