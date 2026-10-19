@@ -2,8 +2,8 @@ import { ArrowLeft, Camera, Check, Loader2, PackageCheck, RotateCcw, Truck } fro
 import { useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
-import { EXPIRY_CHIPS, STORAGE_OPTIONS, arrivingProducts, emptyReceipt, expiryFromChip, expiryNeeded, productIdOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
-import { toLocalDateKey } from "../../utils/date";
+import { EXPIRY_CHIPS, STORAGE_OPTIONS, adminExpiryFor, arrivingProducts, emptyReceipt, expiryFromChip, expiryNeeded, productIdOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
+import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import DateField from "../ui/DateField";
 import "./SupplyRequestsDeliveries.css";
 import "./KitchenReceive.css";
@@ -54,6 +54,7 @@ function ItemCard({ order, line, form, today, onChange }) {
   const product = line.stockItemId || {};
   const problems = receiptProblems(line, form, today);
   const needsExpiry = expiryNeeded(line);
+  const adminExpiry = adminExpiryFor(order, line);
   const chip = EXPIRY_CHIPS.find((candidate) => expiryFromChip(candidate.key, today) === form.expiryDate)?.key || "";
 
   const upload = async (kind, file) => {
@@ -85,6 +86,7 @@ function ItemCard({ order, line, form, today, onChange }) {
       <span className="kr-label">Expiry date{needsExpiry ? "" : " (optional)"}</span>
       <Chips label={`Expiry for ${product.name}`} options={EXPIRY_CHIPS} value={chip} onPick={(key) => onChange({ expiryDate: expiryFromChip(key, today) })} />
       <DateField value={form.expiryDate} min={today} label={`Expiry date for ${product.name}`} placeholder="Or pick the date from the label" onChange={(value) => onChange({ expiryDate: value })} />
+      {adminExpiry && <small className="kr-prefill">{form.expiryDate === adminExpiry ? "Set by the central store. Change it if the label says otherwise." : `Central store said ${formatDateKey(adminExpiry)}.`}</small>}
     </div>
 
     <div className="kr-field">
@@ -111,7 +113,7 @@ function ItemCard({ order, line, form, today, onChange }) {
 export default function KitchenReceiveItems({ order, lines, notSentCount = 0, onBack, onDone }) {
   const today = toLocalDateKey();
   const products = arrivingProducts(lines);
-  const [forms, setForms] = useState(() => Object.fromEntries(products.map((line) => [productIdOf(line), emptyReceipt()])));
+  const [forms, setForms] = useState(() => Object.fromEntries(products.map((line) => [productIdOf(line), emptyReceipt(adminExpiryFor(order, line))])));
   const [busy, setBusy] = useState(false);
   const ready = receiptReady(lines, forms, today);
   const readyCount = products.filter((line) => receiptProblems(line, forms[productIdOf(line)], today).length === 0).length;

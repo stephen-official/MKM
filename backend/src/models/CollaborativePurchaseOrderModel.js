@@ -53,6 +53,9 @@ const collaborativePurchaseOrderSchema = new mongoose.Schema({
   // Who the admin bought from and the paid invoice; kitchens see both read-only and every batch they receive copies the supplier.
   supplierId: { type: mongoose.Schema.Types.ObjectId, ref: "Supplier", default: null },
   invoiceNo: { type: String, trim: true, maxlength: 60, default: "" },
+  // Expiry the admin read off a bulk buy, one per product (YYYY-MM-DD). Kitchens see it pre-filled when
+  // receiving and may correct it from the label; the date they confirm lives on their own stock batch.
+  expiryByProduct: { type: [{ _id: false, stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: "StockItem", required: true }, expiryDate: { type: String, match: /^\d{4}-\d{2}-\d{2}$/ } }], default: [] },
   status: { type: String, enum: ["open", "closed", "approved", "ordered", "cancelled"], default: "open" },
   statusChangedAt: { type: Date, default: null },
   statusChangedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },

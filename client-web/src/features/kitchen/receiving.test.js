@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EXPIRY_CHIPS, arrivingLines, arrivingProducts, emptyReceipt, expiryFromChip, expiryNeeded, receiptPayload, receiptProblems, receiptReady } from "./receiving.js";
+import { EXPIRY_CHIPS, adminExpiryFor, arrivingLines, arrivingProducts, emptyReceipt, expiryFromChip, expiryNeeded, receiptPayload, receiptProblems, receiptReady } from "./receiving.js";
 
 const me = "kitchenA";
 const product = (id, extra = {}) => ({ _id: id, name: id, unitId: { symbol: "kg" }, ...extra });
@@ -44,6 +44,17 @@ test("a product is ready once both photos are in and expiry is given where requi
   assert.deepEqual(receiptProblems(line(rice), { ...emptyReceipt(), photos, expiryDate: "2026-10-01" }, today), ["Expiry date has passed — call the central store"]);
   assert.deepEqual(receiptProblems(line(rice), { ...emptyReceipt(), photos, expiryDate: "2027-01-01", mfgDate: "2026-12-01" }, today), ["Manufacture date is in the future"]);
   assert.deepEqual(receiptProblems(line(rice), { ...emptyReceipt(), photos, expiryDate: today }, today), [], "expiring today is still accepted");
+});
+
+test("the central store's expiry pre-fills the form for that product only, and stays editable", () => {
+  const order = { expiryByProduct: [{ stockItemId: "rice", expiryDate: "2027-03-31" }] };
+  assert.equal(adminExpiryFor(order, line(rice)), "2027-03-31");
+  assert.equal(adminExpiryFor(order, line(salt)), "");
+  assert.equal(adminExpiryFor({}, line(rice)), "");
+  const form = emptyReceipt(adminExpiryFor(order, line(rice)));
+  assert.equal(form.expiryDate, "2027-03-31");
+  assert.deepEqual(receiptProblems(line(rice), { ...form, photos }, today), []);
+  assert.equal(receiptPayload([line(rice)], { rice: { ...form, photos, expiryDate: "2027-02-28" } }).items[0].expiryDate, "2027-02-28");
 });
 
 test("the whole delivery is ready only when every product is, and the payload has one entry per product", () => {

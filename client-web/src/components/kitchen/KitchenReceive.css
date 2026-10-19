@@ -37,6 +37,8 @@
 .kr-chips button { background: #fff; border: 1px solid #cfd9d3; border-radius: 999px; color: #335543; font-size: .84rem; font-weight: 750; min-height: 42px; padding: 0 14px; }
 .kr-chips button.is-on { background: #0f766e; border-color: #0f766e; color: #fff; }
 
+.kr-prefill { color: #0f766e; font-size: .78rem; font-weight: 700; line-height: 1.35; }
+
 .kr-todo { background: #fff7e6; border-radius: 10px; color: #82520c; font-size: .8rem; font-weight: 700; line-height: 1.4; margin: 0; padding: 8px 10px; }
 
 .kr-submit { align-items: center; background: #fff; border-top: 1px solid #dde6e0; bottom: 68px; box-shadow: 0 -6px 18px rgba(26, 47, 33, .06); display: flex; gap: 12px; justify-content: space-between; left: 0; padding: 12px var(--page-gutter); position: fixed; right: 0; z-index: 30; }

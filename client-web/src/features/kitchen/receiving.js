@@ -48,7 +48,12 @@ export const expiryFromChip = (key, todayKey) => {
   return toLocalDateKey(date);
 };
 
-export const emptyReceipt = () => ({ photos: { goods: "", label: "" }, expiryDate: "", mfgDate: "", lotNumber: "", storage: "room" });
+/** The expiry the central store set for this product on the order (bulk buys), as YYYY-MM-DD, or "". */
+export const adminExpiryFor = (order, line) =>
+  (order?.expiryByProduct || []).find((entry) => idOf(entry.stockItemId) === productIdOf(line))?.expiryDate || "";
+
+/** A blank form; pass the central store's expiry to start from it (the cook can still change it). */
+export const emptyReceipt = (expiryDate = "") => ({ photos: { goods: "", label: "" }, expiryDate, mfgDate: "", lotNumber: "", storage: "room" });
 
 /** What still stops this product from being received, in the cook's words. Empty when it is ready. */
 export const receiptProblems = (line, form = emptyReceipt(), todayKey = toLocalDateKey()) => {

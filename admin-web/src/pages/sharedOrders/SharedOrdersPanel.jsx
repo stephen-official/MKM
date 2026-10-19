@@ -3,7 +3,7 @@ import { CheckCircle2, Save, ShoppingCart, Truck } from "lucide-react";
 import { api } from "../../api.js";
 import { useToast } from "../../useToast.js";
 import {
-  Badge, Button, Card, DetailPanel, EmptyState, ErrorState, Field, Meta, RailItem, RailList, Select, SplitView, StatusBadge
+  Badge, Button, Card, DateField, DetailPanel, EmptyState, ErrorState, Field, Meta, RailItem, RailList, Select, SplitView, StatusBadge
 } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
 import { allSharesApproved, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canSetPurchaseDetails, closesInText, lineDelivery, lineLabel, shareStage } from "./sharedOrders.js";
@@ -58,7 +58,10 @@ export function SharedOrdersPanel() {
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
 
   const order = useMemo(() => orders.find((candidate) => candidate._id === selectedId) || null, [orders, selectedId]);
-  const purchase = purchaseEdits[order?._id] || { supplierId: order?.supplierId || "", invoiceNo: order?.invoiceNo || "" };
+  const savedExpiry = Object.fromEntries((order?.expiryByProduct || []).map((entry) => [String(entry.stockItemId?._id || entry.stockItemId), entry.expiryDate]));
+  const purchase = purchaseEdits[order?._id] || { supplierId: order?.supplierId || "", invoiceNo: order?.invoiceNo || "", expiry: savedExpiry };
+  const purchaseDirty = order && (purchase.supplierId !== (order.supplierId || "") || purchase.invoiceNo !== (order.invoiceNo || "")
+    || (order.combinedItems || []).some((line) => (purchase.expiry[String(line.stockItemId?._id || line.stockItemId)] || "") !== (savedExpiry[String(line.stockItemId?._id || line.stockItemId)] || "")));
   const setPurchase = (change) => setPurchaseEdits((edits) => ({ ...edits, [order._id]: { ...purchase, ...change } }));
 
   /** Runs one admin action, optionally after a confirmation, then reloads so every kitchen's state is current. */
@@ -167,10 +170,24 @@ export function SharedOrdersPanel() {
                   <Field label="Invoice number" className="field--grow">
                     <input type="text" value={purchase.invoiceNo} maxLength={60} placeholder="After payment" onChange={(e) => setPurchase({ invoiceNo: e.target.value })} />
                   </Field>
-                  <Button variant="ghost" disabled={busy || (purchase.supplierId === (order.supplierId || "") && purchase.invoiceNo === (order.invoiceNo || ""))}
-                    onClick={() => act("purchase", { supplierId: purchase.supplierId || null, invoiceNo: purchase.invoiceNo }, "Supplier and invoice saved")}>
+                  <Button variant="ghost" disabled={busy || !purchaseDirty}
+                    onClick={() => act("purchase", {
+                      supplierId: purchase.supplierId || null, invoiceNo: purchase.invoiceNo,
+                      expiryDates: (order.combinedItems || []).map((line) => ({ stockItemId: line.stockItemId?._id || line.stockItemId, expiryDate: purchase.expiry[String(line.stockItemId?._id || line.stockItemId)] || null })),
+                    }, "Purchase details saved")}>
                     <Save size={16} /> Save
                   </Button>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 12 }}>
+                  {(order.combinedItems || []).map((line) => {
+                    const productId = String(line.stockItemId?._id || line.stockItemId);
+                    return (
+                      <Field key={productId} label={`Expiry: ${line.stockItemId?.name || "Item"}`}>
+                        <DateField value={purchase.expiry[productId] || ""} placeholder="Optional, for bulk buys"
+                          onChange={(e) => setPurchase({ expiry: { ...purchase.expiry, [productId]: e.target.value } })} />
+                      </Field>
+                    );
+                  })}
                 </div>
                 <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--muted)" }}>
                   {order.supplier ? `Kitchens see ${order.supplier.name}, FSSAI licence ${order.supplier.fssaiLicence}` : "Kitchens see the supplier's name and FSSAI licence on the delivery"}{order.invoiceNo ? ` and invoice ${order.invoiceNo}.` : "."}

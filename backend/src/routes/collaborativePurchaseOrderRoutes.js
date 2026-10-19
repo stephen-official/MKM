@@ -496,6 +496,22 @@ const applyPurchaseDetails = async (order, body) => {
     order.invoiceNo = text(body.invoiceNo, 60, "Invoice number");
     changed += 1;
   }
+  if (body.expiryDates !== undefined) {
+    if (!Array.isArray(body.expiryDates)) throw fail(400, "expiryDates must be a list of { stockItemId, expiryDate }");
+    const onOrder = new Set(order.contributions.flatMap((share) => share.items.map((line) => String(line.stockItemId))));
+    const today = businessDateOf(new Date());
+    const kept = new Map(order.expiryByProduct.map((entry) => [String(entry.stockItemId), entry.expiryDate]));
+    for (const entry of body.expiryDates) {
+      const productId = String(entry?.stockItemId || "");
+      if (!onOrder.has(productId)) throw fail(400, "Expiry dates can only be set for products on this order");
+      if (entry.expiryDate === null || entry.expiryDate === "") { kept.delete(productId); continue; }
+      if (!isIsoDate(String(entry.expiryDate))) throw fail(400, "Expiry date must be a date like 2026-12-31");
+      if (String(entry.expiryDate) < today) throw fail(400, "The expiry date has already passed", "EXPIRED_GOODS");
+      kept.set(productId, String(entry.expiryDate));
+    }
+    order.expiryByProduct = [...kept].map(([stockItemId, expiryDate]) => ({ stockItemId, expiryDate }));
+    changed += 1;
+  }
   return changed;
 };
 
@@ -506,7 +522,7 @@ collaborativePurchaseOrderRoutes.patch("/:id/purchase", adminOnly, async (req, r
     const order = await CollaborativePurchaseOrder.findById(req.params.id);
     if (!order) throw fail(404, "Collaborative purchase order not found");
     if (!["approved", "ordered"].includes(order.status)) throw fail(409, "Approve the order before adding supplier or invoice details", "NOT_APPROVED");
-    if ((await applyPurchaseDetails(order, req.body || {})) === 0) throw fail(400, "Send a supplierId or an invoiceNo");
+    if ((await applyPurchaseDetails(order, req.body || {})) === 0) throw fail(400, "Send a supplierId, an invoiceNo or expiryDates");
     await order.save();
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }

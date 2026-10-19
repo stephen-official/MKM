@@ -89,6 +89,21 @@ test("the supplier can be chosen before ordering and changed after, but only to 
   assert.equal((await purchase(ctx.admin, {})).status, 400);
 });
 
+test("the admin sets an expiry per product for bulk buys; kitchens see it, and only products on the order are allowed", async () => {
+  const saved = await purchase(ctx.admin, { expiryDates: [{ stockItemId: ctx.rice._id, expiryDate: "2027-03-31" }] });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.deepEqual(saved.body.expiryByProduct, [{ stockItemId: String(ctx.rice._id), expiryDate: "2027-03-31" }]);
+  assert.deepEqual((await call(ctx.cookA, "get", `/${ctx.order._id}`)).body.expiryByProduct, [{ stockItemId: String(ctx.rice._id), expiryDate: "2027-03-31" }]);
+
+  const changed = await purchase(ctx.admin, { expiryDates: [{ stockItemId: ctx.rice._id, expiryDate: "2027-04-30" }] });
+  assert.equal(changed.body.expiryByProduct[0].expiryDate, "2027-04-30", "setting again replaces, not duplicates");
+  assert.equal((await purchase(ctx.admin, { expiryDates: [{ stockItemId: "000000000000000000000000", expiryDate: "2027-04-30" }] })).status, 400);
+  assert.equal((await purchase(ctx.admin, { expiryDates: [{ stockItemId: ctx.rice._id, expiryDate: "2020-01-01" }] })).body.code, "EXPIRED_GOODS");
+  assert.equal((await purchase(ctx.admin, { expiryDates: [{ stockItemId: ctx.rice._id, expiryDate: "31/03/2027" }] })).status, 400);
+  const cleared = await purchase(ctx.admin, { expiryDates: [{ stockItemId: ctx.rice._id, expiryDate: null }] });
+  assert.deepEqual(cleared.body.expiryByProduct, []);
+});
+
 test("purchase details cannot be set on an order that is still open or cancelled", async () => {
   const open = (await call(ctx.cookA, "post", "/").send({ neededIn: "1w", items: [{ stockItemId: ctx.rice._id, qtyBaseUnit: 5 }] })).body;
   const res = await call(ctx.admin, "patch", `/${open._id}/purchase`).send({ supplierId: ctx.supplier._id });
