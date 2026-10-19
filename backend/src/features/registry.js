@@ -102,6 +102,11 @@ export const ROUTE_RULES = Object.freeze([
   feature("POST", "/api/procurement/collaborative-purchase-orders/:id/receive", ["purchase-orders"], "mutation", "kitchen"),
   feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/status", ["purchase-orders"], "mutation"),
 
+  // --- suppliers (admin records shown read-only to kitchens on received orders) ---
+  feature("GET", "/api/suppliers", ["purchase-orders"], "read"),
+  feature("POST", "/api/suppliers", ["purchase-orders"], "mutation"),
+  feature("PUT", "/api/suppliers/:id", ["purchase-orders"], "mutation"),
+
   // --- stock distribution ---
   feature("GET", "/api/procurement/distributions/logs", ["stock-distribution"], "read"),
   feature("GET", "/api/procurement/distributions/leftovers", ["stock-distribution"], "read"),

@@ -137,6 +137,18 @@ A closed order is never reopened; a kitchen that still needs items starts a new 
 
 Closing the order immediately prevents kitchens from adding, editing, or removing contributions. Once `closesAt` passes, the order is closed automatically (with `statusChangedBy: null`) the next time any order is read or changed.
 
+## Suppliers (admin only)
+
+Base path: `/api/suppliers`. Part of the `purchase-orders` feature.
+
+Supplier records hold the name and FSSAI licence that kitchens see read-only on the orders they receive (Phase 2 of the kitchen receiving work).
+
+- `GET /` lists active suppliers sorted by name; `GET /?status=all` includes archived ones. Each row: `{ _id, name, fssaiLicence, phone, active, createdAt, updatedAt }`.
+- `POST /` with `{ name, fssaiLicence, phone? }` creates one (201). The licence must be 14 digits; spaces are removed before checking. Names are unique ignoring case (409 `DUPLICATE_NAME`).
+- `PUT /:id` with any of `{ name, fssaiLicence, phone, active }` edits it. Archive by sending `active: false`.
+
+Errors use the shared `{ code, message }` shape: `INVALID_INPUT` (400), `NOT_FOUND` (404), `DUPLICATE_NAME` (409).
+
 ## Errors
 
 Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
