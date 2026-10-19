@@ -48,6 +48,7 @@
 .kr-voice audio { flex: 1; min-width: 0; height: 40px; }
 .kr-voice__remove { align-items: center; background: #fff; border: 1px solid #cfd9d3; border-radius: 10px; color: #9e2c20; display: inline-flex; font-size: .78rem; font-weight: 750; gap: 4px; min-height: 40px; padding: 0 10px; }
 .kr-hint { color: #5d7068; font-size: .78rem; line-height: 1.4; margin: 0; }
+.kr-revert { align-items: center; background: #e3f4f1; border: 1px solid #8fc7bf; border-radius: 10px; color: #0b5f58; display: inline-flex; font-size: .8rem; font-weight: 750; gap: 6px; justify-self: start; min-height: 40px; padding: 0 12px; text-align: left; }
 .kr-prefill { color: #0f766e; font-size: .78rem; font-weight: 700; line-height: 1.35; }
 
 .kr-todo { background: #fff7e6; border-radius: 10px; color: #82520c; font-size: .8rem; font-weight: 700; line-height: 1.4; margin: 0; padding: 8px 10px; }

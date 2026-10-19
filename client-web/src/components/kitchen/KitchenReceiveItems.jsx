@@ -113,13 +113,20 @@ function Chips({ options, value, onPick, label }) {
 /** One card per arriving product: two photos, expiry, manufacture date, batch number from the label, storage. */
 function ItemCard({ order, line, form, today, onChange }) {
   const [uploading, setUploading] = useState({});
+  const expiryInput = useRef(null);
   const product = line.stockItemId || {};
   const problems = receiptProblems(line, form, today);
   const problem = form.problem;
   const usable = usableQty(problem);
   const needsExpiry = problem ? usable > 0 && expiryNeeded(line) : expiryNeeded(line);
   const adminExpiry = adminExpiryFor(order, line);
-  const chip = EXPIRY_CHIPS.find((candidate) => expiryFromChip(candidate.key, today) === form.expiryDate)?.key || "";
+  const chip = EXPIRY_CHIPS.find((candidate) => expiryFromChip(candidate.key, today) === form.expiryDate)?.key || (form.expiryDate ? "custom" : "");
+  const expiryChips = [...EXPIRY_CHIPS, { key: "custom", label: "Other date" }];
+  const pickExpiry = (key) => {
+    if (key !== "custom") return onChange({ expiryDate: expiryFromChip(key, today) });
+    try { expiryInput.current?.showPicker?.(); } catch { /* older browsers open it on focus instead */ }
+    return expiryInput.current?.focus();
+  };
 
   const upload = async (kind, file) => {
     setUploading((previous) => ({ ...previous, [kind]: true }));
@@ -171,9 +178,11 @@ function ItemCard({ order, line, form, today, onChange }) {
 
     <div className="kr-field">
       <span className="kr-label">Expiry date{needsExpiry ? "" : " (optional)"}</span>
-      <Chips label={`Expiry for ${product.name}`} options={EXPIRY_CHIPS} value={chip} onPick={(key) => onChange({ expiryDate: expiryFromChip(key, today) })} />
-      <DateField value={form.expiryDate} min={today} label={`Expiry date for ${product.name}`} placeholder="Or pick the date from the label" onChange={(value) => onChange({ expiryDate: value })} />
-      {adminExpiry && <small className="kr-prefill">{form.expiryDate === adminExpiry ? "Set by the central store. Change it if the label says otherwise." : `Central store said ${formatDateKey(adminExpiry)}.`}</small>}
+      <Chips label={`Expiry for ${product.name}`} options={expiryChips} value={chip} onPick={pickExpiry} />
+      <DateField value={form.expiryDate} min={today} label={`Expiry date for ${product.name}`} placeholder="Pick the date from the label" inputRef={expiryInput} onChange={(value) => onChange({ expiryDate: value })} />
+      {adminExpiry && (form.expiryDate === adminExpiry
+        ? <small className="kr-prefill">Set by the central store. Change it if the label says otherwise.</small>
+        : <button type="button" className="kr-revert" onClick={() => onChange({ expiryDate: adminExpiry })}><RotateCcw size={13} aria-hidden="true" /> Central store said {formatDateKey(adminExpiry)} — use that</button>)}
     </div>
 
     <div className="kr-field">
