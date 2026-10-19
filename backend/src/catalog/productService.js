@@ -93,6 +93,8 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
   }
 
   // --- packs ---
+  update.expiryRequired = Boolean(body.expiryRequired ?? existing?.expiryRequired ?? true);
+
   const soldInPacks = Boolean(body.soldInPacks ?? existing?.soldInPacks ?? false);
   update.soldInPacks = soldInPacks;
   const previousPacks = new Map((existing?.packs || []).map((pack) => [String(pack._id), pack]));
@@ -153,6 +155,7 @@ export const serializeProduct = (doc, holding = new Map()) => {
     unit: unit ? { _id: unit._id, symbol: unit.symbol, name: unit.name, preset: isPresetSymbol(unit.symbol) } : null,
     pricePerUnit: doc.pricePerUnit ?? null,
     priceUpdatedAt: doc.priceUpdatedAt || null,
+    expiryRequired: doc.expiryRequired !== false,
     soldInPacks: Boolean(doc.soldInPacks),
     packs: (doc.packs || []).map((pack) => ({ _id: pack._id, name: pack.name, size: pack.size, price: pack.price ?? null })),
     archived: Boolean(doc.archived),

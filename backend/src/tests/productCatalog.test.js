@@ -69,6 +69,17 @@ test("an admin creates a product without a price; it stays hidden from kitchens 
   assert.deepEqual((await as("cook", "get", "/api/inventory/stock-items")).body.map((p) => p.name), ["Rice"]);
 });
 
+test("expiry is required on every product unless an admin turns it off", async () => {
+  const created = await as("admin", "post", "/api/products").send(base());
+  assert.equal(created.status, 201);
+  assert.equal(created.body.expiryRequired, true);
+  const off = await as("admin", "put", `/api/products/${created.body._id}`).send({ expiryRequired: false });
+  assert.equal(off.status, 200);
+  assert.equal(off.body.expiryRequired, false);
+  const untouched = await as("admin", "put", `/api/products/${created.body._id}`).send({ brand: "Daawat" });
+  assert.equal(untouched.body.expiryRequired, false, "an edit that does not mention expiry keeps the setting");
+});
+
 test("only a super-admin may set or change a price", async () => {
   assert.equal((await as("admin", "post", "/api/products").send(base({ pricePerUnit: 10 }))).body.code, "PRICE_SUPER_ADMIN_ONLY");
   const product = (await as("root", "post", "/api/products").send(base({ pricePerUnit: 60 }))).body;
