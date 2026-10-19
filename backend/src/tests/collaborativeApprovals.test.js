@@ -151,7 +151,11 @@ test("dispatch needs a placed order, an admin and a kitchen on the order", async
   assert.equal((await dispatch("nope")).status, 400);
 });
 
-const receive = (actor = ctx.cookA) => call(actor, "post", `/${ctx.order._id}/receive`).send({});
+// Receiving details for every product in the tests; entries for products not on the way are ignored.
+const receipt = () => ({ items: [ctx.rice, ctx.dal, ctx.oil].filter(Boolean).map((product) => ({
+  stockItemId: product._id, expiryDate: "2030-01-01", photos: { goods: "/uploads/receipts/g.jpg", label: "/uploads/receipts/l.jpg" },
+})) });
+const receive = (actor = ctx.cookA) => call(actor, "post", `/${ctx.order._id}/receive`).send(receipt());
 const stockOf = async (kitchen, product) => Number((await GodownStock.findOne({ godownId: kitchen._id, stockItemId: product._id }).lean())?.qtyBaseUnit || 0);
 
 test("all received adds the kitchen's share to its stock and marks it delivered", async () => {

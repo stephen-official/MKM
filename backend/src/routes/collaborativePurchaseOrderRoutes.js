@@ -8,6 +8,8 @@ import { Godown, StockItem } from "../models/InventoryModels.js";
 import { GodownStock } from "../models/FlowModels.js";
 import { Supplier } from "../models/SupplierModel.js";
 import { createStockBatch } from "../stock/batchService.js";
+import { nextTrackingId } from "../stock/trackingId.js";
+import { businessDateOf, isIsoDate, startOfBusinessDay } from "../executive/params.js";
 import { isKitchenRole } from "../utils/roles.js";
 import { closesAtFor, neededByFor } from "../ordering/window.js";
 import { readOrderingSettings } from "../ordering/settings.js";
@@ -97,7 +99,7 @@ const populateOrder = (query) => query
   .populate("contributions.godownId", "name")
   .populate({
     path: "contributions.items.stockItemId",
-    select: "name imageUrl unitId stockGroupId brand productCode soldInPacks packs",
+    select: "name imageUrl unitId stockGroupId brand productCode soldInPacks packs expiryRequired",
     populate: [{ path: "unitId", select: "name symbol" }, { path: "stockGroupId", select: "name" }],
   });
 
@@ -353,16 +355,56 @@ collaborativePurchaseOrderRoutes.post("/:id/dispatch", adminOnly, async (req, re
   } catch (error) { return sendError(res, error); }
 });
 
+const STORAGE = new Set(["room", "fridge", "freezer"]);
+const PHOTO_URL = /^(https?:\/\/|\/uploads\/)\S{1,500}$/;
+
+/** A YYYY-MM-DD from the receive form as the start of that business day, or null when blank. */
+const receiptDate = (value, label) => {
+  if (value === undefined || value === null || value === "") return null;
+  if (!isIsoDate(String(value))) throw fail(400, `${label} must be a date like 2026-12-31`);
+  return startOfBusinessDay(String(value));
+};
+
+/**
+ * Validates one product's receiving details against the product's rules. `today` is the business date.
+ * Photos of the goods and the label are always required; expiry is required unless the product says otherwise.
+ */
+export const receiptDetails = (input, product, today) => {
+  const name = product?.name || "This item";
+  const photos = { goods: String(input?.photos?.goods || "").trim(), label: String(input?.photos?.label || "").trim() };
+  if (!PHOTO_URL.test(photos.goods)) throw fail(400, `${name}: take a photo of the goods`, "PHOTO_REQUIRED");
+  if (!PHOTO_URL.test(photos.label)) throw fail(400, `${name}: take a photo of the brand label`, "PHOTO_REQUIRED");
+  const expiryDate = receiptDate(input?.expiryDate, `${name}: expiry date`);
+  if (!expiryDate && product?.expiryRequired !== false) throw fail(400, `${name}: enter the expiry date`, "EXPIRY_REQUIRED");
+  if (expiryDate && String(input.expiryDate) < today) {
+    throw fail(400, `${name}: the expiry date has already passed. Do not accept it; call the central store.`, "EXPIRED_GOODS");
+  }
+  const mfgDate = receiptDate(input?.mfgDate, `${name}: manufacture date`);
+  if (mfgDate && String(input.mfgDate) > today) throw fail(400, `${name}: the manufacture date cannot be in the future`);
+  const storage = input?.storage === undefined || input?.storage === null || input?.storage === "" ? null : String(input.storage);
+  if (storage !== null && !STORAGE.has(storage)) throw fail(400, `${name}: storage must be room, fridge or freezer`);
+  return {
+    photos, expiryDate, mfgDate, storage,
+    lotNumber: text(input?.lotNumber, 60, `${name}: batch number`),
+    notes: text(input?.notes, 500, `${name}: notes`),
+  };
+};
+
 /**
  * Kitchen: "All received". Adds every line that is on the way to the kitchen's stock and marks it received,
- * in one transaction; lines dispatched later are received later. A kitchen with a problem raises a concern instead.
+ * in one transaction; lines dispatched later are received later. The body carries receiving details per product
+ * (`items: [{ stockItemId, photos: { goods, label }, expiryDate, mfgDate, lotNumber, storage, notes }]`); each
+ * arriving product needs one entry, extra entries are ignored. Every line becomes a stock batch with a tracking ID
+ * and a copy of the order's supplier. A kitchen with a problem raises a concern instead.
  */
 collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, res) => {
   const session = await mongoose.startSession();
   try {
     if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
+    const details = new Map((Array.isArray(req.body?.items) ? req.body.items : [])
+      .filter((entry) => mongoose.isValidObjectId(entry?.stockItemId)).map((entry) => [String(entry.stockItemId), entry]));
     await session.withTransaction(async () => {
-      const order = await CollaborativePurchaseOrder.findById(req.params.id).session(session);
+      const order = await CollaborativePurchaseOrder.findById(req.params.id).populate("supplierId", "name fssaiLicence").session(session);
       if (!order) throw fail(404, "Collaborative purchase order not found");
       const share = order.contributions.find((entry) => String(entry.godownId) === String(req.user.godownId));
       if (!share) throw fail(404, "Your kitchen is not on this order");
@@ -370,19 +412,26 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
       const arriving = order.status === "ordered" ? share.items.filter((line) => isSent(line, share) && !isReceived(line, share)) : [];
       if (arriving.length === 0) throw fail(409, "Nothing is on the way to your kitchen right now", "NOT_DISPATCHED");
       const receivedAt = new Date();
+      const today = businessDateOf(receivedAt);
+      const supplier = { supplierName: order.supplierId?.name || "", supplierFssaiLicence: order.supplierId?.fssaiLicence || "" };
       for (const line of arriving) {
-        const product = await StockItem.findById(line.stockItemId).select("pricePerUnit").session(session);
+        const product = await StockItem.findById(line.stockItemId).select("name pricePerUnit expiryRequired").session(session);
+        const input = details.get(String(line.stockItemId));
+        if (!input) throw fail(400, `${product?.name || "An item"} is missing its receiving details`, "MISSING_ITEM_DETAILS");
+        const checked = receiptDetails(input, product, today);
         await GodownStock.findOneAndUpdate(
           { godownId: share.godownId, stockItemId: line.stockItemId },
           { $inc: { qtyBaseUnit: line.qtyBaseUnit }, $setOnInsert: { thresholdBaseUnit: 0 } },
           { upsert: true, new: true, session },
         );
+        const trackingId = await nextTrackingId({ session, now: receivedAt });
         await createStockBatch({
           godownId: share.godownId, stockItemId: line.stockItemId, quantity: line.qtyBaseUnit,
           unitPrice: product?.pricePerUnit, sourceType: "collaborative_order", sourceId: order._id,
           receivedAt, condition: "good", expectedQtyBaseUnit: line.qtyBaseUnit, createdBy: req.user.sub, session,
+          trackingId, ...checked, ...supplier,
         });
-        Object.assign(line, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
+        Object.assign(line, { deliveredAt: receivedAt, deliveredBy: req.user.sub, trackingId });
       }
       if (share.items.every((line) => isReceived(line, share))) Object.assign(share, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
       await order.save({ session });

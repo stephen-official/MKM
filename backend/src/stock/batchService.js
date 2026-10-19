@@ -10,6 +10,7 @@ export const createStockBatch = async ({
   godownId, stockItemId, quantity, unitPrice = null, sourceType, sourceId = null,
   receivedAt = new Date(), expiryDate = null, lotNumber = "", condition = "unchecked",
   notes = "", expectedQtyBaseUnit = null, createdBy = null, session,
+  trackingId = null, mfgDate = null, storage = null, photos = null, supplierName = "", supplierFssaiLicence = "",
 }) => {
   const qty = Number(quantity);
   if (!(qty > 0)) throw new Error("Batch quantity must be greater than zero");
@@ -19,6 +20,9 @@ export const createStockBatch = async ({
     expectedQtyBaseUnit: expectedQtyBaseUnit == null ? null : Number(expectedQtyBaseUnit),
     receivedQtyBaseUnit: qty, remainingQtyBaseUnit: qty,
     unitPrice: validPrice(unitPrice) ? Number(unitPrice) : null, createdBy,
+    trackingId, mfgDate: mfgDate || null, storage: storage || null,
+    photos: { goods: String(photos?.goods || ""), label: String(photos?.label || "") },
+    supplierName: String(supplierName || ""), supplierFssaiLicence: String(supplierFssaiLicence || ""),
   }], { session });
   return batch;
 };

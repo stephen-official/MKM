@@ -112,9 +112,38 @@ The order is placed once (`ordered`), but lines are sent separately: each line g
 
 ### Receive what has arrived (kitchen only)
 
-`POST /:id/receive` (no body)
+`POST /:id/receive`
 
-"All received": adds every line of the kitchen's own share that is on the way (sent, not yet received) to its stock, creates a stock batch per line (`sourceType: "collaborative_order"`, `sourceId` = the order, priced at the product's `pricePerUnit` for valuation), and sets `deliveredAt` and `deliveredBy` on those lines, all in one transaction. Lines sent later are received later. The contribution gets `deliveredAt` once every line is received. If nothing is on the way, 409 `NOT_DISPATCHED`; once everything is received, 409 `ALREADY_DELIVERED`. Expiry, batch and photo details are not captured yet; a kitchen with a problem should not call this. The product ledger lists each received line as a `RECEIVED` row on the day it arrived, referenced by `orderNo`.
+```json
+{
+  "items": [
+    {
+      "stockItemId": "<product id>",
+      "photos": { "goods": "<url>", "label": "<url>" },
+      "expiryDate": "2027-03-31",
+      "mfgDate": "2026-09-01",
+      "lotNumber": "B-4471",
+      "storage": "room",
+      "notes": ""
+    }
+  ]
+}
+```
+
+"All received": adds every line of the kitchen's own share that is on the way (sent, not yet received) to its stock, creates a stock batch per line and sets `deliveredAt`, `deliveredBy` and `trackingId` on those lines, all in one transaction. Lines sent later are received later. The contribution gets `deliveredAt` once every line is received.
+
+`items` carries the FSSAI receiving details, one entry per product that is arriving (entries for other products are ignored; a missing one fails with 400 `MISSING_ITEM_DETAILS`, and nothing is added to stock):
+
+- `photos.goods` and `photos.label` (required): URLs returned by the photo upload endpoint, or any `https://` URL. Missing or malformed → 400 `PHOTO_REQUIRED`.
+- `expiryDate` (`YYYY-MM-DD`): required unless the product's `expiryRequired` is `false` (the product in each line carries that flag). Missing → 400 `EXPIRY_REQUIRED`; already passed in business time → 400 `EXPIRED_GOODS`, with a message telling the kitchen to call the central store.
+- `mfgDate` (`YYYY-MM-DD`, optional): must not be in the future.
+- `lotNumber` (optional, up to 60): the manufacturer's batch number read off the label.
+- `storage` (optional): `room`, `fridge` or `freezer`.
+- `notes` (optional, up to 500).
+
+Each stock batch (`sourceType: "collaborative_order"`, `sourceId` = the order, priced at the product's `pricePerUnit` for valuation) stores these fields plus `trackingId` (`MKM-YYMM-NNNN`: year and month of receipt, then a running number that restarts each month and is unique across kitchens), `condition: "good"`, and a copy of the order's supplier as `supplierName` and `supplierFssaiLicence` (blank when the order has no supplier). `GET /api/procurement/stock-batches` (admin) returns them.
+
+If nothing is on the way, 409 `NOT_DISPATCHED`; once everything is received, 409 `ALREADY_DELIVERED`. Damaged or short deliveries are not handled here yet (Phase 3 tickets); a kitchen with a problem should not call this. The product ledger lists each received line as a `RECEIVED` row on the day it arrived, referenced by `orderNo`.
 
 ### Supplier and invoice (admin only)
 
@@ -163,4 +192,4 @@ Errors use the shared `{ code, message }` shape: `INVALID_INPUT` (400), `NOT_FOU
 
 ## Errors
 
-Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
