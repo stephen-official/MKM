@@ -496,7 +496,7 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
           receivedAt, condition: "good", expectedQtyBaseUnit: line.qtyBaseUnit, createdBy: req.user.sub, session,
           trackingId, ...checked, ...supplier,
         });
-        Object.assign(line, { deliveredAt: receivedAt, deliveredBy: req.user.sub, trackingId });
+        Object.assign(line, { deliveredAt: receivedAt, deliveredBy: req.user.sub, trackingId, receivedQtyBaseUnit: line.qtyBaseUnit });
       }
       if (share.items.every((line) => isReceived(line, share))) Object.assign(share, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
       await order.save({ session });

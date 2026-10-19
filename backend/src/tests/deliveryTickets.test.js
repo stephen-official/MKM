@@ -8,6 +8,7 @@ import { GodownStock } from "../models/FlowModels.js";
 import { StockBatch } from "../models/StockBatchModel.js";
 import { Supplier } from "../models/SupplierModel.js";
 import { DeliveryTicket } from "../models/DeliveryTicketModel.js";
+import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
 
 // Phase 3: a kitchen raises a problem with one item while receiving; the item waits for the admin.
 let app;
@@ -102,4 +103,93 @@ test("problem details are checked in plain words, and nothing is saved when one 
   const ok = await receive([good(ctx.dal), { stockItemId: ctx.rice._id, photos: { goods: photos.goods }, problem: { reason: "damaged", note: "Bags torn and wet" } }]);
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
   assert.equal((await DeliveryTicket.findOne({}).lean()).receivedQtyBaseUnit, 0);
+});
+
+const settle = (id, body, actor = ctx.admin) => request(app).post(`/api/delivery-tickets/${id}/settle`).set("Authorization", `Bearer ${actor.token}`).send(body);
+const raiseShort = async () => {
+  const res = await receive([good(ctx.dal), { stockItemId: ctx.rice._id, photos: { goods: photos.goods }, expiryDate: "2030-01-31", lotNumber: "B-9", storage: "fridge", problem: { reason: "short", receivedQtyBaseUnit: 60, note: "Only 60 kg came" } }]);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  return lineOf(res.body, ctx.rice).ticketId._id;
+};
+
+test("settling a short delivery puts the accepted quantity into stock and opens a follow-up order for the rest", async () => {
+  const ticketId = await raiseShort();
+  assert.equal((await settle(ticketId, { acceptedQtyBaseUnit: 60 }, ctx.cookA)).status, 403);
+  const res = await settle(ticketId, { acceptedQtyBaseUnit: 60, reorderShortfall: true, note: "Vendor will send 40 kg next week" });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.status, "settled");
+  assert.equal(res.body.resolution.acceptedQtyBaseUnit, 60);
+  assert.equal(res.body.resolution.settledBy.name, ctx.admin.user.name);
+  assert.equal(await stockOf(ctx.rice), 60);
+
+  const batch = await StockBatch.findOne({ stockItemId: ctx.rice._id }).lean();
+  assert.match(batch.trackingId, /^MKM-\d{4}-\d{4}$/);
+  assert.equal(batch.receivedQtyBaseUnit, 60);
+  assert.equal(batch.expectedQtyBaseUnit, 100);
+  assert.equal(batch.lotNumber, "B-9");
+  assert.equal(batch.storage, "fridge");
+  assert.equal(batch.photos.goods, photos.goods);
+  assert.equal(batch.supplierName, "Sri Lakshmi Traders");
+  assert.equal(batch.condition, "good");
+  assert.match(batch.notes, /short: Only 60 kg came/);
+
+  const order = (await call(ctx.admin, "get", `/${ctx.order._id}`)).body;
+  const rice = lineOf(order, ctx.rice);
+  assert.ok(rice.deliveredAt);
+  assert.equal(rice.trackingId, batch.trackingId);
+  assert.equal(rice.receivedQtyBaseUnit, 60);
+  assert.equal(rice.ticketId.status, "settled");
+  assert.ok(order.contributions[0].deliveredAt, "every line is now delivered");
+
+  const followUp = (await call(ctx.cookA, "get", `/${res.body.resolution.followUpOrderId}`)).body;
+  assert.equal(followUp.status, "open");
+  assert.equal(followUp.title, `Follow-up for ${ctx.order.orderNo}`);
+  assert.equal(followUp.createdByGodown.name, "Kitchen A");
+  assert.deepEqual(followUp.contributions[0].items.map((l) => [l.stockItemId.name, l.qtyBaseUnit]), [["Rice", 40]]);
+  assert.ok(followUp.neededBy && followUp.closesAt);
+
+  const ledger = await request(app).get(`/api/product-ledger/${ctx.rice._id}`).query({ godownId: String(ctx.kitchenA._id) }).set("Authorization", `Bearer ${ctx.admin.token}`);
+  assert.deepEqual(ledger.body.ledger.map((row) => [row.type, row.qtyIn, row.balance]), [["RECEIVED", 60, 60]]);
+
+  const twice = await settle(ticketId, { acceptedQtyBaseUnit: 60 });
+  assert.equal(twice.status, 409);
+  assert.equal(twice.body.code, "ALREADY_SETTLED");
+  assert.equal(await stockOf(ctx.rice), 60);
+});
+
+test("the admin cannot accept more than usably arrived; accepting nothing closes the line without stock or reorder", async () => {
+  const ticketId = await raiseShort();
+  const tooMuch = await settle(ticketId, { acceptedQtyBaseUnit: 61 });
+  assert.equal(tooMuch.status, 400);
+  assert.match(tooMuch.body.message, /Only 60 usable arrived/);
+  const none = await settle(ticketId, { acceptedQtyBaseUnit: 0, note: "Returned to vendor" });
+  assert.equal(none.status, 200, JSON.stringify(none.body));
+  assert.equal(none.body.resolution.followUpOrderId, null);
+  assert.equal(await stockOf(ctx.rice), 0);
+  assert.equal(await StockBatch.countDocuments({ stockItemId: ctx.rice._id }), 0);
+  assert.equal(await CollaborativePurchaseOrder.countDocuments({}), 1, "no follow-up order");
+  const line = lineOf((await call(ctx.admin, "get", `/${ctx.order._id}`)).body, ctx.rice);
+  assert.ok(line.deliveredAt);
+  assert.equal(line.trackingId, null);
+  assert.equal(line.receivedQtyBaseUnit, 0);
+  const ledger = await request(app).get(`/api/product-ledger/${ctx.rice._id}`).query({ godownId: String(ctx.kitchenA._id) }).set("Authorization", `Bearer ${ctx.admin.token}`);
+  assert.deepEqual(ledger.body.ledger, [], "nothing received, nothing in the ledger");
+});
+
+test("an excess delivery can be accepted in full, and a damaged one partly", async () => {
+  const res = await receive([
+    { stockItemId: ctx.dal._id, photos: { goods: photos.goods }, expiryDate: "2030-01-31", problem: { reason: "excess", receivedQtyBaseUnit: 25 } },
+    { stockItemId: ctx.rice._id, photos: { goods: photos.goods }, expiryDate: "2030-01-31", problem: { reason: "damaged", receivedQtyBaseUnit: 90, note: "One bag torn" } },
+  ]);
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const dalTicket = lineOf(res.body, ctx.dal).ticketId._id;
+  const riceTicket = lineOf(res.body, ctx.rice).ticketId._id;
+  assert.equal((await settle(dalTicket, { acceptedQtyBaseUnit: 25 })).status, 200);
+  assert.equal(await stockOf(ctx.dal), 25);
+  assert.equal((await settle(riceTicket, { acceptedQtyBaseUnit: 90, reorderShortfall: true })).status, 200);
+  assert.equal(await stockOf(ctx.rice), 90);
+  assert.equal((await StockBatch.findOne({ stockItemId: ctx.rice._id }).lean()).condition, "partial_damage");
+  const followUps = await CollaborativePurchaseOrder.find({ title: /Follow-up/ }).lean();
+  assert.equal(followUps.length, 1);
+  assert.equal(followUps[0].contributions[0].items[0].qtyBaseUnit, 10);
 });

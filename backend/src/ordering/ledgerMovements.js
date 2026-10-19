@@ -12,10 +12,12 @@ export const collaborativeReceiptMovements = async (godownId, productId) => {
       for (const line of share.items) {
         // Lines carry their own receipt time; shares received before that was tracked carry it on the share.
         const receivedAt = line.deliveredAt || share.deliveredAt;
-        if (!receivedAt || String(line.stockItemId) !== String(productId) || !(Number(line.qtyBaseUnit) > 0)) continue;
+        // What entered stock: the accepted quantity after a delivery problem, else the ordered quantity.
+        const qtyIn = Number(line.receivedQtyBaseUnit ?? line.qtyBaseUnit);
+        if (!receivedAt || String(line.stockItemId) !== String(productId) || !(qtyIn > 0)) continue;
         movements.push({
           date: receivedAt, type: "RECEIVED", reference: order.orderNo,
-          qtyIn: Number(line.qtyBaseUnit), qtyOut: 0, source: "collaborative_order", sourceId: order._id,
+          qtyIn, qtyOut: 0, source: "collaborative_order", sourceId: order._id,
         });
       }
     }

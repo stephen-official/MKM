@@ -17,8 +17,10 @@ const collaborativeLineSchema = new mongoose.Schema({
   dispatchedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   deliveredAt: { type: Date, default: null },
   deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-  // Tracking ID of the stock batch this line became when it was received (MKM-YYMM-NNNN).
+  // Tracking ID of the stock batch this line became when it was received (MKM-YYMM-NNNN), and the quantity that
+  // actually entered stock (equal to qtyBaseUnit for a normal receipt, the accepted quantity after a problem).
   trackingId: { type: String, default: null },
+  receivedQtyBaseUnit: { type: Number, default: null },
   // Set when the kitchen raised a problem with this line instead of receiving it; the line waits for the admin.
   ticketId: { type: mongoose.Schema.Types.ObjectId, ref: "DeliveryTicket", default: null },
 }, { _id: false });
