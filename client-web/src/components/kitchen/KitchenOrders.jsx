@@ -4,6 +4,8 @@ import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { productPacks } from "../../features/kitchen";
 import { canEditShare, closesInText, deliveryDateText, hasArriving, kitchenStage, lineState, myOrders, myShare, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
+import { arrivingLines } from "../../features/kitchen/receiving";
+import KitchenReceiveItems from "./KitchenReceiveItems";
 import "./SupplyRequestsDeliveries.css";
 import "./KitchenOrders.css";
 
@@ -36,7 +38,6 @@ function Timeline({ order, godownId }) {
 }
 
 function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
-  const [confirming, setConfirming] = useState(false);
   const share = myShare(order, godownId);
   const stage = kitchenStage(order, godownId);
   const others = order.kitchenCount - 1;
@@ -57,14 +58,13 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
       {share.items.map((line) => <li key={`${line.stockItemId?._id}:${line.packId || "base"}`} className="ko-line">
         <strong>{productName(line)}</strong><span>{lineAmount(line)}</span>
         {order.status === "ordered"
-          ? <span className={`srd-status srd-status--${LINE_STATE[lineState(line, share)].tone}`}>{LINE_STATE[lineState(line, share)].label}</span>
+          ? <span className={`srd-status srd-status--${LINE_STATE[lineState(line, share)].tone}`}>{LINE_STATE[lineState(line, share)].label}{line.trackingId ? ` · ${line.trackingId}` : ""}</span>
           : line.approvedAt && <small className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved</small>}
       </li>)}
     </ul>
+    {order.supplier && stage === "delivered" && <p className="srd-card__note">From {order.supplier.name}{order.invoiceNo ? ` · Invoice ${order.invoiceNo}` : ""}</p>}
     {canEditShare(order, godownId, now) && <footer className="srd-card__actions"><button type="button" onClick={() => onEdit(order)}>Edit my items</button></footer>}
-    {arriving && (confirming
-      ? <footer className="ko-confirm"><p>{notSent ? "Did the items marked “On the way” arrive? The rest will come later." : "Did everything arrive?"}</p><button type="button" className="srd-primary-button" onClick={() => onReceive(order)}>Yes, all received</button><button type="button" className="ko-secondary" onClick={() => setConfirming(false)}>Not yet</button></footer>
-      : <footer className="ko-confirm"><p className="ko-hint"><Truck size={15} aria-hidden="true" /> On the way. Problem with the delivery? Don’t tap below — call the central store.</p><button type="button" className="srd-primary-button" onClick={() => setConfirming(true)}>All received <ChevronRight size={17} aria-hidden="true" /></button></footer>)}
+    {arriving && <footer className="ko-confirm"><p className="ko-hint"><Truck size={15} aria-hidden="true" /> {notSent ? "Some items are on the way; the rest will come later." : "On the way."} Problem with the delivery? Don’t tap below — call the central store.</p><button type="button" className="srd-primary-button" onClick={() => onReceive(order, notSent)}>Receive items <ChevronRight size={17} aria-hidden="true" /></button></footer>}
   </article>;
 }
 
@@ -151,7 +151,7 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
-  const [mode, setMode] = useState(null); // null = list; { type: "new" | "join" | "edit", order?, godownId }
+  const [mode, setMode] = useState(null); // null = list; { type: "new" | "join" | "edit" | "receive", order?, godownId, notSent? }
   const [cart, setCart] = useState({});
   const [neededIn, setNeededIn] = useState("");
   const [emergency, setEmergency] = useState(false);
@@ -206,15 +206,12 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
     }
   };
 
-  const receive = async (order) => {
-    try {
-      await api.post(`${BASE}/${order._id}/receive`, {});
-      toast.success("Added to your stock");
-      await load();
-    } catch (error) {
-      toast.error(errorText(error, "Could not save. Check your connection and try again."));
-    }
-  };
+  const receive = (order, notSent) => setMode({ type: "receive", order, godownId, notSent });
+
+  if (mode?.type === "receive") {
+    return <KitchenReceiveItems order={mode.order} lines={arrivingLines(mode.order, godownId)} notSentCount={mode.notSent}
+      onBack={() => setMode(null)} onDone={() => { setMode(null); load(); }} />;
+  }
 
   if (mode) {
     return <ItemPicker mode={mode} products={products} cart={cart} setCart={setCart} settings={settings} neededIn={neededIn} setNeededIn={setNeededIn}
