@@ -14,7 +14,13 @@ const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFract
 const errorText = (error, fallback) => error?.response?.data?.message || fallback;
 const productName = (line) => line.stockItemId?.name || "Item";
 const unitOf = (line) => line.stockItemId?.unitId?.symbol || "";
-const LINE_STATE = { not_sent: { label: "Not sent yet", tone: "neutral" }, on_the_way: { label: "On the way", tone: "info" }, received: { label: "Received", tone: "positive" } };
+const LINE_STATE = { not_sent: { label: "Not sent yet", tone: "neutral" }, on_the_way: { label: "On the way", tone: "info" }, problem: { label: "Problem raised · waiting for central store", tone: "warning" }, received: { label: "Received", tone: "positive" } };
+/** "Received · MKM-2610-0001", or what the central store decided after a problem. */
+const lineStateText = (line, share) => {
+  const state = lineState(line, share);
+  if (state === "received" && line.ticketId) return line.receivedQtyBaseUnit > 0 ? `Received ${qty(line.receivedQtyBaseUnit)} ${unitOf(line)} · ${line.trackingId}` : "Settled · nothing added";
+  return `${LINE_STATE[state].label}${line.trackingId ? ` · ${line.trackingId}` : ""}`;
+};
 const lineAmount = (line) => (line.packId ? `${qty(line.packQuantity)} × ${line.packName}` : `${qty(line.qtyBaseUnit)} ${unitOf(line)}`);
 
 /** Cart entries ({ qty, packId }) keyed by product id → API item lines. */
@@ -58,13 +64,13 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
       {share.items.map((line) => <li key={`${line.stockItemId?._id}:${line.packId || "base"}`} className="ko-line">
         <strong>{productName(line)}</strong><span>{lineAmount(line)}</span>
         {order.status === "ordered"
-          ? <span className={`srd-status srd-status--${LINE_STATE[lineState(line, share)].tone}`}>{LINE_STATE[lineState(line, share)].label}{line.trackingId ? ` · ${line.trackingId}` : ""}</span>
+          ? <span className={`srd-status srd-status--${LINE_STATE[lineState(line, share)].tone}`}>{lineStateText(line, share)}</span>
           : line.approvedAt && <small className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved</small>}
       </li>)}
     </ul>
     {order.supplier && stage === "delivered" && <p className="srd-card__note">From {order.supplier.name}{order.invoiceNo ? ` · Invoice ${order.invoiceNo}` : ""}</p>}
     {canEditShare(order, godownId, now) && <footer className="srd-card__actions"><button type="button" onClick={() => onEdit(order)}>Edit my items</button></footer>}
-    {arriving && <footer className="ko-confirm"><p className="ko-hint"><Truck size={15} aria-hidden="true" /> {notSent ? "Some items are on the way; the rest will come later." : "On the way."} Problem with the delivery? Don’t tap below — call the central store.</p><button type="button" className="srd-primary-button" onClick={() => onReceive(order, notSent)}>Receive items <ChevronRight size={17} aria-hidden="true" /></button></footer>}
+    {arriving && <footer className="ko-confirm"><p className="ko-hint"><Truck size={15} aria-hidden="true" /> {notSent ? "Some items are on the way; the rest will come later." : "On the way."} Something wrong with an item? You can mark it as a problem inside.</p><button type="button" className="srd-primary-button" onClick={() => onReceive(order, notSent)}>Receive items <ChevronRight size={17} aria-hidden="true" /></button></footer>}
   </article>;
 }
 

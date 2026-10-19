@@ -21,6 +21,13 @@ test("a kitchen's stage follows its own share, not other kitchens'", () => {
   assert.equal(kitchenStage(order({ status: "closed" }), me), "requested");
 });
 
+test("a line with an open problem is neither on the way nor received", () => {
+  const line = { dispatchedAt: at(-2), deliveredAt: null, ticketId: { status: "open", reason: "short" } };
+  assert.equal(lineState(line, share(me)), "problem");
+  assert.equal(lineState({ ...line, deliveredAt: at(-1) }, share(me)), "received", "settled by the admin");
+  assert.equal(hasArriving(order({ status: "ordered", contributions: [share(me, { items: [line] })] }), me), false);
+});
+
 test("the timeline marks steps done up to the kitchen's stage, with their dates", () => {
   const steps = orderTimeline(order({ status: "ordered", statusChangedAt: at(-3), contributions: [share(me, { approvedAt: at(-5), dispatchedAt: at(-1) })] }), me);
   assert.deepEqual(steps.map((step) => [step.key, step.done, step.current]), [

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EXPIRY_CHIPS, adminExpiryFor, arrivingLines, arrivingProducts, emptyReceipt, expiryFromChip, expiryNeeded, receiptPayload, receiptProblems, receiptReady } from "./receiving.js";
+import { EXPIRY_CHIPS, PROBLEM_REASONS, adminExpiryFor, arrivingLines, emptyProblem, usableQty, arrivingProducts, emptyReceipt, expiryFromChip, expiryNeeded, receiptPayload, receiptProblems, receiptReady } from "./receiving.js";
 
 const me = "kitchenA";
 const product = (id, extra = {}) => ({ _id: id, name: id, unitId: { symbol: "kg" }, ...extra });
@@ -41,9 +41,27 @@ test("a product is ready once both photos are in and expiry is given where requi
   assert.deepEqual(receiptProblems(line(salt), { ...emptyReceipt(), photos }, today), []);
   assert.equal(expiryNeeded(line(salt)), false);
   assert.equal(expiryNeeded(line(rice)), true);
-  assert.deepEqual(receiptProblems(line(rice), { ...emptyReceipt(), photos, expiryDate: "2026-10-01" }, today), ["Expiry date has passed — call the central store"]);
+  assert.deepEqual(receiptProblems(line(rice), { ...emptyReceipt(), photos, expiryDate: "2026-10-01" }, today), ["Expiry date has passed — mark it as a problem"]);
   assert.deepEqual(receiptProblems(line(rice), { ...emptyReceipt(), photos, expiryDate: "2027-01-01", mfgDate: "2026-12-01" }, today), ["Manufacture date is in the future"]);
   assert.deepEqual(receiptProblems(line(rice), { ...emptyReceipt(), photos, expiryDate: today }, today), [], "expiring today is still accepted");
+});
+
+test("a problem item needs a reason, a sensible usable quantity and a goods photo; the label and expiry relax", () => {
+  const form = { ...emptyReceipt(), photos: { goods: photos.goods, label: "" }, problem: emptyProblem() };
+  assert.deepEqual(PROBLEM_REASONS.map((r) => r.key), ["short", "excess", "damaged", "wrong_item", "expired"]);
+  assert.deepEqual(receiptProblems(line(rice), form, today), ["What went wrong"]);
+  assert.deepEqual(receiptProblems(line(rice), { ...form, problem: { ...form.problem, reason: "damaged" } }, today), [], "wholly damaged: nothing else needed");
+  assert.deepEqual(receiptProblems(line(rice), { ...form, expiryDate: "2027-01-01", problem: { ...form.problem, reason: "short", receivedQty: "9" } }, today), []);
+  assert.deepEqual(receiptProblems(line(rice), { ...form, problem: { ...form.problem, reason: "short", receivedQty: "10" } }, today), ["Less than 10 must have arrived", "Expiry date for the usable part"]);
+  assert.deepEqual(receiptProblems(line(rice), { ...form, problem: { ...form.problem, reason: "short", receivedQty: "6" } }, today), ["Expiry date for the usable part"]);
+  assert.deepEqual(receiptProblems(line(rice), { ...form, problem: { ...form.problem, reason: "excess", receivedQty: "8" } }, today), ["More than 10 must have arrived", "Expiry date for the usable part"]);
+  assert.deepEqual(receiptProblems(line(rice), { ...form, problem: { ...form.problem, reason: "short", receivedQty: "abc" } }, today), ["How much usable stock arrived"]);
+  assert.deepEqual(receiptProblems(line(rice), { ...form, photos: { goods: "", label: "" }, problem: { ...form.problem, reason: "wrong_item" } }, today), ["Photo of the goods"]);
+  assert.equal(usableQty({ receivedQty: " " }), 0);
+  assert.equal(usableQty({ receivedQty: "-1" }), null);
+  const payload = receiptPayload([line(rice)], { rice: { ...form, expiryDate: "2027-01-01", problem: { reason: "short", receivedQty: "6", note: " Only 6 ", voiceNoteUrl: "" } } });
+  assert.deepEqual(payload.items[0].problem, { reason: "short", receivedQtyBaseUnit: 6, note: "Only 6", voiceNoteUrl: undefined });
+  assert.equal(receiptPayload([line(rice)], { rice: { ...form, problem: null, photos } }).items[0].problem, undefined);
 });
 
 test("the central store's expiry pre-fills the form for that product only, and stays editable", () => {

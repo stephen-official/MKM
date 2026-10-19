@@ -26,6 +26,13 @@ export const EXPIRY_CHIPS = Object.freeze([
   { key: "6m", label: "6 months", months: 6 },
   { key: "1y", label: "1 year", months: 12 },
 ]);
+export const PROBLEM_REASONS = Object.freeze([
+  { key: "short", label: "Less than ordered" },
+  { key: "excess", label: "More than ordered" },
+  { key: "damaged", label: "Damaged" },
+  { key: "wrong_item", label: "Wrong item" },
+  { key: "expired", label: "Expired" },
+]);
 export const STORAGE_OPTIONS = Object.freeze([
   { key: "room", label: "Room" },
   { key: "fridge", label: "Fridge" },
@@ -53,15 +60,37 @@ export const adminExpiryFor = (order, line) =>
   (order?.expiryByProduct || []).find((entry) => idOf(entry.stockItemId) === productIdOf(line))?.expiryDate || "";
 
 /** A blank form; pass the central store's expiry to start from it (the cook can still change it). */
-export const emptyReceipt = (expiryDate = "") => ({ photos: { goods: "", label: "" }, expiryDate, mfgDate: "", lotNumber: "", storage: "room" });
+export const emptyReceipt = (expiryDate = "") => ({ photos: { goods: "", label: "" }, expiryDate, mfgDate: "", lotNumber: "", storage: "room", problem: null });
+/** A blank problem report, shown when the cook taps "Problem with this item". */
+export const emptyProblem = () => ({ reason: "", receivedQty: "", note: "", voiceNoteUrl: "" });
+
+/** Usable quantity the cook typed for a problem item, as a number (0 when blank), or null when not a number. */
+export const usableQty = (problem) => {
+  if (!problem) return null;
+  const raw = String(problem.receivedQty ?? "").trim();
+  if (raw === "") return 0;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+};
 
 /** What still stops this product from being received, in the cook's words. Empty when it is ready. */
 export const receiptProblems = (line, form = emptyReceipt(), todayKey = toLocalDateKey()) => {
   const problems = [];
+  const problem = form.problem;
   if (!form.photos?.goods) problems.push("Photo of the goods");
-  if (!form.photos?.label) problems.push("Photo of the label");
-  if (!form.expiryDate && expiryNeeded(line)) problems.push("Expiry date");
-  if (form.expiryDate && form.expiryDate < todayKey) problems.push("Expiry date has passed — call the central store");
+  if (!problem && !form.photos?.label) problems.push("Photo of the label");
+  if (problem) {
+    const ordered = Number(line?.qtyBaseUnit) || 0;
+    const qty = usableQty(problem);
+    if (!problem.reason) problems.push("What went wrong");
+    if (qty === null) problems.push("How much usable stock arrived");
+    else if (problem.reason === "short" && qty >= ordered) problems.push(`Less than ${ordered} must have arrived`);
+    else if (problem.reason === "excess" && qty <= ordered) problems.push(`More than ${ordered} must have arrived`);
+    if (qty > 0 && !form.expiryDate && expiryNeeded(line)) problems.push("Expiry date for the usable part");
+  } else {
+    if (!form.expiryDate && expiryNeeded(line)) problems.push("Expiry date");
+    if (form.expiryDate && form.expiryDate < todayKey) problems.push("Expiry date has passed — mark it as a problem");
+  }
   if (form.mfgDate && form.mfgDate > todayKey) problems.push("Manufacture date is in the future");
   return problems;
 };
@@ -80,6 +109,10 @@ export const receiptPayload = (lines, forms) => ({
       mfgDate: form.mfgDate || undefined,
       lotNumber: form.lotNumber?.trim() || undefined,
       storage: form.storage || undefined,
+      ...(form.problem ? { problem: {
+        reason: form.problem.reason, receivedQtyBaseUnit: usableQty(form.problem) ?? 0,
+        note: form.problem.note?.trim() || undefined, voiceNoteUrl: form.problem.voiceNoteUrl || undefined,
+      } } : {}),
     };
   }),
 });

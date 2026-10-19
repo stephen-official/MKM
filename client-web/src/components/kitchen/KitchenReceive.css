@@ -37,6 +37,12 @@
 .kr-chips button { background: #fff; border: 1px solid #cfd9d3; border-radius: 999px; color: #335543; font-size: .84rem; font-weight: 750; min-height: 42px; padding: 0 14px; }
 .kr-chips button.is-on { background: #0f766e; border-color: #0f766e; color: #fff; }
 
+.kr-item.has-problem { border-color: #e0a84a; }
+.kr-problem-toggle { align-items: center; background: #fff; border: 1px solid #cfd9d3; border-radius: 12px; color: #82520c; display: flex; font-size: .86rem; font-weight: 750; gap: 8px; justify-content: center; min-height: 46px; padding: 0 12px; width: 100%; }
+.kr-problem-toggle.is-on { background: #fff1d5; border-color: #e0a84a; }
+.kr-problem { background: #fffaf0; border: 1px solid #f3dcb0; border-radius: 12px; display: grid; gap: 12px; padding: 12px; }
+.kr-problem textarea { border: 1px solid #cfd9d3; border-radius: 10px; font: inherit; font-size: .95rem; padding: 10px 12px; resize: vertical; width: 100%; }
+.kr-hint { color: #5d7068; font-size: .78rem; line-height: 1.4; margin: 0; }
 .kr-prefill { color: #0f766e; font-size: .78rem; font-weight: 700; line-height: 1.35; }
 
 .kr-todo { background: #fff7e6; border-radius: 10px; color: #82520c; font-size: .8rem; font-weight: 700; line-height: 1.4; margin: 0; padding: 8px 10px; }

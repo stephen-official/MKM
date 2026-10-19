@@ -12,6 +12,7 @@ export const myShare = (order, godownId) =>
 /** One line of a share: not_sent | on_the_way | received. Older shares carry these times on the share itself. */
 export const lineState = (line, share) => {
   if (line?.deliveredAt || share?.deliveredAt) return "received";
+  if (line?.ticketId) return "problem";
   if (line?.dispatchedAt || share?.dispatchedAt) return "on_the_way";
   return "not_sent";
 };

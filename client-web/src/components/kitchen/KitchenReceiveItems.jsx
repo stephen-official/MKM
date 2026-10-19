@@ -1,8 +1,8 @@
-import { ArrowLeft, Camera, Check, Loader2, PackageCheck, RotateCcw, Truck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Camera, Check, Loader2, PackageCheck, RotateCcw, Truck } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
-import { EXPIRY_CHIPS, STORAGE_OPTIONS, adminExpiryFor, arrivingProducts, emptyReceipt, expiryFromChip, expiryNeeded, productIdOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
+import { EXPIRY_CHIPS, PROBLEM_REASONS, STORAGE_OPTIONS, adminExpiryFor, arrivingProducts, emptyProblem, emptyReceipt, usableQty, expiryFromChip, expiryNeeded, productIdOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import DateField from "../ui/DateField";
 import "./SupplyRequestsDeliveries.css";
@@ -11,7 +11,8 @@ import "./KitchenReceive.css";
 const BASE = "/procurement/collaborative-purchase-orders";
 const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
 const errorText = (error, fallback) => error?.response?.data?.message || fallback;
-const amountText = (line) => (line.packId ? `${qty(line.packQuantity)} × ${line.packName}` : `${qty(line.qtyBaseUnit)} ${line.stockItemId?.unitId?.symbol || ""}`);
+const unitOf = (line) => line.stockItemId?.unitId?.symbol || "";
+const amountText = (line) => (line.packId ? `${qty(line.packQuantity)} × ${line.packName}` : `${qty(line.qtyBaseUnit)} ${unitOf(line)}`);
 
 /** Shrinks a camera photo to at most 1600 px as JPEG so uploads stay small on kitchen data plans; the original if that fails. */
 const shrinkPhoto = (file) => new Promise((resolve) => {
@@ -53,7 +54,9 @@ function ItemCard({ order, line, form, today, onChange }) {
   const [uploading, setUploading] = useState({});
   const product = line.stockItemId || {};
   const problems = receiptProblems(line, form, today);
-  const needsExpiry = expiryNeeded(line);
+  const problem = form.problem;
+  const usable = usableQty(problem);
+  const needsExpiry = problem ? usable > 0 && expiryNeeded(line) : expiryNeeded(line);
   const adminExpiry = adminExpiryFor(order, line);
   const chip = EXPIRY_CHIPS.find((candidate) => expiryFromChip(candidate.key, today) === form.expiryDate)?.key || "";
 
@@ -71,16 +74,38 @@ function ItemCard({ order, line, form, today, onChange }) {
     }
   };
 
-  return <article className={`srd-card kr-item${problems.length === 0 ? " is-ready" : ""}`}>
+  return <article className={`srd-card kr-item${problems.length === 0 ? " is-ready" : ""}${problem ? " has-problem" : ""}`}>
     <header className="kr-item__head">
       <div><h2>{product.name || "Item"}</h2><span>{amountText(line)}</span></div>
-      {problems.length === 0 ? <span className="srd-status srd-status--positive"><Check size={13} aria-hidden="true" /> Ready</span> : <span className="srd-status srd-status--neutral">{problems.length} to do</span>}
+      {problems.length === 0 ? <span className={`srd-status srd-status--${problem ? "warning" : "positive"}`}><Check size={13} aria-hidden="true" /> {problem ? "Problem ready to send" : "Ready"}</span> : <span className="srd-status srd-status--neutral">{problems.length} to do</span>}
     </header>
 
     <div className="kr-photos">
       <PhotoButton label="Photo of goods" url={form.photos.goods} busy={uploading.goods} onPick={(file) => upload("goods", file)} />
-      <PhotoButton label="Photo of label" url={form.photos.label} busy={uploading.label} onPick={(file) => upload("label", file)} />
+      <PhotoButton label={problem ? "Photo of label (optional)" : "Photo of label"} url={form.photos.label} busy={uploading.label} onPick={(file) => upload("label", file)} />
     </div>
+
+    <button type="button" className={`kr-problem-toggle${problem ? " is-on" : ""}`} aria-pressed={Boolean(problem)} onClick={() => onChange({ problem: problem ? null : emptyProblem() })}>
+      <AlertTriangle size={17} aria-hidden="true" /> {problem ? "Problem with this item — tap to cancel" : "Problem with this item?"}
+    </button>
+
+    {problem && <div className="kr-problem">
+      <div className="kr-field">
+        <span className="kr-label">What went wrong</span>
+        <Chips label={`Problem with ${product.name}`} options={PROBLEM_REASONS} value={problem.reason} onPick={(key) => onChange({ problem: { ...problem, reason: key } })} />
+      </div>
+      <div className="kr-field">
+        <span className="kr-label">Usable amount that arrived ({unitOf(line) || "units"})</span>
+        <input type="text" inputMode="decimal" value={problem.receivedQty} placeholder="0" aria-label={`Usable amount of ${product.name} that arrived`}
+          onChange={(event) => /^\d*(\.\d{0,3})?$/.test(event.target.value) && onChange({ problem: { ...problem, receivedQty: event.target.value } })} />
+        <small className="kr-prefill">Ordered: {qty(line.qtyBaseUnit)} {unitOf(line)}. Enter 0 if none of it can be used.</small>
+      </div>
+      <div className="kr-field">
+        <span className="kr-label">Tell the central store (optional)</span>
+        <textarea rows={2} value={problem.note} maxLength={500} placeholder="e.g. two bags torn and wet" aria-label={`Note about ${product.name}`} onChange={(event) => onChange({ problem: { ...problem, note: event.target.value } })} />
+      </div>
+      <p className="kr-hint">The central store will check this and decide what goes into your stock. The usable part still needs its details below.</p>
+    </div>}
 
     <div className="kr-field">
       <span className="kr-label">Expiry date{needsExpiry ? "" : " (optional)"}</span>
@@ -123,7 +148,8 @@ export default function KitchenReceiveItems({ order, lines, notSentCount = 0, on
     setBusy(true);
     try {
       const { data } = await api.post(`${BASE}/${order._id}/receive`, receiptPayload(lines, forms));
-      toast.success("Added to your stock");
+      const raised = Object.values(forms).filter((form) => form.problem).length;
+      toast.success(raised ? `Saved. ${raised === 1 ? "1 problem" : `${raised} problems`} sent to the central store` : "Added to your stock");
       onDone(data);
     } catch (error) {
       toast.error(errorText(error, "Could not save. Check your connection and try again."));
@@ -151,6 +177,6 @@ export default function KitchenReceiveItems({ order, lines, notSentCount = 0, on
     </section>
 
     <footer className="kr-submit"><div><strong>{readyCount} of {products.length}</strong><span>{products.length === 1 ? "item ready" : "items ready"}</span></div>
-      <button type="button" className="srd-primary-button" disabled={busy || !ready} onClick={submit}>{busy ? "Saving…" : <><PackageCheck size={18} aria-hidden="true" /> Add to my stock</>}</button></footer>
+      <button type="button" className="srd-primary-button" disabled={busy || !ready} onClick={submit}>{busy ? "Saving…" : <><PackageCheck size={18} aria-hidden="true" /> {Object.values(forms).some((form) => form.problem) ? "Save & send problems" : "Add to my stock"}</>}</button></footer>
   </main>;
 }
