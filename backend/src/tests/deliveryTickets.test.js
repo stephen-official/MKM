@@ -143,7 +143,7 @@ test("settling a short delivery puts the accepted quantity into stock and opens 
 
   const followUp = (await call(ctx.cookA, "get", `/${res.body.resolution.followUpOrderId}`)).body;
   assert.equal(followUp.status, "open");
-  assert.equal(followUp.title, `Follow-up for ${ctx.order.orderNo}`);
+  assert.equal(followUp.title, "Missing Rice", "an untitled order falls back to the product name");
   assert.equal(followUp.createdByGodown.name, "Kitchen A");
   assert.deepEqual(followUp.contributions[0].items.map((l) => [l.stockItemId.name, l.qtyBaseUnit]), [["Rice", 40]]);
   assert.ok(followUp.neededBy && followUp.closesAt);
@@ -189,7 +189,23 @@ test("an excess delivery can be accepted in full, and a damaged one partly", asy
   assert.equal((await settle(riceTicket, { acceptedQtyBaseUnit: 90, reorderShortfall: true })).status, 200);
   assert.equal(await stockOf(ctx.rice), 90);
   assert.equal((await StockBatch.findOne({ stockItemId: ctx.rice._id }).lean()).condition, "partial_damage");
-  const followUps = await CollaborativePurchaseOrder.find({ title: /Follow-up/ }).lean();
+  const followUps = await CollaborativePurchaseOrder.find({ title: /^Missing/ }).lean();
   assert.equal(followUps.length, 1);
   assert.equal(followUps[0].contributions[0].items[0].qtyBaseUnit, 10);
+});
+
+test("follow-up order is named after the kitchen's own order title", async () => {
+  const order = (await call(ctx.cookA, "post", "/").send({ title: "B — Short delivery", neededIn: "1w", items: [{ stockItemId: ctx.rice._id, qtyBaseUnit: 50 }] })).body;
+  await call(ctx.admin, "post", `/${order._id}/approve`).send({});
+  await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id });
+  await call(ctx.admin, "post", `/${order._id}/dispatch`).send({ godownId: ctx.kitchenA._id });
+  const res = await call(ctx.cookA, "post", `/${order._id}/receive`).send({ items: [
+    { stockItemId: ctx.rice._id, photos: { goods: photos.goods }, expiryDate: "2030-01-31", problem: { reason: "short", receivedQtyBaseUnit: 30, note: "20 kg missing" } },
+  ] });
+  assert.equal(res.status, 200);
+  const settled = await settle(lineOf(res.body, ctx.rice).ticketId._id, { acceptedQtyBaseUnit: 30, reorderShortfall: true });
+  assert.equal(settled.status, 200);
+  const followUp = await CollaborativePurchaseOrder.findById(settled.body.resolution.followUpOrderId).lean();
+  assert.equal(followUp.title, 'Missing items from "B — Short delivery"');
+  assert.equal(followUp.contributions[0].items[0].qtyBaseUnit, 20);
 });

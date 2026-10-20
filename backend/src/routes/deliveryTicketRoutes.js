@@ -45,12 +45,14 @@ const CONDITION = { damaged: "partial_damage", expired: "unchecked" };
  * Opens a normal shared order for the kitchen with the quantity still missing, using the first "needed by" option.
  * Other kitchens can join it like any order.
  */
-const openFollowUpOrder = async ({ ticket, shortfall, actor, now, session }) => {
+const openFollowUpOrder = async ({ ticket, order: original, shortfall, actor, now, session }) => {
   const { settings } = await readOrderingSettings();
   const neededBy = neededByFor({ neededIn: settings.neededInOptions[0]?.key }, settings, now);
+  // Cooks know their order by its title, not by the CPO number.
+  const product = original.title ? null : await StockItem.findById(ticket.stockItemId).select("name").session(session);
   const [order] = await CollaborativePurchaseOrder.create([{
     orderNo: `CPO-${Date.now()}-${new mongoose.Types.ObjectId().toString().slice(-5).toUpperCase()}`,
-    title: `Follow-up for ${ticket.orderNo}`,
+    title: original.title ? `Missing items from "${original.title}"` : `Missing ${product?.name || "items"}`,
     note: `Opened by the central store for the ${shortfall} still missing from ${ticket.orderNo}.`,
     neededBy, emergency: false, closesAt: closesAtFor(now, neededBy, settings),
     createdBy: actor, createdByGodown: ticket.godownId,
@@ -105,7 +107,7 @@ deliveryTicketRoutes.post("/:id/settle", adminOnly, async (req, res) => {
         });
       }
       const shortfall = Math.max(0, Number(ticket.orderedQtyBaseUnit) - accepted);
-      const followUp = reorder && shortfall > 0 ? await openFollowUpOrder({ ticket, shortfall, actor: req.user.sub, now, session }) : null;
+      const followUp = reorder && shortfall > 0 ? await openFollowUpOrder({ ticket, order, shortfall, actor: req.user.sub, now, session }) : null;
       Object.assign(line, { deliveredAt: now, deliveredBy: req.user.sub, trackingId, receivedQtyBaseUnit: accepted });
       if (share.items.every((entry) => entry.deliveredAt)) Object.assign(share, { deliveredAt: now, deliveredBy: req.user.sub });
       await order.save({ session });
