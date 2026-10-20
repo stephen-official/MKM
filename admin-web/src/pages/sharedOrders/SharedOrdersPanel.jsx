@@ -3,10 +3,10 @@ import { CheckCircle2, Save, ShoppingCart, Truck } from "lucide-react";
 import { api } from "../../api.js";
 import { useToast } from "../../useToast.js";
 import {
-  Badge, Button, Card, DateField, DetailPanel, EmptyState, ErrorState, Field, Meta, RailItem, RailList, Select, SplitView, StatusBadge
+  Badge, Button, Card, DateField, DetailPanel, EmptyState, ErrorState, Field, Meta, RailItem, RailList, Select, SplitView
 } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
-import { allSharesApproved, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canSetPurchaseDetails, closesInText, lineDelivery, lineLabel, shareStage } from "./sharedOrders.js";
+import { allSharesApproved, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canSetPurchaseDetails, closesInText, lineDelivery, lineLabel, orderStage, shareStage } from "./sharedOrders.js";
 
 const BASE = "/procurement/collaborative-purchase-orders";
 const errorMessage = (error, fallback) => error?.response?.data?.message || error?.response?.data?.error || fallback;
@@ -98,7 +98,7 @@ export function SharedOrdersPanel() {
               <RailItem key={candidate._id} active={candidate._id === selectedId} onClick={() => setSelectedId(candidate._id)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                   <strong>{candidate.title || itemNames(candidate) || candidate.orderNo}</strong>
-                  <StatusBadge status={candidate.status} />
+                  <Badge variant={STAGE_VARIANT[orderStage(candidate)]}>{orderStage(candidate)}</Badge>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 6, fontSize: 12, color: "var(--muted)" }}>
                   {candidate.emergency && <Badge variant="alert">Urgent</Badge>}
@@ -115,7 +115,7 @@ export function SharedOrdersPanel() {
             head={
               <>
                 <Meta label="Order">{order.orderNo}</Meta>
-                <Meta label="Status"><StatusBadge status={order.status} /> {order.emergency && <Badge variant="alert">Urgent</Badge>}</Meta>
+                <Meta label="Next step"><Badge variant={STAGE_VARIANT[orderStage(order)]}>{orderStage(order)}</Badge> {order.emergency && <Badge variant="alert">Urgent</Badge>}</Meta>
                 <Meta label="Needed by">{when(order.neededBy, order.emergency)}</Meta>
                 <Meta label="Ordering" align="end">{order.status === "open" ? closesInText(order.closesAt, now) : "Ordering closed"}</Meta>
               </>

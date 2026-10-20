@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allSharesApproved, canSetPurchaseDetails, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, closesInText, lineDelivery, shareStage, lineLabel } from "./sharedOrders.js";
+import { allSharesApproved, canSetPurchaseDetails, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, closesInText, lineDelivery, orderStage, shareStage, lineLabel } from "./sharedOrders.js";
 
 const now = new Date("2026-10-18T04:30:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
@@ -81,5 +81,25 @@ describe("shared orders (admin)", () => {
   it("allows supplier and invoice details once approved, and after ordering", () => {
     expect(["open", "closed", "cancelled"].map((status) => canSetPurchaseDetails({ status }))).toEqual([false, false, false]);
     expect(["approved", "ordered"].map((status) => canSetPurchaseDetails({ status }))).toEqual([true, true]);
+  });
+});
+
+describe("order stage badge", () => {
+  const sent = { dispatchedAt: "2026-10-18T05:00:00.000Z" };
+  const received = { dispatchedAt: "2026-10-18T05:00:00.000Z", deliveredAt: "2026-10-19T05:00:00.000Z" };
+  it("shows what the admin must do next, taking the most pressing kitchen", () => {
+    expect(orderStage({ status: "open", contributions: [share({ items: [{}] })] })).toBe("Needs approval");
+    expect(orderStage({ status: "open", contributions: [share({ approvedAt: "x", items: [{}] }), share({ items: [{}] })] })).toBe("Needs approval");
+    expect(orderStage({ status: "approved", contributions: [share({ approvedAt: "x", items: [{}] })] })).toBe("Place order");
+    expect(orderStage({ status: "ordered", contributions: [share({ items: [sent] }), share({ items: [{}] })] })).toBe("Needs to be dispatched");
+    expect(orderStage({ status: "ordered", contributions: [share({ items: [sent, {}] })] })).toBe("Incomplete dispatch");
+    expect(orderStage({ status: "ordered", contributions: [share({ items: [sent] }), share({ items: [{ ...sent, ticketId: "t" }] })] })).toBe("Problem to settle");
+  });
+  it("otherwise says where the delivery stands", () => {
+    expect(orderStage({ status: "ordered", contributions: [share({ items: [sent] }), share({ deliveredAt: "x", items: [received] })] })).toBe("Dispatched");
+    expect(orderStage({ status: "ordered", contributions: [share({ items: [sent, received] })] })).toBe("Partly received");
+    expect(orderStage({ status: "ordered", contributions: [share({ deliveredAt: "x", items: [received] })] })).toBe("Delivered");
+    expect(orderStage({ status: "cancelled", contributions: [share({ items: [{}] })] })).toBe("Cancelled");
+    expect(orderStage({ status: "open", contributions: [] })).toBe("Needs approval");
   });
 });

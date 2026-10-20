@@ -36,6 +36,16 @@ export const shareStage = (order, share) => {
   return "Needs approval";
 };
 
+// Most pressing first: a problem or an admin action outranks waiting on a kitchen, which outranks done.
+const STAGE_PRIORITY = ["Problem to settle", "Needs approval", "Place order", "Incomplete dispatch", "Needs to be dispatched", "Partly received", "Dispatched", "Delivered"];
+
+/** The whole order's next step, from its kitchens' stages: the most pressing kitchen sets the badge. */
+export const orderStage = (order) => {
+  if (order?.status === "cancelled") return "Cancelled";
+  const stages = new Set((order?.contributions || []).map((share) => shareStage(order, share)));
+  return STAGE_PRIORITY.find((stage) => stages.has(stage)) || "Needs approval";
+};
+
 /** "Closes in 2 days 4 h", "Closes in 5 h 30 min", "Closes in 15 min" or "Ordering closed". */
 export const closesInText = (closesAt, now = new Date()) => {
   const minutes = Math.floor((new Date(closesAt).getTime() - now.getTime()) / 60_000);
