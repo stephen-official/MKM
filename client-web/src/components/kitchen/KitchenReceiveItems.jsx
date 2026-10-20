@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowLeft, Camera, Check, Loader2, Mic, PackageCheck, Ro
 import { useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
-import { EXPIRY_CHIPS, PROBLEM_REASONS, STORAGE_OPTIONS, adminExpiryFor, arrivingProducts, emptyProblem, emptyReceipt, usableQty, expiryFromChip, expiryNeeded, productIdOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
+import { EXPIRY_CHIPS, PROBLEM_REASONS, STORAGE_OPTIONS, adminExpiryFor, arrivingProducts, emptyProblem, emptyReceipt, groupBySupplier, usableQty, expiryFromChip, expiryNeeded, productIdOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import DateField from "../ui/DateField";
 import "./SupplyRequestsDeliveries.css";
@@ -235,17 +235,18 @@ export default function KitchenReceiveItems({ order, lines, notSentCount = 0, on
     <header className="srd-page-header"><div><p>Delivery</p><h1>Receive items</h1>
       <span>Take two photos of each item and enter the dates from the label. Only the items on the way are listed{notSentCount ? "; the rest will come later" : ""}.</span></div></header>
 
-    <section className="kr-supplier" aria-label="Supplier">
-      <Truck size={17} aria-hidden="true" />
-      <div>
-        <strong>{order.supplier?.name || "Supplier not recorded"}</strong>
-        <small>{order.supplier?.fssaiLicence ? `FSSAI licence ${order.supplier.fssaiLicence}` : "FSSAI licence not recorded"} · {order.invoiceNo ? `Invoice ${order.invoiceNo}` : "Invoice: not yet"}</small>
+    {groupBySupplier(order, lines).map((group) => <section key={group.key || "none"} className="kr-group" aria-label={group.supplier ? `From ${group.supplier.name}` : "Items"}>
+      <div className="kr-supplier">
+        <Truck size={17} aria-hidden="true" />
+        <div>
+          <strong>{group.supplier?.name || "Supplier not recorded"}</strong>
+          <small>{group.supplier?.fssaiLicence ? `FSSAI licence ${group.supplier.fssaiLicence}` : "FSSAI licence not recorded"} · {order.invoiceNo ? `Invoice ${order.invoiceNo}` : "Invoice: not yet"}</small>
+        </div>
       </div>
-    </section>
-
-    <section className="kr-items" aria-label="Items to receive">
-      {products.map((line) => <ItemCard key={productIdOf(line)} order={order} line={line} form={forms[productIdOf(line)]} today={today} onChange={(change) => update(line, change)} />)}
-    </section>
+      <div className="kr-items">
+        {group.lines.map((line) => <ItemCard key={productIdOf(line)} order={order} line={line} form={forms[productIdOf(line)]} today={today} onChange={(change) => update(line, change)} />)}
+      </div>
+    </section>)}
 
     <footer className="kr-submit"><div><strong>{readyCount} of {products.length}</strong><span>{products.length === 1 ? "item ready" : "items ready"}</span></div>
       <button type="button" className="srd-primary-button" disabled={busy || !ready} onClick={submit}>{busy ? "Saving…" : <><PackageCheck size={18} aria-hidden="true" /> {Object.values(forms).some((form) => form.problem) ? "Save & send problems" : "Add to my stock"}</>}</button></footer>

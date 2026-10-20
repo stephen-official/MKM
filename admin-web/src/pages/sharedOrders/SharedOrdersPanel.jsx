@@ -58,10 +58,13 @@ export function SharedOrdersPanel() {
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
 
   const order = useMemo(() => orders.find((candidate) => candidate._id === selectedId) || null, [orders, selectedId]);
+  const productIdOf = (line) => String(line.stockItemId?._id || line.stockItemId);
   const savedExpiry = Object.fromEntries((order?.expiryByProduct || []).map((entry) => [String(entry.stockItemId?._id || entry.stockItemId), entry.expiryDate]));
-  const purchase = purchaseEdits[order?._id] || { supplierId: order?.supplierId || "", invoiceNo: order?.invoiceNo || "", expiry: savedExpiry };
+  const savedOverrides = Object.fromEntries((order?.supplierByProduct || []).map((entry) => [String(entry.stockItemId?._id || entry.stockItemId), String(entry.supplierId?._id || entry.supplierId)]));
+  const purchase = purchaseEdits[order?._id] || { supplierId: order?.supplierId || "", invoiceNo: order?.invoiceNo || "", expiry: savedExpiry, overrides: savedOverrides };
   const purchaseDirty = order && (purchase.supplierId !== (order.supplierId || "") || purchase.invoiceNo !== (order.invoiceNo || "")
-    || (order.combinedItems || []).some((line) => (purchase.expiry[String(line.stockItemId?._id || line.stockItemId)] || "") !== (savedExpiry[String(line.stockItemId?._id || line.stockItemId)] || "")));
+    || (order.combinedItems || []).some((line) => (purchase.expiry[productIdOf(line)] || "") !== (savedExpiry[productIdOf(line)] || "")
+      || (purchase.overrides[productIdOf(line)] || "") !== (savedOverrides[productIdOf(line)] || "")));
   const setPurchase = (change) => setPurchaseEdits((edits) => ({ ...edits, [order._id]: { ...purchase, ...change } }));
 
   /** Runs one admin action, optionally after a confirmation, then reloads so every kitchen's state is current. */
@@ -173,22 +176,35 @@ export function SharedOrdersPanel() {
                   <Button variant="ghost" disabled={busy || !purchaseDirty}
                     onClick={() => act("purchase", {
                       supplierId: purchase.supplierId || null, invoiceNo: purchase.invoiceNo,
-                      expiryDates: (order.combinedItems || []).map((line) => ({ stockItemId: line.stockItemId?._id || line.stockItemId, expiryDate: purchase.expiry[String(line.stockItemId?._id || line.stockItemId)] || null })),
+                      expiryDates: (order.combinedItems || []).map((line) => ({ stockItemId: productIdOf(line), expiryDate: purchase.expiry[productIdOf(line)] || null })),
+                      supplierOverrides: (order.combinedItems || []).map((line) => ({ stockItemId: productIdOf(line), supplierId: purchase.overrides[productIdOf(line)] || null })),
                     }, "Purchase details saved")}>
                     <Save size={16} /> Save
                   </Button>
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 12 }}>
-                  {(order.combinedItems || []).map((line) => {
-                    const productId = String(line.stockItemId?._id || line.stockItemId);
-                    return (
-                      <Field key={productId} label={`Expiry: ${line.stockItemId?.name || "Item"}`}>
-                        <DateField value={purchase.expiry[productId] || ""} placeholder="Optional, for bulk buys"
-                          onChange={(e) => setPurchase({ expiry: { ...purchase.expiry, [productId]: e.target.value } })} />
-                      </Field>
-                    );
-                  })}
-                </div>
+                <table className="table" style={{ marginTop: 12 }}>
+                  <thead><tr><th scope="col">Item</th><th scope="col">Bought from</th><th scope="col">Expiry (bulk buys)</th></tr></thead>
+                  <tbody>
+                    {(order.combinedItems || []).map((line) => {
+                      const productId = productIdOf(line);
+                      return (
+                        <tr key={productId}>
+                          <td style={{ fontWeight: 650 }}>{line.stockItemId?.name || "Item"}</td>
+                          <td>
+                            <Select value={purchase.overrides[productId] || ""} placeholder="Same as order" onChange={(e) => setPurchase({ overrides: { ...purchase.overrides, [productId]: e.target.value } })}>
+                              <option value="">Same as order</option>
+                              {suppliers.map((supplier) => <option key={supplier._id} value={supplier._id}>{supplier.name}</option>)}
+                            </Select>
+                          </td>
+                          <td>
+                            <DateField value={purchase.expiry[productId] || ""} placeholder="Optional"
+                              onChange={(e) => setPurchase({ expiry: { ...purchase.expiry, [productId]: e.target.value } })} />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
                 <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--muted)" }}>
                   {order.supplier ? `Kitchens see ${order.supplier.name}, FSSAI licence ${order.supplier.fssaiLicence}` : "Kitchens see the supplier's name and FSSAI licence on the delivery"}{order.invoiceNo ? ` and invoice ${order.invoiceNo}.` : "."}
                 </p>

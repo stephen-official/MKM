@@ -98,6 +98,7 @@ const populateOrder = (query) => query
   .populate("createdByGodown", "name")
   .populate("statusChangedBy", "name")
   .populate("supplierId", "name fssaiLicence")
+  .populate("supplierByProduct.supplierId", "name fssaiLicence")
   .populate("contributions.items.ticketId", "status reason receivedQtyBaseUnit resolution.acceptedQtyBaseUnit resolution.reorderShortfall raisedAt")
   .populate("contributions.userId", "name")
   .populate("contributions.godownId", "name")
@@ -452,6 +453,13 @@ export const receiptDetails = (input, product, today, { labelRequired = true, ex
  * optional voice note. Short must be less than ordered, excess more; the usable part still needs a goods photo,
  * and an expiry only when something usable arrived.
  */
+/** The supplier a product on this order came from: its own override, else the order's supplier (populated). */
+export const supplierSnapshotFor = (order, stockItemId) => {
+  const override = (order.supplierByProduct || []).find((entry) => String(entry.stockItemId) === String(stockItemId))?.supplierId;
+  const supplier = override && typeof override === "object" ? override : order.supplierId;
+  return { supplierName: supplier?.name || "", supplierFssaiLicence: supplier?.fssaiLicence || "" };
+};
+
 export const problemDetails = (input, line, product, today) => {
   const name = product?.name || "This item";
   const problem = input?.problem || {};
@@ -482,7 +490,8 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
     const details = new Map((Array.isArray(req.body?.items) ? req.body.items : [])
       .filter((entry) => mongoose.isValidObjectId(entry?.stockItemId)).map((entry) => [String(entry.stockItemId), entry]));
     await session.withTransaction(async () => {
-      const order = await CollaborativePurchaseOrder.findById(req.params.id).populate("supplierId", "name fssaiLicence").session(session);
+      const order = await CollaborativePurchaseOrder.findById(req.params.id)
+        .populate("supplierId", "name fssaiLicence").populate("supplierByProduct.supplierId", "name fssaiLicence").session(session);
       if (!order) throw fail(404, "Collaborative purchase order not found");
       const share = order.contributions.find((entry) => String(entry.godownId) === String(req.user.godownId));
       if (!share) throw fail(404, "Your kitchen is not on this order");
@@ -492,8 +501,8 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
       if (arriving.length === 0) throw fail(409, "Nothing is on the way to your kitchen right now", "NOT_DISPATCHED");
       const receivedAt = new Date();
       const today = businessDateOf(receivedAt);
-      const supplier = { supplierName: order.supplierId?.name || "", supplierFssaiLicence: order.supplierId?.fssaiLicence || "" };
       for (const line of arriving) {
+        const supplier = supplierSnapshotFor(order, line.stockItemId);
         const product = await StockItem.findById(line.stockItemId).select("name pricePerUnit expiryRequired").session(session);
         const input = details.get(String(line.stockItemId));
         if (!input) throw fail(400, `${product?.name || "An item"} is missing its receiving details`, "MISSING_ITEM_DETAILS");
@@ -553,6 +562,21 @@ const applyPurchaseDetails = async (order, body) => {
     order.invoiceNo = text(body.invoiceNo, 60, "Invoice number");
     changed += 1;
   }
+  if (body.supplierOverrides !== undefined) {
+    if (!Array.isArray(body.supplierOverrides)) throw fail(400, "supplierOverrides must be a list of { stockItemId, supplierId }");
+    const onOrder = new Set(order.contributions.flatMap((share) => share.items.map((line) => String(line.stockItemId))));
+    const kept = new Map(order.supplierByProduct.map((entry) => [String(entry.stockItemId), entry.supplierId]));
+    for (const entry of body.supplierOverrides) {
+      const productId = String(entry?.stockItemId || "");
+      if (!onOrder.has(productId)) throw fail(400, "A supplier can only be set for products on this order");
+      if (entry.supplierId === null || entry.supplierId === "") { kept.delete(productId); continue; }
+      const supplier = mongoose.isValidObjectId(entry.supplierId) ? await Supplier.findById(entry.supplierId).select("active") : null;
+      if (!supplier || !supplier.active) throw fail(400, "Choose an active supplier for each item");
+      kept.set(productId, supplier._id);
+    }
+    order.supplierByProduct = [...kept].map(([stockItemId, supplierId]) => ({ stockItemId, supplierId }));
+    changed += 1;
+  }
   if (body.expiryDates !== undefined) {
     if (!Array.isArray(body.expiryDates)) throw fail(400, "expiryDates must be a list of { stockItemId, expiryDate }");
     const onOrder = new Set(order.contributions.flatMap((share) => share.items.map((line) => String(line.stockItemId))));
@@ -579,7 +603,7 @@ collaborativePurchaseOrderRoutes.patch("/:id/purchase", adminOnly, async (req, r
     const order = await CollaborativePurchaseOrder.findById(req.params.id);
     if (!order) throw fail(404, "Collaborative purchase order not found");
     if (!["approved", "ordered"].includes(order.status)) throw fail(409, "Approve the order before adding supplier or invoice details", "NOT_APPROVED");
-    if ((await applyPurchaseDetails(order, req.body || {})) === 0) throw fail(400, "Send a supplierId, an invoiceNo or expiryDates");
+    if ((await applyPurchaseDetails(order, req.body || {})) === 0) throw fail(400, "Send a supplierId, an invoiceNo, supplierOverrides or expiryDates");
     await order.save();
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }

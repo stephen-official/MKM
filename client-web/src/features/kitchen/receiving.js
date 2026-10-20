@@ -59,6 +59,26 @@ export const expiryFromChip = (key, todayKey) => {
 export const adminExpiryFor = (order, line) =>
   (order?.expiryByProduct || []).find((entry) => idOf(entry.stockItemId) === productIdOf(line))?.expiryDate || "";
 
+/** The supplier this product came from: its own entry on the order, else the order's supplier; null if none. */
+export const supplierFor = (order, line) => {
+  const entry = (order?.supplierByProduct || []).find((candidate) => idOf(candidate.stockItemId) === productIdOf(line));
+  const supplier = entry?.supplierId && typeof entry.supplierId === "object" ? entry.supplierId : order?.supplier;
+  return supplier ? { _id: idOf(supplier), name: supplier.name || "", fssaiLicence: supplier.fssaiLicence || "" } : null;
+};
+
+/** Products grouped by the supplier they came from, in order of first appearance: [{ supplier, lines }]. */
+export const groupBySupplier = (order, lines) => {
+  const groups = [];
+  for (const line of arrivingProducts(lines)) {
+    const supplier = supplierFor(order, line);
+    const key = supplier ? supplier._id : "";
+    let group = groups.find((candidate) => candidate.key === key);
+    if (!group) { group = { key, supplier, lines: [] }; groups.push(group); }
+    group.lines.push(line);
+  }
+  return groups;
+};
+
 /** A blank form; pass the central store's expiry to start from it (the cook can still change it). */
 export const emptyReceipt = (expiryDate = "") => ({ photos: { goods: "", label: "" }, expiryDate, mfgDate: "", lotNumber: "", storage: "room", problem: null });
 /** A blank problem report, shown when the cook taps "Problem with this item". */

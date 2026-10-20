@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { EXPIRY_CHIPS, PROBLEM_REASONS, adminExpiryFor, arrivingLines, emptyProblem, usableQty, arrivingProducts, emptyReceipt, expiryFromChip, expiryNeeded, receiptPayload, receiptProblems, receiptReady } from "./receiving.js";
+import { EXPIRY_CHIPS, PROBLEM_REASONS, adminExpiryFor, arrivingLines, emptyProblem, groupBySupplier, supplierFor, usableQty, arrivingProducts, emptyReceipt, expiryFromChip, expiryNeeded, receiptPayload, receiptProblems, receiptReady } from "./receiving.js";
 
 const me = "kitchenA";
 const product = (id, extra = {}) => ({ _id: id, name: id, unitId: { symbol: "kg" }, ...extra });
@@ -62,6 +62,19 @@ test("a problem item needs a reason, a sensible usable quantity and a goods phot
   const payload = receiptPayload([line(rice)], { rice: { ...form, expiryDate: "2027-01-01", problem: { reason: "short", receivedQty: "6", note: " Only 6 ", voiceNoteUrl: "" } } });
   assert.deepEqual(payload.items[0].problem, { reason: "short", receivedQtyBaseUnit: 6, note: "Only 6", voiceNoteUrl: undefined });
   assert.equal(receiptPayload([line(rice)], { rice: { ...form, problem: null, photos } }).items[0].problem, undefined);
+});
+
+test("items are grouped by the supplier they came from, falling back to the order's supplier", () => {
+  const sri = { _id: "s1", name: "Sri Lakshmi Traders", fssaiLicence: "12345678901234" };
+  const venkat = { _id: "s2", name: "Venkat Oils", fssaiLicence: "22222222222222" };
+  const oil = product("oil");
+  const order = { supplier: sri, supplierByProduct: [{ stockItemId: "oil", supplierId: venkat }] };
+  assert.deepEqual(supplierFor(order, line(rice)), sri);
+  assert.deepEqual(supplierFor(order, line(oil)), venkat);
+  assert.equal(supplierFor({ supplier: null }, line(rice)), null);
+  const groups = groupBySupplier(order, [line(rice), line(oil), line(salt), line(rice, { packId: "bag" })]);
+  assert.deepEqual(groups.map((g) => [g.supplier?.name, g.lines.map((l) => l.stockItemId._id)]), [["Sri Lakshmi Traders", ["rice", "salt"]], ["Venkat Oils", ["oil"]]]);
+  assert.deepEqual(groupBySupplier({}, [line(rice)]).map((g) => [g.supplier, g.lines.length]), [[null, 1]]);
 });
 
 test("the central store's expiry pre-fills the form for that product only, and stays editable", () => {

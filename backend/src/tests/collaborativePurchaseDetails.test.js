@@ -104,6 +104,39 @@ test("the admin sets an expiry per product for bulk buys; kitchens see it, and o
   assert.deepEqual(cleared.body.expiryByProduct, []);
 });
 
+test("a product can come from a different supplier than the order; kitchens see it and batches copy it", async () => {
+  const other = await Supplier.create({ name: "Venkat Oils", nameKey: "venkat oils", fssaiLicence: "22222222222222" });
+  const dal = await StockItem.create({ name: "Dal", stockGroupId: ctx.rice.stockGroupId, unitId: ctx.rice.unitId, pricePerUnit: 80 });
+  const order = (await call(ctx.cookA, "post", "/").send({ neededIn: "1w", items: [{ stockItemId: ctx.rice._id, qtyBaseUnit: 10 }, { stockItemId: dal._id, qtyBaseUnit: 5 }] })).body;
+  await call(ctx.admin, "post", `/${order._id}/approve`).send({});
+  await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id });
+  const p = (body) => call(ctx.admin, "patch", `/${order._id}/purchase`).send(body);
+
+  assert.equal((await p({ supplierOverrides: [{ stockItemId: dal._id, supplierId: ctx.archived._id }] })).status, 400);
+  assert.equal((await p({ supplierOverrides: [{ stockItemId: "000000000000000000000000", supplierId: other._id }] })).status, 400);
+  const saved = await p({ supplierOverrides: [{ stockItemId: dal._id, supplierId: other._id }] });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal(saved.body.supplierByProduct[0].supplierId.name, "Venkat Oils");
+  const seen = (await call(ctx.cookA, "get", `/${order._id}`)).body;
+  assert.equal(seen.supplier.name, "Sri Lakshmi Traders");
+  assert.deepEqual(seen.supplierByProduct.map((e) => [String(e.stockItemId), e.supplierId.name, e.supplierId.fssaiLicence]), [[String(dal._id), "Venkat Oils", "22222222222222"]]);
+
+  await call(ctx.admin, "post", `/${order._id}/dispatch`).send({ godownId: ctx.cookA.user.godownId });
+  const photos = { goods: "https://x/g.jpg", label: "https://x/l.jpg" };
+  const received = await call(ctx.cookA, "post", `/${order._id}/receive`).send({ items: [
+    { stockItemId: ctx.rice._id, photos, expiryDate: "2030-01-01" }, { stockItemId: dal._id, photos, expiryDate: "2030-01-01" },
+  ] });
+  assert.equal(received.status, 200, JSON.stringify(received.body));
+  const { StockBatch } = await import("../models/StockBatchModel.js");
+  assert.equal((await StockBatch.findOne({ stockItemId: ctx.rice._id }).lean()).supplierName, "Sri Lakshmi Traders");
+  const dalBatch = await StockBatch.findOne({ stockItemId: dal._id }).lean();
+  assert.equal(dalBatch.supplierName, "Venkat Oils");
+  assert.equal(dalBatch.supplierFssaiLicence, "22222222222222");
+
+  const cleared = await p({ supplierOverrides: [{ stockItemId: dal._id, supplierId: null }] });
+  assert.deepEqual(cleared.body.supplierByProduct, []);
+});
+
 test("purchase details cannot be set on an order that is still open or cancelled", async () => {
   const open = (await call(ctx.cookA, "post", "/").send({ neededIn: "1w", items: [{ stockItemId: ctx.rice._id, qtyBaseUnit: 5 }] })).body;
   const res = await call(ctx.admin, "patch", `/${open._id}/purchase`).send({ supplierId: ctx.supplier._id });

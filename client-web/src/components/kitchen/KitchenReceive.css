@@ -6,6 +6,7 @@
 .kr-supplier strong { color: #17231c; font-size: .9rem; }
 .kr-supplier small { color: #5d7068; font-size: .74rem; line-height: 1.35; }
 
+.kr-group + .kr-group { margin-top: 18px; }
 .kr-items { display: grid; gap: 12px; }
 .kr-item { display: grid; gap: 14px; }
 .kr-item.is-ready { border-color: #0f766e; }

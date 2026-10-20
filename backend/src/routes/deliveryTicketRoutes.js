@@ -9,6 +9,7 @@ import { createStockBatch } from "../stock/batchService.js";
 import { nextTrackingId } from "../stock/trackingId.js";
 import { readOrderingSettings } from "../ordering/settings.js";
 import { closesAtFor, neededByFor } from "../ordering/window.js";
+import { supplierSnapshotFor } from "./collaborativePurchaseOrderRoutes.js";
 
 // Admin view of delivery problems kitchens raised while receiving shared orders (raised through
 // POST /api/procurement/collaborative-purchase-orders/:id/receive with a `problem` on the item).
@@ -77,7 +78,8 @@ deliveryTicketRoutes.post("/:id/settle", adminOnly, async (req, res) => {
       if (ticket.status !== "open") throw fail(409, "This problem has already been settled", "ALREADY_SETTLED");
       if (!Number.isFinite(accepted) || accepted < 0) throw fail(400, "Enter the quantity to accept into stock (0 or more)");
       if (accepted > ticket.receivedQtyBaseUnit) throw fail(400, `Only ${ticket.receivedQtyBaseUnit} usable arrived, so at most that can be accepted`);
-      const order = await CollaborativePurchaseOrder.findById(ticket.orderId).populate("supplierId", "name fssaiLicence").session(session);
+      const order = await CollaborativePurchaseOrder.findById(ticket.orderId)
+        .populate("supplierId", "name fssaiLicence").populate("supplierByProduct.supplierId", "name fssaiLicence").session(session);
       if (!order) throw fail(404, "The order for this problem no longer exists");
       const share = order.contributions.find((entry) => String(entry.godownId) === String(ticket.godownId));
       const line = share?.items.find((entry) => String(entry.ticketId) === String(ticket._id));
@@ -99,7 +101,7 @@ deliveryTicketRoutes.post("/:id/settle", adminOnly, async (req, res) => {
           expectedQtyBaseUnit: ticket.orderedQtyBaseUnit, createdBy: req.user.sub, session, trackingId,
           expiryDate: d.expiryDate, mfgDate: d.mfgDate, lotNumber: d.lotNumber, storage: d.storage, photos: d.photos,
           notes: `${ticket.reason}: ${ticket.note}`.trim(),
-          supplierName: order.supplierId?.name || "", supplierFssaiLicence: order.supplierId?.fssaiLicence || "",
+          ...supplierSnapshotFor(order, ticket.stockItemId),
         });
       }
       const shortfall = Math.max(0, Number(ticket.orderedQtyBaseUnit) - accepted);
