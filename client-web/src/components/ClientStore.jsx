@@ -757,7 +757,8 @@ setEditIndentId(indent._id);
           onDateChange={setSelectedDate}
           cart={cart}
           onQuantityChange={addToCart}
-          onReview={() => setIsCartOpen(true)}
+          onClear={() => setCart([])}
+          onSubmit={handleSubmit}
         />
       ) : activeTab === "requests" ? (
         <KitchenOrders

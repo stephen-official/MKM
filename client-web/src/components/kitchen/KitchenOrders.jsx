@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronDown, ChevronRight, Clock, History, Lock, Minus, Plus, RefreshCw, Search, Truck, Users, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, Clock, History, Lock, Minus, Plus, RefreshCw, Search, Truck, Users, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
@@ -6,6 +6,7 @@ import { productPacks } from "../../features/kitchen";
 import { canEditShare, closesInText, deliveryDateText, hasArriving, kitchenStage, lineState, myOrders, myShare, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
 import { arrivingLines } from "../../features/kitchen/receiving";
 import KitchenReceiveItems from "./KitchenReceiveItems";
+import OrderTicket from "./OrderTicket";
 import { useConfirm } from "../ui/ConfirmDialog";
 import "./SupplyRequestsDeliveries.css";
 import "./KitchenOrders.css";
@@ -100,34 +101,6 @@ const ticketRows = (cart, products, locked) => Object.entries(cart).flatMap(([id
   return [{ id, name: product.name, amount, unit: pack ? pack.name : product.unit, locked: locked.has(id) }];
 });
 
-/** Receipt-style list of what the kitchen is asking for. Each row has its own stepper, so the cook sees the whole request at once. */
-function OrderTicket({ rows, when, open, onToggle, onChange, onClear }) {
-  const count = rows.length;
-  return <section className="ko-ticket" id="ko-ticket" aria-labelledby="ko-ticket-title">
-    <button type="button" className="ko-ticket__head" onClick={onToggle} aria-expanded={open} aria-controls="ko-ticket-body">
-      <span><p>Order ticket</p><h2 id="ko-ticket-title">{count === 0 ? "Nothing added yet" : `${count} ${count === 1 ? "item" : "items"}`}</h2></span>
-      <ChevronDown size={20} className={open ? "is-open" : ""} aria-hidden="true" />
-    </button>
-    {open && <div id="ko-ticket-body">
-      {when && <dl className="ko-ticket__meta"><dt>Delivery</dt><dd>{when}</dd></dl>}
-      {count === 0
-        ? <p className="ko-ticket__empty">Tap “Add” on a supply below and it will be listed here.</p>
-        : <ul className="ko-ticket__rows" aria-label="Items on this ticket">
-          <li className="ko-ticket__cols" aria-hidden="true"><span>Item</span><span>Qty</span></li>
-          {rows.map((row) => <li key={row.id}>
-            <div className="ko-ticket__name"><strong>{row.name}</strong><small>{row.unit}{row.locked ? " · approved" : ""}</small></div>
-            <div className="ko-ticket__stepper">
-              <button type="button" disabled={row.locked} onClick={() => onChange(row.id, Math.max(0, row.amount - 1))} aria-label={row.amount <= 1 ? `Remove ${row.name}` : `Less ${row.name}`}>{row.amount <= 1 ? <X size={15} /> : <Minus size={15} />}</button>
-              <b>{qty(row.amount)}</b>
-              <button type="button" disabled={row.locked} onClick={() => onChange(row.id, row.amount + 1)} aria-label={`More ${row.name}`}><Plus size={15} /></button>
-            </div>
-          </li>)}
-        </ul>}
-      {rows.some((row) => !row.locked) && <button type="button" className="ko-ticket__clear" onClick={onClear}>Remove all items</button>}
-    </div>}
-  </section>;
-}
-
 function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeededIn, emergency, setEmergency, busy, onBack, onSubmit, now }) {
   const [search, setSearch] = useState("");
   const [ticketOpen, setTicketOpen] = useState(true);
@@ -151,7 +124,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
   };
   const showTicket = () => {
     setTicketOpen(true);
-    document.getElementById("ko-ticket")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById("kitchen-ticket")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return <main className="srd-shell ko-picker">
@@ -161,7 +134,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
       <span>{mode.type === "new" ? "Choose what your kitchen needs and when." : `Delivery by ${deliveryDateText(mode.order.neededBy, { withTime: mode.order.emergency })}.`}</span></div></header>
 
     <div className="ko-picker__layout">
-      <OrderTicket rows={rows} when={when} open={ticketOpen} onToggle={() => setTicketOpen((value) => !value)} onChange={setAmount} onClear={clearTicket} />
+      <OrderTicket rows={rows} meta={[{ label: "Delivery", value: when }]} emptyText="Tap “Add” on a supply below and it will be listed here." open={ticketOpen} onToggle={() => setTicketOpen((value) => !value)} onChange={setAmount} onClear={clearTicket} />
 
       <div className="ko-picker__main">
         {mode.type === "new" && <section className="ko-when" aria-label="When do you need it">
@@ -199,7 +172,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
                     <span>{unit}</span>
                     <button type="button" disabled={isLocked} onClick={() => setAmount(id, amount + 1)} aria-label={`More ${product.name}`}><Plus size={17} /></button>
                   </div>
-                  : <button type="button" className="ko-add" onClick={() => setAmount(id, 1)} aria-label={`Add ${product.name}`}><Plus size={17} aria-hidden="true" /> Add<span>{unit}</span></button>}
+                  : <button type="button" className="kt-add" onClick={() => setAmount(id, 1)} aria-label={`Add ${product.name}`}><Plus size={17} aria-hidden="true" /> Add<span>{unit}</span></button>}
               </div>
             </article>;
           })}

@@ -1,9 +1,11 @@
-import { AlertTriangle, ChevronRight, Minus, Plus, Search, Utensils } from "lucide-react";
+import { AlertTriangle, Check, Minus, Plus, Search, Utensils, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
-import { toLocalDateKey } from "../../utils/date";
+import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import { expiryStatus, needsAttention, sortByExpiry } from "../../features/kitchen";
 import DateField from "../ui/DateField";
+import { useConfirm } from "../ui/ConfirmDialog";
+import OrderTicket from "./OrderTicket";
 import "./KitchenUsageScreen.css";
 
 const itemId = (item) => item?.stockRecordId || item?._id || item?.stockItemId?._id || item?.stockItemId;
@@ -41,10 +43,13 @@ export default function KitchenUsageScreen({
   quantities = {},
   cart,
   onQuantityChange,
-  onReview,
+  onClear,
+  onSubmit,
   submitting = false,
 }) {
   const [search, setSearch] = useState("");
+  const [ticketOpen, setTicketOpen] = useState(true);
+  const [confirm, confirmDialog] = useConfirm();
   const quantitySource = cart ?? quantities;
   const today = toLocalDateKey();
 
@@ -62,6 +67,15 @@ export default function KitchenUsageScreen({
     () => items.filter((item) => numericQuantity(quantityFor(quantitySource, item)) > 0),
     [items, quantitySource],
   );
+  // Ticket rows in the order the cook added them (the cart array keeps that order); the stock list stays alphabetical.
+  const ticketRows = useMemo(() => {
+    const source = Array.isArray(quantitySource) ? quantitySource : selectedItems;
+    return source.flatMap((entry) => {
+      const item = items.find((candidate) => itemId(candidate) === itemId(entry));
+      const amount = numericQuantity(quantityFor(quantitySource, entry));
+      return item && amount > 0 ? [{ id: itemId(item), name: item.name || "Unnamed supply", amount, unit: unitOf(item) }] : [];
+    });
+  }, [items, quantitySource, selectedItems]);
 
   const updateQuantity = (item, nextValue) => {
     if (nextValue === "") {
@@ -78,9 +92,22 @@ export default function KitchenUsageScreen({
     const next = Math.min(Number(nextValue) || 0, available);
     onQuantityChange?.(item, nextValue.endsWith?.(".") ? nextValue : next);
   };
+  const setAmount = (item, amount) => updateQuantity(item, amount > 0 ? String(amount) : "");
+  const changeRow = (id, amount) => {
+    const item = items.find((candidate) => itemId(candidate) === id);
+    if (item) setAmount(item, amount);
+  };
+  const clearTicket = async () => {
+    if (await confirm({ title: "Remove all items from the ticket?", message: "Nothing has been recorded yet.", confirmLabel: "Remove all", danger: true })) onClear?.();
+  };
+  const showTicket = () => {
+    setTicketOpen(true);
+    document.getElementById("kitchen-ticket")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return (
     <main className="kus-screen">
+      {confirmDialog}
       <header className="kus-intro">
         <span className="kus-intro__icon" aria-hidden="true"><Utensils size={23} /></span>
         <div>
@@ -90,6 +117,11 @@ export default function KitchenUsageScreen({
         </div>
       </header>
 
+      <div className="kus-layout">
+      <OrderTicket title="Usage ticket" rows={ticketRows} meta={[{ label: "Usage date", value: formatDateKey(selectedDate) }]}
+        emptyText="Tap “Add” on a supply below and it will be listed here." open={ticketOpen} onToggle={() => setTicketOpen((value) => !value)}
+        onChange={changeRow} onClear={onClear ? clearTicket : undefined} />
+      <div className="kus-main">
       <section className="kus-controls" aria-label="Usage details">
         <label className="kus-date">
           <span>Usage date</span>
@@ -153,8 +185,11 @@ export default function KitchenUsageScreen({
                   )}
                   <div className="kus-item__entry">
                     <label htmlFor={`usage-${id}`}>Quantity used</label>
+                    {!isSelected ? (
+                      <button type="button" className="kt-add" onClick={() => setAmount(item, Math.min(1, available))} disabled={available === 0 || submitting} aria-label={`Add ${item?.name || "item"}`}><Plus size={17} aria-hidden="true" /> Add<span>{unit}</span></button>
+                    ) : (
                     <div className="kus-stepper">
-                      <button type="button" onClick={() => updateQuantity(item, Math.max(used - 1, 0))} disabled={used <= 0 || submitting} aria-label={`Decrease ${item?.name || "item"} quantity`}><Minus size={17} /></button>
+                      <button type="button" onClick={() => setAmount(item, Math.max(used - 1, 0))} disabled={submitting} aria-label={used <= 1 ? `Remove ${item?.name || "item"}` : `Decrease ${item?.name || "item"} quantity`}>{used <= 1 ? <X size={17} /> : <Minus size={17} />}</button>
                       <input
                         id={`usage-${id}`}
                         type="text"
@@ -168,9 +203,10 @@ export default function KitchenUsageScreen({
                       <span>{unit}</span>
                       <button type="button" onClick={() => updateQuantity(item, Math.min(used + 1, available))} disabled={used >= available || available === 0 || submitting} aria-label={`Increase ${item?.name || "item"} quantity`}><Plus size={17} /></button>
                     </div>
+                    )}
                   </div>
                   <p id={`remaining-${id}`} className="kus-item__remaining">
-                    {isSelected ? <>Remaining after usage: <strong>{displayNumber(remaining)} {unit}</strong></> : available === 0 ? "This item is out of stock" : "Enter the amount used today"}
+                    {isSelected ? <>Remaining after usage: <strong>{displayNumber(remaining)} {unit}</strong></> : available === 0 ? "This item is out of stock" : "Tap Add if you used this today"}
                   </p>
                 </article>
               );
@@ -178,11 +214,13 @@ export default function KitchenUsageScreen({
           </div>
         )}
       </section>
+      </div>
+      </div>
 
       <footer className="kus-review">
-        <div><strong>{selectedItems.length}</strong><span>{selectedItems.length === 1 ? "item selected" : "items selected"}</span></div>
-        <button type="button" onClick={onReview} disabled={!selectedDate || !selectedItems.length || submitting}>
-          {submitting ? "Saving…" : "Review usage"}<ChevronRight size={19} aria-hidden="true" />
+        <button type="button" className="kus-review__count" onClick={showTicket} aria-label={`${ticketRows.length} ${ticketRows.length === 1 ? "item" : "items"} on the ticket. Show the ticket.`}><strong>{ticketRows.length}</strong><span>{ticketRows.length === 1 ? "item" : "items"} · view ticket</span></button>
+        <button type="button" onClick={onSubmit} disabled={!selectedDate || !ticketRows.length || submitting}>
+          {submitting ? "Saving…" : "Record usage"}<Check size={19} aria-hidden="true" />
         </button>
       </footer>
     </main>
