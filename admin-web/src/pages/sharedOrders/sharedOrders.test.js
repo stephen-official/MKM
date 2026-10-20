@@ -40,18 +40,25 @@ describe("shared orders (admin)", () => {
     expect(canDispatchAll({ status: "ordered", contributions: [share({ items: [sent] }), mixed] })).toBe(true);
     expect(canDispatchAll({ status: "ordered", contributions: [share({ items: [sent] })] })).toBe(false);
     expect([lineDelivery(pending, mixed), lineDelivery(sent, mixed), lineDelivery({ ...sent, deliveredAt: at(-1) }, mixed)]).toEqual(["Not sent", "On the way", "Received"]);
-    expect(shareStage(ordered, mixed)).toBe("Partly dispatched");
+    expect(shareStage(ordered, mixed)).toBe("Incomplete dispatch");
     expect(shareStage(ordered, share({ items: [{ ...sent, deliveredAt: at(-1) }, sent] }))).toBe("Partly received");
   });
 
-  it("each kitchen's share reads as one plain stage", () => {
-    expect(shareStage({ status: "open" }, share())).toBe("Requested");
-    expect(shareStage({ status: "open" }, share({ approvedAt: at(-1) }))).toBe("Approved");
-    expect(shareStage({ status: "approved" }, share())).toBe("Approved");
-    expect(shareStage({ status: "ordered" }, share())).toBe("Ordered");
+  it("each kitchen's stage says what the admin has to do next", () => {
+    expect(shareStage({ status: "open" }, share())).toBe("Needs approval");
+    expect(shareStage({ status: "open" }, share({ approvedAt: at(-1) }))).toBe("Place order");
+    expect(shareStage({ status: "approved" }, share())).toBe("Place order");
+    expect(shareStage({ status: "ordered" }, share())).toBe("Needs to be dispatched");
     expect(shareStage({ status: "ordered" }, share({ dispatchedAt: at(-1), items: [{}] }))).toBe("Dispatched");
     expect(shareStage({ status: "ordered" }, share({ dispatchedAt: at(-2), deliveredAt: at(-1) }))).toBe("Delivered");
     expect(shareStage({ status: "cancelled" }, share())).toBe("Cancelled");
+  });
+
+  it("an open delivery problem is the stage, whatever else is going on", () => {
+    const problem = { dispatchedAt: at(-2), ticketId: "t1" };
+    expect(shareStage({ status: "ordered" }, share({ items: [problem] }))).toBe("Problem to settle");
+    expect(shareStage({ status: "ordered" }, share({ items: [problem, { dispatchedAt: at(-2), deliveredAt: at(-1) }] }))).toBe("Problem to settle");
+    expect(shareStage({ status: "ordered" }, share({ deliveredAt: at(-1), items: [{ ...problem, deliveredAt: at(-1) }] }))).toBe("Delivered");
   });
 
   it("the ordering timer reads simply", () => {

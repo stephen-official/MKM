@@ -14,7 +14,7 @@ const when = (value, withTime = false) => (value ? new Intl.DateTimeFormat("en-I
   timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", ...(withTime ? { hour: "numeric", minute: "2-digit" } : {})
 }).format(new Date(value)) : "—");
 const itemNames = (order) => [...new Set((order.combinedItems || []).map((line) => line.stockItemId?.name).filter(Boolean))].join(", ");
-const STAGE_VARIANT = { Requested: "warn", Approved: "info", Ordered: "info", "Partly dispatched": "info", Dispatched: "info", "Partly received": "info", Delivered: "success", Cancelled: "alert" };
+const STAGE_VARIANT = { "Needs approval": "warn", "Place order": "warn", "Needs to be dispatched": "warn", "Incomplete dispatch": "warn", Dispatched: "info", "Partly received": "info", "Problem to settle": "alert", Delivered: "success", Cancelled: "neutral" };
 const DELIVERY_VARIANT = { "Not sent": "neutral", "On the way": "info", "Problem raised": "warn", Received: "success" };
 
 /** Kitchens' shared orders: approve lines, kitchens or everything, mark the order as placed, and dispatch each kitchen. */

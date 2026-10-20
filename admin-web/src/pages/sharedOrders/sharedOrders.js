@@ -22,17 +22,18 @@ export const canDispatchAll = (order) => (order?.contributions || []).some((shar
 /** "Not sent", "On the way", "Problem raised" or "Received" for one line. */
 export const lineDelivery = (line, share) => (isReceived(line, share) ? "Received" : line?.ticketId ? "Problem raised" : isSent(line, share) ? "On the way" : "Not sent");
 
-/** One kitchen's progress in plain words, from Requested to Delivered (with Partly dispatched / Partly received). */
+/** One kitchen's stage as the next thing to do: Needs approval → Place order → Needs to be dispatched → Dispatched → Delivered (plus Incomplete dispatch, Partly received, Problem to settle). */
 export const shareStage = (order, share) => {
   if (order?.status === "cancelled") return "Cancelled";
   const lines = share?.items || [];
   if (share?.deliveredAt) return "Delivered";
+  if (lines.some((line) => line?.ticketId && !isReceived(line, share))) return "Problem to settle";
   if (lines.some((line) => isReceived(line, share))) return "Partly received";
   if (lines.length && lines.every((line) => isSent(line, share))) return "Dispatched";
-  if (lines.some((line) => isSent(line, share))) return "Partly dispatched";
-  if (order?.status === "ordered") return "Ordered";
-  if (order?.status === "approved" || share?.approvedAt) return "Approved";
-  return "Requested";
+  if (lines.some((line) => isSent(line, share))) return "Incomplete dispatch";
+  if (order?.status === "ordered") return "Needs to be dispatched";
+  if (order?.status === "approved" || share?.approvedAt) return "Place order";
+  return "Needs approval";
 };
 
 /** "Closes in 2 days 4 h", "Closes in 5 h 30 min", "Closes in 15 min" or "Ordering closed". */
