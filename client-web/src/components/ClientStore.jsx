@@ -834,6 +834,13 @@ setEditIndentId(indent._id);
             setEditIndentId(null);
             setActiveTab(activeTransactionType === "transfer" ? "transfers" : "past-requests");
           }}
+          destination={transferDestination}
+          destinations={godowns}
+          currentGodownId={userInfo?.godown?._id}
+          onDestinationChange={setTransferDestination}
+          onClear={() => setCart([])}
+          onSubmit={handleSubmit}
+          onReview={() => setIsCartOpen(true)}
         />
       )}
 
@@ -1440,28 +1447,6 @@ activeTransactionType === "request"
           onClose={() => setIsCartOpen(false)}
           onSubmit={handleSubmit}
         />
-      )}
-      {activeTab === "request-builder" && (
-        <div className="kitchen-builder-review fixed z-30 right-0 bottom-[67px] left-0 border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur-md">
-          <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
-            <div className="min-w-0">
-              <strong className="block text-sm text-gray-900">
-                {cart.filter(item => Number(item.requestedQty) > 0).length} items selected
-              </strong>
-              <span className="block truncate text-xs text-gray-500">
-                {activeTransactionType === "transfer" ? "Review destination and quantities" : "Review quantities, date and reason"}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsCartOpen(true)}
-              disabled={!cart.some(item => Number(item.requestedQty) > 0)}
-              className="min-h-11 shrink-0 rounded-xl bg-green-700 px-5 text-sm font-bold text-white disabled:bg-gray-200 disabled:text-gray-500"
-            >
-              Review &amp; continue
-            </button>
-          </div>
-        </div>
       )}
       <KitchenBottomNav
         activeTab={
