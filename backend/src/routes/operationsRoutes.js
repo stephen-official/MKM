@@ -11,7 +11,7 @@ import { isAdminRole, isKitchenRole } from "../utils/roles.js";
 import { pricesForKitchen } from "../executive/valuation.js";
 import { businessDateOf, normalizeBusinessDate } from "../executive/params.js";
 import { round2 } from "../utils/money.js";
-import { createStockBatch, deductFifo, restoreBatchAllocations, valuationFromAllocations } from "../stock/batchService.js";
+import { createStockBatch, deductFefo, restoreBatchAllocations, valuationFromAllocations } from "../stock/batchService.js";
 import { StockBatch } from "../models/StockBatchModel.js";
 import { stripPrices } from "../utils/kitchenSafe.js";
 
@@ -28,7 +28,7 @@ const removeReturnedStock = async ({ item, godownId, stockItemId, stock, session
       remaining -= take;
     }
   }
-  if (remaining > 1e-8) await deductFifo({ godownId, stockItemId, quantity: remaining, stock, session });
+  if (remaining > 1e-8) await deductFefo({ godownId, stockItemId, quantity: remaining, stock, session });
 };
 
 /**
@@ -52,11 +52,32 @@ const deepPopulateItem = {
     }
   ]
 };
+/**
+ * Dated stock a kitchen holds, per product: Map stockItemId → [{ date: "YYYY-MM-DD", qtyBaseUnit }], soonest first.
+ * Lots are grouped by expiry date (no batch ids, no prices), which is all the kitchen app needs for its
+ * "use first" banners. Undated batches are left out.
+ */
+const expiryLotsFor = async (godownId) => {
+  const rows = await StockBatch.aggregate([
+    { $match: { godownId: new mongoose.Types.ObjectId(String(godownId)), remainingQtyBaseUnit: { $gt: 0 }, expiryDate: { $ne: null } } },
+    { $group: { _id: { stockItemId: "$stockItemId", expiryDate: "$expiryDate" }, qtyBaseUnit: { $sum: "$remainingQtyBaseUnit" } } },
+    { $sort: { "_id.expiryDate": 1 } },
+  ]);
+  const lots = new Map();
+  for (const row of rows) {
+    const key = String(row._id.stockItemId);
+    if (!lots.has(key)) lots.set(key, []);
+    lots.get(key).push({ date: businessDateOf(row._id.expiryDate), qtyBaseUnit: row.qtyBaseUnit });
+  }
+  return lots;
+};
+
 // --- 1. KITCHEN STOCK FETCH ---
 operationsRoutes.get("/my-kitchen-stock", authorize(["user", "admin"]), async (req, res) => {
   try {
     const godownId = req.user.godownId;
     if (!godownId) return res.status(400).json({ error: "User not assigned to a godown" });
+    const expiryLots = await expiryLotsFor(godownId);
 
     const stock = await GodownStock.find({ godownId })
       .populate({
@@ -85,6 +106,7 @@ select: "name stockGroupId unitId imageUrl itemType pricePerUnit soldInPacks pac
   image: s.stockItemId?.imageUrl || "",
   soldInPacks: Boolean(s.stockItemId?.soldInPacks),
   packs: s.stockItemId?.packs || [],
+  expiries: expiryLots.get(String(s.stockItemId?._id)) || [],
 
   itemType: s.stockItemId?.itemType || "stock"
 }));
@@ -140,7 +162,7 @@ const handleStockProcessing = async (req, res) => {
         if (qtyToDeduct > Number(updatedStock.qtyBaseUnit || 0)) {
           throw new Error(`Insufficient stock for ${updatedStock.stockItemId.name}.`);
         }
-        const batchAllocations = await deductFifo({
+        const batchAllocations = await deductFefo({
           godownId, stockItemId: updatedStock.stockItemId._id,
           quantity: qtyToDeduct, stock: updatedStock, session,
         });
@@ -411,7 +433,7 @@ operationsRoutes.patch(
         // ----------------------------------------------------
         // Save new consumption items
         // ----------------------------------------------------
-        // Restore the original batch allocations, then apply the edited lines through FIFO again.
+        // Restore the original batch allocations, then apply the edited lines through FEFO again.
         const originalPrices = new Map();
         for (const old of oldItems) {
           const key = String(old.stockItemId);
@@ -455,7 +477,7 @@ operationsRoutes.patch(
           let batchAllocations = [];
           let valuation;
           if (quantity > 0) {
-            batchAllocations = await deductFifo({ godownId, stockItemId: item.stockItemId, quantity, stock, session });
+            batchAllocations = await deductFefo({ godownId, stockItemId: item.stockItemId, quantity, stock, session });
             const batchValuation = valuationFromAllocations(quantity, batchAllocations);
             valuation = originalPrices.has(String(item.stockItemId))
               ? { unitPriceAtIssue: existingPrice, amountAtIssue: existingPrice == null ? null : round2(quantity * existingPrice) }
@@ -757,7 +779,7 @@ operationsRoutes.post("/requests/:id/approve", authorize(["admin"]), async (req,
         if (!stock) stock = new GodownStock({ godownId: request.godownId, stockItemId: item.stockItemId, qtyBaseUnit: 0, thresholdBaseUnit: 0 });
         if (quantity > 0) {
           if (Number(stock.qtyBaseUnit) < quantity) throw new Error("Insufficient kitchen stock for one or more items");
-          const batchAllocations = await deductFifo({ godownId: request.godownId, stockItemId: item.stockItemId, quantity, stock, session });
+          const batchAllocations = await deductFefo({ godownId: request.godownId, stockItemId: item.stockItemId, quantity, stock, session });
           stock.qtyBaseUnit -= quantity;
           batchLines.push({ stockItemId: item.stockItemId, qtyBaseUnit: quantity, batchAllocations, ...valuationFromAllocations(quantity, batchAllocations) });
         } else {
@@ -877,7 +899,7 @@ throw new Error("Source stock missing");
 if(source.qtyBaseUnit<item.qtyBaseUnit)
 throw new Error("Insufficient stock");
 
-const batchAllocations = await deductFifo({
+const batchAllocations = await deductFefo({
   godownId: transfer.fromGodownId,
   stockItemId: item.stockItemId,
   quantity: item.qtyBaseUnit,

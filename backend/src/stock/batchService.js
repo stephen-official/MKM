@@ -51,13 +51,29 @@ const ensureOpeningCoverage = async ({ godownId, stockItemId, stock, session }) 
   }
 };
 
-export const deductFifo = async ({ godownId, stockItemId, quantity, stock, session }) => {
+/**
+ * First-expired-first-out order: soonest expiry first (an expired batch comes before everything), then batches
+ * with no expiry date (opening balances, distributions) oldest received first. Done in code rather than a Mongo
+ * sort because Mongo sorts null before every date, which would put undated legacy stock ahead of expiring stock.
+ * Matches the "use first" order the kitchen app shows, so what the cook is told to use is what the records deduct.
+ */
+export const fefoOrder = (batches) => [...batches].sort((a, b) => {
+  const expiryA = a.expiryDate ? new Date(a.expiryDate).getTime() : Infinity;
+  const expiryB = b.expiryDate ? new Date(b.expiryDate).getTime() : Infinity;
+  if (expiryA !== expiryB) return expiryA < expiryB ? -1 : 1;
+  const receivedA = new Date(a.receivedAt).getTime();
+  const receivedB = new Date(b.receivedAt).getTime();
+  if (receivedA !== receivedB) return receivedA - receivedB;
+  return String(a._id).localeCompare(String(b._id));
+});
+
+export const deductFefo = async ({ godownId, stockItemId, quantity, stock, session }) => {
   const qty = Number(quantity);
-  if (!(qty > 0)) throw new Error("FIFO deduction quantity must be greater than zero");
+  if (!(qty > 0)) throw new Error("FEFO deduction quantity must be greater than zero");
   await ensureOpeningCoverage({ godownId, stockItemId, stock, session });
-  const batches = await StockBatch.find({
+  const batches = fefoOrder(await StockBatch.find({
     godownId, stockItemId, remainingQtyBaseUnit: { $gt: 0 },
-  }).sort({ receivedAt: 1, _id: 1 }).session(session);
+  }).session(session));
   let needed = qty;
   const allocations = [];
   for (const batch of batches) {
