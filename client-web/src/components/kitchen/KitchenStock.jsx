@@ -1,7 +1,8 @@
 import { AlertTriangle, Ban, Boxes, PackagePlus, PackageX, RefreshCw, Search, Utensils, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import ProductRequestSheet from "./ProductRequestSheet";
-import { formatStockQuantity, getStockHealth } from "../../features/kitchen";
+import { expiryStatus, formatStockQuantity, getStockHealth } from "../../features/kitchen";
+import { toLocalDateKey } from "../../utils/date";
 import "./KitchenStock.css";
 
 const FILTERS = [
@@ -36,6 +37,7 @@ export default function KitchenStock({
 }) {
   const canRecordUsage = !hidden.has("usage");
   const [requesting, setRequesting] = useState(false);
+  const today = toLocalDateKey();
   const counts = useMemo(() => {
     const result = { all: items.length, low: 0, out: 0 };
     items.forEach((item) => {
@@ -140,6 +142,7 @@ export default function KitchenStock({
             const unit = itemUnit(item);
             // The product's catalog details are incomplete (or it was archived): it is shown but cannot be used.
             const unavailable = item.available === false;
+            const expiry = expiryStatus(item, today);
             return (
               <li className={`ks-card ks-card--${unavailable ? "unavailable" : health.tone}`} key={stockKey(item, index)}>
                 <div className="ks-card__icon" aria-hidden="true">
@@ -155,6 +158,13 @@ export default function KitchenStock({
                     </div>
                     <p className="ks-quantity"><strong>{formatStockQuantity(health.quantity, unit, item)}</strong></p>
                   </div>
+                  {expiry.key !== "none" && (
+                    <p className={`ks-expiry ks-expiry--${expiry.tone}`}>
+                      {expiry.key === "expired" ? `${expiry.label} · ${formatQuantity(expiry.qtyBaseUnit)} ${unit} · check before using`
+                        : expiry.key === "soon" ? `${expiry.label} · ${formatQuantity(expiry.qtyBaseUnit)} ${unit} · use first`
+                        : expiry.label}
+                    </p>
+                  )}
                   <div className="ks-card__footer">
                     <p>{unavailable
                       ? item.archived

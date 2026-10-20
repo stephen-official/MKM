@@ -1,7 +1,8 @@
-import { ChevronRight, Minus, Plus, Search, Utensils } from "lucide-react";
+import { AlertTriangle, ChevronRight, Minus, Plus, Search, Utensils } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { toLocalDateKey } from "../../utils/date";
+import { expiryStatus, needsAttention, sortByExpiry } from "../../features/kitchen";
 import DateField from "../ui/DateField";
 import "./KitchenUsageScreen.css";
 
@@ -47,13 +48,15 @@ export default function KitchenUsageScreen({
   const quantitySource = cart ?? quantities;
   const today = toLocalDateKey();
 
+  // Expired and soon-to-expire stock first, so the cook uses it first; the deduction on the server follows the same order.
   const visibleItems = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    if (!query) return items;
-    return items.filter((item) =>
+    const ordered = sortByExpiry(items, today);
+    if (!query) return ordered;
+    return ordered.filter((item) =>
       String(item?.name || "").toLocaleLowerCase().includes(query),
     );
-  }, [items, search]);
+  }, [items, search, today]);
 
   const selectedItems = useMemo(
     () => items.filter((item) => numericQuantity(quantityFor(quantitySource, item)) > 0),
@@ -127,6 +130,7 @@ export default function KitchenUsageScreen({
               const remaining = Math.max(available - used, 0);
               const unit = unitOf(item);
               const isSelected = used > 0;
+              const expiry = expiryStatus(item, today);
 
               return (
                 <article className={`kus-item${isSelected ? " kus-item--selected" : ""}`} key={id}>
@@ -139,6 +143,14 @@ export default function KitchenUsageScreen({
                       </p>
                     </div>
                   </div>
+                  {needsAttention(expiry) && (
+                    <p className={`kus-item__expiry kus-item__expiry--${expiry.tone}`} role={expiry.key === "expired" ? "alert" : undefined}>
+                      <AlertTriangle size={15} aria-hidden="true" />
+                      <span>{expiry.key === "expired"
+                        ? <><strong>{expiry.label}</strong> · {displayNumber(expiry.qtyBaseUnit)} {unit} · check before using</>
+                        : <><strong>Use first:</strong> {expiry.label} · {displayNumber(expiry.qtyBaseUnit)} {unit}</>}</span>
+                    </p>
+                  )}
                   <div className="kus-item__entry">
                     <label htmlFor={`usage-${id}`}>Quantity used</label>
                     <div className="kus-stepper">

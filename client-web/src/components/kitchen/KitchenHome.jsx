@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { createElement } from "react";
 import { toLocalDateKey } from "../../utils/date";
+import { expiryStatus, itemsToUseFirst } from "../../features/kitchen";
 import "./KitchenHome.css";
 
 const OPEN_REQUEST_STATUSES = new Set([
@@ -105,6 +106,8 @@ export default function KitchenHome({
     return quantity > 0 && threshold > 0 && quantity <= threshold;
   });
   const attentionItems = [...outOfStock, ...lowStock];
+  // Expired or expiring within the week, most urgent first; usable items only, since the rest cannot be recorded anyway.
+  const useFirst = itemsToUseFirst(items.filter((item) => item.available !== false), today);
   const pendingRequests = [...requests, ...indents].filter((record) => OPEN_REQUEST_STATUSES.has(statusOf(record)));
   // Old-style deliveries plus shares of shared orders that have been dispatched to this kitchen.
   const toReceive = indents.filter(isReceivable).length + sharedToReceive;
@@ -161,6 +164,27 @@ export default function KitchenHome({
           {canUseRequests && <ActionButton icon={PackageCheck} title="Receive a delivery" description={toReceive ? `${toReceive} waiting for confirmation` : "Check incoming supplies"} onClick={onReceiveDelivery} />}
         </div>
       </section>
+
+      {canRecordUsage && useFirst.length > 0 && (
+        <section className="kh-alert-list" aria-labelledby="use-first-title">
+          <div className="kh-section-heading">
+            <div><p>Expiry</p><h2 id="use-first-title">Use first</h2></div>
+            <button type="button" onClick={onRecordUsage}>Record usage</button>
+          </div>
+          <div className="kh-alert-list__items">
+            {useFirst.slice(0, 3).map((item, index) => {
+              const expiry = expiryStatus(item, today);
+              return (
+                <button type="button" key={item._id || item.stockRecordId || `${item.name}-${index}`} onClick={onRecordUsage}>
+                  <span className={`kh-stock-dot ${expiry.key === "expired" ? "kh-stock-dot--out" : ""}`} aria-hidden="true" />
+                  <span><strong>{item.name || "Unnamed item"}</strong><small>{expiry.key === "expired" ? `${expiry.label} · check before using` : expiry.label}</small></span>
+                  <b>{expiry.qtyBaseUnit.toLocaleString("en-IN", { maximumFractionDigits: 3 })} {item.unit || item.unitId?.symbol || "units"}</b>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {attentionItems.length > 0 && (
         <section className="kh-alert-list" aria-labelledby="stock-alert-title">

@@ -38,6 +38,9 @@
 .ks-quantity { display: flex; flex: none; margin: 0; align-items: flex-end; flex-direction: column; color: #10211c; }
 .ks-quantity strong { font-size: 22px; line-height: 1; }
 .ks-quantity span { margin-top: 3px; color: #5d7068; font-size: 11px; font-weight: 650; }
+.ks-expiry { margin: 8px 0 0; color: #5d7068; font-size: 12px; line-height: 1.4; }
+.ks-expiry--warning { color: #7b5100; font-weight: 700; }
+.ks-expiry--critical { color: #9d291f; font-weight: 700; }
 .ks-card__footer { display: flex; margin-top: 13px; padding-top: 11px; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid #eaf0ed; }
 .ks-card__footer p { margin: 0; color: #5d7068; font-size: 12px; line-height: 1.4; }
 .ks-card__footer button, .ks-empty button { display: inline-flex; min-height: 38px; padding: 0 11px; align-items: center; gap: 6px; color: #fff; background: #0f766e; border: 0; border-radius: 10px; font: inherit; font-size: 12px; font-weight: 750; cursor: pointer; }

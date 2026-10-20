@@ -187,7 +187,9 @@ setItems(formatted);
           unit: item.stockItemId?.unitId?.symbol || item.unit || "Units", 
           image: item.image || item.stockItemId?.imageUrl || "",
           soldInPacks: Boolean(item.soldInPacks),
-          packs: item.packs || []
+          packs: item.packs || [],
+          // Dated lots the kitchen holds, soonest first: [{ date, qtyBaseUnit }] (features/kitchen/expiry.js reads them).
+          expiries: Array.isArray(item.expiries) ? item.expiries : []
         })).sort((a, b) => a.name.localeCompare(b.name));
         setItems(formattedItems);
       }
