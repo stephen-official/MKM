@@ -5,6 +5,9 @@ import { useToast } from "../../useToast.js";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, LoadingState, Modal, Tabs } from "../../components/ui/index.jsx";
 import { qtyText, reasonLabel, settleDefaults, settlePayload, shortfallFor, validateSettle } from "./problems.js";
 
+/** Always a new tab, so the admin keeps the problems list open. */
+const openPhoto = (url) => window.open(url, "_blank", "noopener");
+
 const errorMessage = (error, fallback) => error?.response?.data?.message || fallback;
 const when = (value) => (value ? new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(value)) : "—");
 const STATUS_TABS = [{ value: "open", label: "Open" }, { value: "settled", label: "Settled" }];
@@ -76,9 +79,9 @@ export function ProblemsPanel() {
                     <td>
                       <Badge variant={row.status === "open" ? "warn" : "neutral"}>{reasonLabel(row.reason)}</Badge>
                       {row.note && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{row.note}</div>}
-                      <div style={{ display: "flex", gap: 10, marginTop: 4, fontSize: 12 }}>
-                        {row.details?.photos?.goods && <a href={row.details.photos.goods} target="_blank" rel="noreferrer">Photo <ExternalLink size={11} /></a>}
-                        {row.details?.photos?.label && <a href={row.details.photos.label} target="_blank" rel="noreferrer">Label <ExternalLink size={11} /></a>}
+                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                        {row.details?.photos?.goods && <Button size="sm" variant="dark" onClick={() => openPhoto(row.details.photos.goods)}><ExternalLink size={14} /> Photo of goods</Button>}
+                        {row.details?.photos?.label && <Button size="sm" variant="dark" onClick={() => openPhoto(row.details.photos.label)}><ExternalLink size={14} /> Photo of label</Button>}
                       </div>
                       {row.voiceNoteUrl && <audio controls src={row.voiceNoteUrl} preload="none" style={{ display: "block", marginTop: 6, height: 32, maxWidth: 260 }} aria-label="Voice note from the kitchen" />}
                     </td>
