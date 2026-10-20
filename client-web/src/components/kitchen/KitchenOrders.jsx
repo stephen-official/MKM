@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, Clock, History, Lock, Minus, Plus, RefreshCw, Search, Truck, Users, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronDown, ChevronRight, Clock, History, Lock, Minus, Plus, RefreshCw, Search, Truck, Users, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
@@ -6,6 +6,7 @@ import { productPacks } from "../../features/kitchen";
 import { canEditShare, closesInText, deliveryDateText, hasArriving, kitchenStage, lineState, myOrders, myShare, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
 import { arrivingLines } from "../../features/kitchen/receiving";
 import KitchenReceiveItems from "./KitchenReceiveItems";
+import { useConfirm } from "../ui/ConfirmDialog";
 import "./SupplyRequestsDeliveries.css";
 import "./KitchenOrders.css";
 
@@ -90,68 +91,128 @@ function JoinCard({ order, now, onJoin }) {
   </article>;
 }
 
+/** Cart entries with an amount → the ticket's rows, in the order they were added: name, amount, unit (pack name when in packs). */
+const ticketRows = (cart, products, locked) => Object.entries(cart).flatMap(([id, entry]) => {
+  const amount = Number(entry.qty);
+  const product = products.find((candidate) => String(candidate._id) === id);
+  if (!(amount > 0) || !product) return [];
+  const pack = productPacks(product).find((candidate) => String(candidate._id) === String(entry.packId));
+  return [{ id, name: product.name, amount, unit: pack ? pack.name : product.unit, locked: locked.has(id) }];
+});
+
+/** Receipt-style list of what the kitchen is asking for. Each row has its own stepper, so the cook sees the whole request at once. */
+function OrderTicket({ rows, when, open, onToggle, onChange, onClear }) {
+  const count = rows.length;
+  return <section className="ko-ticket" id="ko-ticket" aria-labelledby="ko-ticket-title">
+    <button type="button" className="ko-ticket__head" onClick={onToggle} aria-expanded={open} aria-controls="ko-ticket-body">
+      <span><p>Order ticket</p><h2 id="ko-ticket-title">{count === 0 ? "Nothing added yet" : `${count} ${count === 1 ? "item" : "items"}`}</h2></span>
+      <ChevronDown size={20} className={open ? "is-open" : ""} aria-hidden="true" />
+    </button>
+    {open && <div id="ko-ticket-body">
+      {when && <dl className="ko-ticket__meta"><dt>Delivery</dt><dd>{when}</dd></dl>}
+      {count === 0
+        ? <p className="ko-ticket__empty">Tap “Add” on a supply below and it will be listed here.</p>
+        : <ul className="ko-ticket__rows" aria-label="Items on this ticket">
+          <li className="ko-ticket__cols" aria-hidden="true"><span>Item</span><span>Qty</span></li>
+          {rows.map((row) => <li key={row.id}>
+            <div className="ko-ticket__name"><strong>{row.name}</strong><small>{row.unit}{row.locked ? " · approved" : ""}</small></div>
+            <div className="ko-ticket__stepper">
+              <button type="button" disabled={row.locked} onClick={() => onChange(row.id, Math.max(0, row.amount - 1))} aria-label={row.amount <= 1 ? `Remove ${row.name}` : `Less ${row.name}`}>{row.amount <= 1 ? <X size={15} /> : <Minus size={15} />}</button>
+              <b>{qty(row.amount)}</b>
+              <button type="button" disabled={row.locked} onClick={() => onChange(row.id, row.amount + 1)} aria-label={`More ${row.name}`}><Plus size={15} /></button>
+            </div>
+          </li>)}
+        </ul>}
+      {rows.some((row) => !row.locked) && <button type="button" className="ko-ticket__clear" onClick={onClear}>Remove all items</button>}
+    </div>}
+  </section>;
+}
+
 function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeededIn, emergency, setEmergency, busy, onBack, onSubmit, now }) {
   const [search, setSearch] = useState("");
+  const [ticketOpen, setTicketOpen] = useState(true);
+  const [confirm, confirmDialog] = useConfirm();
   const share = mode.order ? myShare(mode.order, mode.godownId) : null;
   const locked = new Set((share?.items || []).filter((line) => line.approvedAt).map((line) => String(line.stockItemId?._id || line.stockItemId)));
   const shown = products.filter((product) => product.name.toLowerCase().includes(search.trim().toLowerCase()));
-  const count = toItems(cart, products).length;
+  const rows = ticketRows(cart, products, locked);
+  const count = rows.length;
   const option = settings?.neededInOptions.find((candidate) => candidate.key === neededIn);
   const previewHours = emergency ? settings?.emergencyHours : option?.hours;
   const preview = previewHours ? new Date(now.getTime() + previewHours * 3_600_000) : null;
   const setEntry = (id, change) => setCart((previous) => ({ ...previous, [id]: { qty: "", packId: "base", ...previous[id], ...change } }));
+  const setAmount = (id, amount) => setEntry(id, { qty: amount > 0 ? String(amount) : "" });
   const title = mode.type === "new" ? "New order" : mode.type === "join" ? "Add my items" : "Edit my items";
+  const when = mode.type === "new" ? (preview ? `≈ ${deliveryDateText(preview, { withTime: emergency })}` : null) : deliveryDateText(mode.order.neededBy, { withTime: mode.order.emergency });
+
+  const clearTicket = async () => {
+    const ok = await confirm({ title: "Remove all items from the ticket?", message: locked.size ? "Items the central store has already approved stay." : "You can add them again afterwards.", confirmLabel: "Remove all", danger: true });
+    if (ok) setCart((previous) => Object.fromEntries(Object.entries(previous).filter(([id]) => locked.has(id))));
+  };
+  const showTicket = () => {
+    setTicketOpen(true);
+    document.getElementById("ko-ticket")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   return <main className="srd-shell ko-picker">
+    {confirmDialog}
     <button type="button" className="ko-back" onClick={onBack}><ArrowLeft size={18} /> Back</button>
     <header className="srd-page-header"><div><p>Ask for supplies</p><h1>{title}</h1>
       <span>{mode.type === "new" ? "Choose what your kitchen needs and when." : `Delivery by ${deliveryDateText(mode.order.neededBy, { withTime: mode.order.emergency })}.`}</span></div></header>
 
-    {mode.type === "new" && <section className="ko-when" aria-label="When do you need it">
-      <label className="ko-field"><span>Needed by</span>
-        <select value={neededIn} disabled={emergency} onChange={(event) => setNeededIn(event.target.value)}>
-          {(settings?.neededInOptions || []).map((candidate) => <option key={candidate.key} value={candidate.key}>{candidate.label}</option>)}
-        </select>
-        {preview && <em className="ko-date">≈ {deliveryDateText(preview, { withTime: emergency })}</em>}
-      </label>
-      <label className="ko-emergency"><input type="checkbox" checked={emergency} onChange={(event) => setEmergency(event.target.checked)} />
-        <span><AlertTriangle size={16} aria-hidden="true" /> Emergency — needed within {settings?.emergencyHours === 1 ? "1 hour" : `${settings?.emergencyHours} hours`}</span></label>
-    </section>}
+    <div className="ko-picker__layout">
+      <OrderTicket rows={rows} when={when} open={ticketOpen} onToggle={() => setTicketOpen((value) => !value)} onChange={setAmount} onClear={clearTicket} />
 
-    <label className="ko-search"><Search size={19} aria-hidden="true" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search supplies" aria-label="Search supplies" />{search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search"><X size={17} /></button>}</label>
+      <div className="ko-picker__main">
+        {mode.type === "new" && <section className="ko-when" aria-label="When do you need it">
+          <label className="ko-field"><span>Needed by</span>
+            <select value={neededIn} disabled={emergency} onChange={(event) => setNeededIn(event.target.value)}>
+              {(settings?.neededInOptions || []).map((candidate) => <option key={candidate.key} value={candidate.key}>{candidate.label}</option>)}
+            </select>
+            {preview && <em className="ko-date">≈ {deliveryDateText(preview, { withTime: emergency })}</em>}
+          </label>
+          <label className="ko-emergency"><input type="checkbox" checked={emergency} onChange={(event) => setEmergency(event.target.checked)} />
+            <span><AlertTriangle size={16} aria-hidden="true" /> Emergency — needed within {settings?.emergencyHours === 1 ? "1 hour" : `${settings?.emergencyHours} hours`}</span></label>
+        </section>}
 
-    <section className="ko-products" aria-label="Supplies">
-      {shown.length === 0 && <div className="srd-empty"><h2>No supplies found</h2><p>Try another name.</p></div>}
-      {shown.map((product) => {
-        const id = String(product._id);
-        const entry = cart[id] || { qty: "", packId: "base" };
-        const amount = Number(entry.qty || 0);
-        const packs = productPacks(product);
-        const isLocked = locked.has(id);
-        const unit = packs.find((pack) => String(pack._id) === String(entry.packId))?.name || product.unit;
-        return <article key={id} className={`ko-product${amount > 0 ? " is-selected" : ""}`}>
-          <div className="ko-product__name"><strong>{product.name}</strong>{isLocked && <small className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved — can’t change</small>}</div>
-          <div className="ko-entry">
-            {packs.length > 0 && <select aria-label={`Packaging for ${product.name}`} value={entry.packId} disabled={isLocked} onChange={(event) => setEntry(id, { packId: event.target.value })}>
-              <option value="base">{product.unit}</option>{packs.map((pack) => <option key={pack._id} value={pack._id}>{pack.name}</option>)}</select>}
-            <div className="ko-stepper">
-              <button type="button" disabled={isLocked || amount <= 0} onClick={() => setEntry(id, { qty: String(Math.max(0, amount - 1)) })} aria-label={`Less ${product.name}`}><Minus size={17} /></button>
-              <input type="text" inputMode="decimal" value={entry.qty} placeholder="0" disabled={isLocked} aria-label={`${product.name} quantity`}
-                onChange={(event) => /^\d*(\.\d{0,3})?$/.test(event.target.value) && setEntry(id, { qty: event.target.value })} />
-              <span>{unit}</span>
-              <button type="button" disabled={isLocked} onClick={() => setEntry(id, { qty: String(amount + 1) })} aria-label={`More ${product.name}`}><Plus size={17} /></button>
-            </div>
-          </div>
-        </article>;
-      })}
-    </section>
+        <label className="ko-search"><Search size={19} aria-hidden="true" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search supplies" aria-label="Search supplies" />{search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search"><X size={17} /></button>}</label>
 
-    <footer className="ko-submit"><div><strong>{count}</strong><span>{count === 1 ? "item" : "items"}</span></div>
-      <button type="button" className="srd-primary-button" disabled={busy || count === 0} onClick={onSubmit}>{busy ? "Sending…" : mode.type === "edit" ? "Save changes" : "Send to central store"}</button></footer>
+        <section className="ko-products" aria-label="Supplies">
+          {shown.length === 0 && <div className="srd-empty"><h2>No supplies found</h2><p>Try another name.</p></div>}
+          {shown.map((product) => {
+            const id = String(product._id);
+            const entry = cart[id] || { qty: "", packId: "base" };
+            const amount = Number(entry.qty || 0);
+            const packs = productPacks(product);
+            const isLocked = locked.has(id);
+            const unit = packs.find((pack) => String(pack._id) === String(entry.packId))?.name || product.unit;
+            return <article key={id} className={`ko-product${amount > 0 ? " is-selected" : ""}`}>
+              <div className="ko-product__name"><strong>{product.name}</strong>{isLocked && <small className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved — can’t change</small>}</div>
+              <div className="ko-entry">
+                {packs.length > 0 && <select aria-label={`Packaging for ${product.name}`} value={entry.packId} disabled={isLocked} onChange={(event) => setEntry(id, { packId: event.target.value })}>
+                  <option value="base">{product.unit}</option>{packs.map((pack) => <option key={pack._id} value={pack._id}>{pack.name}</option>)}</select>}
+                {amount > 0 || isLocked
+                  ? <div className="ko-stepper">
+                    <button type="button" disabled={isLocked || amount <= 0} onClick={() => setAmount(id, Math.max(0, amount - 1))} aria-label={amount <= 1 ? `Remove ${product.name}` : `Less ${product.name}`}>{amount <= 1 ? <X size={17} /> : <Minus size={17} />}</button>
+                    <input type="text" inputMode="decimal" value={entry.qty} placeholder="0" disabled={isLocked} aria-label={`${product.name} quantity`}
+                      onChange={(event) => /^\d*(\.\d{0,3})?$/.test(event.target.value) && setEntry(id, { qty: event.target.value })} />
+                    <span>{unit}</span>
+                    <button type="button" disabled={isLocked} onClick={() => setAmount(id, amount + 1)} aria-label={`More ${product.name}`}><Plus size={17} /></button>
+                  </div>
+                  : <button type="button" className="ko-add" onClick={() => setAmount(id, 1)} aria-label={`Add ${product.name}`}><Plus size={17} aria-hidden="true" /> Add<span>{unit}</span></button>}
+              </div>
+            </article>;
+          })}
+        </section>
+      </div>
+    </div>
+
+    <footer className="ko-submit">
+      <button type="button" className="ko-submit__count" onClick={showTicket} aria-label={`${count} ${count === 1 ? "item" : "items"} on the ticket. Show the ticket.`}><strong>{count}</strong><span>{count === 1 ? "item" : "items"} · view ticket</span></button>
+      <button type="button" className="srd-primary-button" disabled={busy || count === 0} onClick={onSubmit}>{busy ? "Placing…" : mode.type === "edit" ? "Save changes" : "Place request"}</button></footer>
   </main>;
 }
 
-/** "Ask for supplies": start a shared order, add items to another kitchen's open order, and follow each order. */
 export default function KitchenOrders({ products = [], godownId, onShowPast, canShowPast = true, onOrdersLoaded }) {
   const [orders, setOrders] = useState([]);
   const [settings, setSettings] = useState(null);
@@ -201,7 +262,7 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
       if (mode.type === "new") await api.post(BASE, emergency ? { emergency: true, items } : { neededIn, items });
       else if (mode.type === "join") await api.post(`${BASE}/${mode.order._id}/contributions`, { items });
       else await api.put(`${BASE}/${mode.order._id}/contributions/me`, { items });
-      toast.success(mode.type === "edit" ? "Your items were updated" : "Sent to the central store");
+      toast.success(mode.type === "edit" ? "Your items were updated" : "Request placed with the central store");
       setMode(null);
       await load();
     } catch (error) {

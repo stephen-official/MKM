@@ -48,6 +48,39 @@
 .ko-search input { border: 0; flex: 1; font-size: .95rem; min-width: 0; outline: none; }
 .ko-search button { background: none; border: 0; color: #5d7068; display: flex; }
 
+.ko-picker__layout { display: grid; gap: 14px; }
+.ko-picker__main { min-width: 0; }
+/* Receipt look: dashed rules, no prices. On a phone it sits above the supplies and folds away; on a wide screen it is a sticky column. */
+.ko-ticket { background: #fffdf8; border: 1px solid #e6dcc6; border-radius: 16px; box-shadow: 0 6px 18px rgba(60, 45, 10, .06); padding: 4px 14px 12px; }
+.ko-ticket__head { align-items: center; background: none; border: 0; border-bottom: 1px dashed #d8ccb2; color: #17231c; display: flex; gap: 10px; justify-content: space-between; min-height: 52px; padding: 8px 0; text-align: left; width: 100%; }
+.ko-ticket__head p { color: #8a7a52; font-size: .68rem; font-weight: 800; letter-spacing: .12em; margin: 0 0 2px; text-transform: uppercase; }
+.ko-ticket__head h2 { font-size: 1rem; margin: 0; }
+.ko-ticket__head svg { color: #8a7a52; flex: none; transition: transform .15s; }
+.ko-ticket__head svg.is-open { transform: rotate(180deg); }
+.ko-ticket__meta { border-bottom: 1px dashed #d8ccb2; display: flex; font-size: .82rem; justify-content: space-between; margin: 0; padding: 10px 0; }
+.ko-ticket__meta dt { color: #5d7068; }
+.ko-ticket__meta dd { font-weight: 750; margin: 0; }
+.ko-ticket__empty { color: #7a857f; font-size: .84rem; line-height: 1.45; margin: 12px 0 4px; }
+.ko-ticket__rows { list-style: none; margin: 0; padding: 0; }
+.ko-ticket__cols { color: #8a7a52; display: flex; font-size: .66rem; font-weight: 800; justify-content: space-between; letter-spacing: .12em; padding: 10px 0 4px; text-transform: uppercase; }
+.ko-ticket__rows li + li:not(.ko-ticket__cols) { border-top: 1px dashed #eee4d0; }
+.ko-ticket__rows li:not(.ko-ticket__cols) { align-items: center; display: flex; gap: 10px; justify-content: space-between; padding: 9px 0; }
+.ko-ticket__name { min-width: 0; }
+.ko-ticket__name strong { display: block; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ko-ticket__name small { color: #7a857f; font-size: .74rem; }
+.ko-ticket__stepper { align-items: center; background: #fff; border: 1px solid #e0d6c0; border-radius: 999px; display: flex; flex: none; gap: 2px; padding: 2px; }
+.ko-ticket__stepper button { align-items: center; background: #f4efe3; border: 0; border-radius: 50%; color: #4d4020; display: flex; height: 36px; justify-content: center; width: 36px; }
+.ko-ticket__stepper button:first-child:not(:disabled) { color: #a52c23; }
+.ko-ticket__stepper button:disabled { color: #b9b0a0; }
+.ko-ticket__stepper b { font-size: .95rem; min-width: 34px; text-align: center; }
+.ko-ticket__clear { background: none; border: 0; color: #8f2a1f; display: block; font-size: .78rem; font-weight: 750; margin: 8px auto 0; min-height: 40px; padding: 0 10px; }
+.ko-add { align-items: center; background: #0f766e; border: 0; border-radius: 10px; color: #fff; display: inline-flex; font-size: .84rem; font-weight: 800; gap: 5px; min-height: 44px; padding: 0 16px; }
+.ko-add span { color: #c9e7e2; font-size: .72rem; font-weight: 600; margin-left: 2px; }
+.ko-submit__count { background: none; border: 0; color: #17231c; display: grid; padding: 0; text-align: left; }
+@media (min-width: 900px) {
+  .ko-picker__layout { align-items: start; grid-template-columns: minmax(0, 1fr) 320px; }
+  .ko-ticket { order: 2; position: sticky; top: 16px; }
+}
 .ko-products { display: grid; gap: 10px; }
 .ko-product { background: #fff; border: 1px solid #dde6e0; border-radius: 14px; display: grid; gap: 10px; padding: 12px; }
 .ko-product.is-selected { border-color: #0f766e; box-shadow: 0 0 0 1px #0f766e; }
