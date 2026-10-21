@@ -28,12 +28,14 @@ const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
 
 const { ObjectId } = mongoose.Types;
 const ID_FIELDS = ["_id", "stockGroupId", "unitId"];
-const DATE_FIELDS = ["createdAt", "updatedAt"];
+const DATE_FIELDS = ["createdAt", "updatedAt", "priceUpdatedAt", "archivedAt"];
 const revive = (doc) => {
   const out = { ...doc };
   for (const f of ID_FIELDS) if (out[f]) out[f] = new ObjectId(out[f]);
   for (const f of DATE_FIELDS) if (out[f]) out[f] = new Date(out[f]);
-  if (Array.isArray(out.subUnits)) out.subUnits = out.subUnits.map((s) => ({ ...s, _id: s._id ? new ObjectId(s._id) : undefined }));
+  for (const f of ["subUnits", "packs"]) {
+    if (Array.isArray(out[f])) out[f] = out[f].map((s) => ({ ...s, _id: s._id ? new ObjectId(s._id) : undefined }));
+  }
   return out;
 };
 

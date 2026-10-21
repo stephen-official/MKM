@@ -43,7 +43,7 @@ const asText = (value) => (value === null || value === undefined ? "" : String(v
 
 export const emptyProductForm = () => ({
   name: "", imageUrl: "", itemType: "stock", stockGroupId: "", unitId: "", brand: "", productCode: "",
-  pricePerUnit: "", defaultThreshold: "0", soldInPacks: false, packs: []
+  pricePerUnit: "", defaultThreshold: "0", expiryRequired: true, soldInPacks: false, packs: []
 });
 
 /** Form state from a product the API returned (or a kitchen's product request when approving one). */
@@ -59,6 +59,7 @@ export const formFromProduct = (product, { units = [] } = {}) => ({
   productCode: product.productCode || "",
   pricePerUnit: asText(product.pricePerUnit),
   defaultThreshold: asText(product.defaultThreshold ?? 0),
+  expiryRequired: product.expiryRequired !== false,
   soldInPacks: Boolean(product.soldInPacks),
   packs: (product.packs || []).map((pack) => ({ key: String(pack._id), _id: pack._id, name: pack.name, size: asText(pack.size), price: asText(pack.price) }))
 });
@@ -106,6 +107,7 @@ export const payloadFromForm = (form, { canPrice }) => ({
   productCode: form.productCode.trim(),
   defaultThreshold: Number(form.defaultThreshold),
   ...(canPrice ? { pricePerUnit: Number(form.pricePerUnit) } : {}),
+  expiryRequired: form.expiryRequired,
   soldInPacks: form.soldInPacks,
   packs: form.soldInPacks
     ? form.packs.map((pack) => ({

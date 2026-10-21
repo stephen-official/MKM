@@ -1,0 +1,145 @@
+import assert from "node:assert/strict";
+import { after, before, beforeEach, test } from "node:test";
+import request from "supertest";
+import { clearDb, startDb, stopDb, syncAllIndexes } from "./helpers/db.js";
+import { createGodown, createUser } from "./helpers/auth.js";
+import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
+import { Supplier } from "../models/SupplierModel.js";
+
+// Supplier and invoice number on a shared order: set by the admin, shown read-only to kitchens.
+let app;
+let ctx;
+before(async () => { await startDb(); ({ app } = await import("../app.js")); await syncAllIndexes(); });
+after(stopDb);
+beforeEach(async () => {
+  await clearDb();
+  const kitchenA = await createGodown("Kitchen A");
+  const group = await StockGroup.create({ name: "Grains" });
+  const unit = await Unit.create({ name: "Kilogram", symbol: "kg" });
+  const rice = await StockItem.create({ name: "Rice", stockGroupId: group._id, unitId: unit._id, pricePerUnit: 50 });
+  const supplier = await Supplier.create({ name: "Sri Lakshmi Traders", nameKey: "sri lakshmi traders", fssaiLicence: "12345678901234", phone: "9876543210" });
+  const archived = await Supplier.create({ name: "Old Vendor", nameKey: "old vendor", fssaiLicence: "11111111111111", active: false });
+  ctx = {
+    rice, supplier, archived,
+    cookA: await createUser({ role: "user", godownId: kitchenA._id }),
+    admin: await createUser({ role: "admin" }),
+  };
+  const created = await call(ctx.cookA, "post", "/").send({ neededIn: "1w", items: [{ stockItemId: rice._id, qtyBaseUnit: 20 }] });
+  ctx.order = created.body;
+  await call(ctx.admin, "post", `/${ctx.order._id}/approve`).send({});
+});
+
+const call = (actor, method, path) => request(app)[method](`/api/procurement/collaborative-purchase-orders${path}`).set("Authorization", `Bearer ${actor.token}`);
+const purchase = (actor, body) => call(actor, "patch", `/${ctx.order._id}/purchase`).send(body);
+
+test("marking an order ordered with a supplier shows the supplier's name and licence to the kitchen, nothing more", async () => {
+  const ordered = await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id });
+  assert.equal(ordered.status, 200, JSON.stringify(ordered.body));
+  assert.equal(ordered.body.status, "ordered");
+  assert.equal(ordered.body.supplier.name, "Sri Lakshmi Traders");
+  assert.equal(ordered.body.supplier.fssaiLicence, "12345678901234");
+  assert.equal(ordered.body.invoiceNo, "");
+
+  const seen = (await call(ctx.cookA, "get", `/${ctx.order._id}`)).body;
+  assert.deepEqual(seen.supplier, { _id: String(ctx.supplier._id), name: "Sri Lakshmi Traders", fssaiLicence: "12345678901234" });
+  assert.equal(seen.supplierId, undefined);
+  assert.equal(seen.supplier.phone, undefined);
+});
+
+test("an order cannot be marked ordered without a supplier, and an ordered order keeps one", async () => {
+  const refused = await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.body.code, "SUPPLIER_REQUIRED");
+  assert.equal((await call(ctx.admin, "get", `/${ctx.order._id}`)).body.status, "approved", "the order is unchanged");
+
+  // A supplier chosen earlier through /purchase counts.
+  await purchase(ctx.admin, { supplierId: ctx.supplier._id });
+  const ordered = await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" });
+  assert.equal(ordered.status, 200, JSON.stringify(ordered.body));
+  assert.equal(ordered.body.supplier.name, "Sri Lakshmi Traders");
+
+  const cleared = await purchase(ctx.admin, { supplierId: null });
+  assert.equal(cleared.status, 400);
+  assert.equal(cleared.body.code, "SUPPLIER_REQUIRED");
+});
+
+test("the admin sets the invoice number after ordering; kitchens read it, never write it", async () => {
+  await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id });
+  assert.equal((await purchase(ctx.cookA, { invoiceNo: "INV-1" })).status, 403);
+  const saved = await purchase(ctx.admin, { invoiceNo: "  INV-2026-0042 " });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal(saved.body.invoiceNo, "INV-2026-0042");
+  assert.equal(saved.body.supplier.name, "Sri Lakshmi Traders", "supplier kept when only the invoice is sent");
+  assert.equal((await call(ctx.cookA, "get", `/${ctx.order._id}`)).body.invoiceNo, "INV-2026-0042");
+});
+
+test("the supplier can be chosen before ordering and changed after, but only to an active supplier", async () => {
+  const early = await purchase(ctx.admin, { supplierId: ctx.supplier._id });
+  assert.equal(early.status, 200, JSON.stringify(early.body));
+  assert.equal(early.body.status, "approved");
+  assert.equal(early.body.supplier.name, "Sri Lakshmi Traders");
+  assert.equal((await purchase(ctx.admin, { supplierId: null })).body.supplier, null, "an approved order may still drop its supplier");
+
+  const archived = await purchase(ctx.admin, { supplierId: ctx.archived._id });
+  assert.equal(archived.status, 400);
+  assert.equal(archived.body.code, "INVALID_INPUT");
+  const unknown = await purchase(ctx.admin, { supplierId: "000000000000000000000000" });
+  assert.equal(unknown.status, 400);
+  assert.equal((await purchase(ctx.admin, { invoiceNo: "x".repeat(61) })).status, 400);
+  assert.equal((await purchase(ctx.admin, {})).status, 400);
+});
+
+test("the admin sets an expiry per product for bulk buys; kitchens see it, and only products on the order are allowed", async () => {
+  const saved = await purchase(ctx.admin, { expiryDates: [{ stockItemId: ctx.rice._id, expiryDate: "2027-03-31" }] });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.deepEqual(saved.body.expiryByProduct, [{ stockItemId: String(ctx.rice._id), expiryDate: "2027-03-31" }]);
+  assert.deepEqual((await call(ctx.cookA, "get", `/${ctx.order._id}`)).body.expiryByProduct, [{ stockItemId: String(ctx.rice._id), expiryDate: "2027-03-31" }]);
+
+  const changed = await purchase(ctx.admin, { expiryDates: [{ stockItemId: ctx.rice._id, expiryDate: "2027-04-30" }] });
+  assert.equal(changed.body.expiryByProduct[0].expiryDate, "2027-04-30", "setting again replaces, not duplicates");
+  assert.equal((await purchase(ctx.admin, { expiryDates: [{ stockItemId: "000000000000000000000000", expiryDate: "2027-04-30" }] })).status, 400);
+  assert.equal((await purchase(ctx.admin, { expiryDates: [{ stockItemId: ctx.rice._id, expiryDate: "2020-01-01" }] })).body.code, "EXPIRED_GOODS");
+  assert.equal((await purchase(ctx.admin, { expiryDates: [{ stockItemId: ctx.rice._id, expiryDate: "31/03/2027" }] })).status, 400);
+  const cleared = await purchase(ctx.admin, { expiryDates: [{ stockItemId: ctx.rice._id, expiryDate: null }] });
+  assert.deepEqual(cleared.body.expiryByProduct, []);
+});
+
+test("a product can come from a different supplier than the order; kitchens see it and batches copy it", async () => {
+  const other = await Supplier.create({ name: "Venkat Oils", nameKey: "venkat oils", fssaiLicence: "22222222222222" });
+  const dal = await StockItem.create({ name: "Dal", stockGroupId: ctx.rice.stockGroupId, unitId: ctx.rice.unitId, pricePerUnit: 80 });
+  const order = (await call(ctx.cookA, "post", "/").send({ neededIn: "1w", items: [{ stockItemId: ctx.rice._id, qtyBaseUnit: 10 }, { stockItemId: dal._id, qtyBaseUnit: 5 }] })).body;
+  await call(ctx.admin, "post", `/${order._id}/approve`).send({});
+  await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id });
+  const p = (body) => call(ctx.admin, "patch", `/${order._id}/purchase`).send(body);
+
+  assert.equal((await p({ supplierOverrides: [{ stockItemId: dal._id, supplierId: ctx.archived._id }] })).status, 400);
+  assert.equal((await p({ supplierOverrides: [{ stockItemId: "000000000000000000000000", supplierId: other._id }] })).status, 400);
+  const saved = await p({ supplierOverrides: [{ stockItemId: dal._id, supplierId: other._id }] });
+  assert.equal(saved.status, 200, JSON.stringify(saved.body));
+  assert.equal(saved.body.supplierByProduct[0].supplierId.name, "Venkat Oils");
+  const seen = (await call(ctx.cookA, "get", `/${order._id}`)).body;
+  assert.equal(seen.supplier.name, "Sri Lakshmi Traders");
+  assert.deepEqual(seen.supplierByProduct.map((e) => [String(e.stockItemId), e.supplierId.name, e.supplierId.fssaiLicence]), [[String(dal._id), "Venkat Oils", "22222222222222"]]);
+
+  await call(ctx.admin, "post", `/${order._id}/dispatch`).send({ godownId: ctx.cookA.user.godownId });
+  const photos = { goods: "https://x/g.jpg", label: "https://x/l.jpg" };
+  const received = await call(ctx.cookA, "post", `/${order._id}/receive`).send({ items: [
+    { stockItemId: ctx.rice._id, photos, expiryDate: "2030-01-01" }, { stockItemId: dal._id, photos, expiryDate: "2030-01-01" },
+  ] });
+  assert.equal(received.status, 200, JSON.stringify(received.body));
+  const { StockBatch } = await import("../models/StockBatchModel.js");
+  assert.equal((await StockBatch.findOne({ stockItemId: ctx.rice._id }).lean()).supplierName, "Sri Lakshmi Traders");
+  const dalBatch = await StockBatch.findOne({ stockItemId: dal._id }).lean();
+  assert.equal(dalBatch.supplierName, "Venkat Oils");
+  assert.equal(dalBatch.supplierFssaiLicence, "22222222222222");
+
+  const cleared = await p({ supplierOverrides: [{ stockItemId: dal._id, supplierId: null }] });
+  assert.deepEqual(cleared.body.supplierByProduct, []);
+});
+
+test("purchase details cannot be set on an order that is still open or cancelled", async () => {
+  const open = (await call(ctx.cookA, "post", "/").send({ neededIn: "1w", items: [{ stockItemId: ctx.rice._id, qtyBaseUnit: 5 }] })).body;
+  const res = await call(ctx.admin, "patch", `/${open._id}/purchase`).send({ supplierId: ctx.supplier._id });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, "NOT_APPROVED");
+});

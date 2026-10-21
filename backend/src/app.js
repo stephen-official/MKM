@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
 import { authenticate } from "./middleware/auth.js";
 import { featureGate } from "./features/featureGate.js";
+import { kitchenPriceFilter } from "./utils/kitchenSafe.js";
 import { featureRoutes } from "./routes/featureRoutes.js";
 import { authRoutes } from "./routes/authRoutes.js";
 import { inventoryRoutes } from "./routes/inventoryRoutes.js";
@@ -22,6 +23,9 @@ import { reportScheduleRoutes } from "./routes/reportScheduleRoutes.js";
 import { productRoutes } from "./routes/productRoutes.js";
 import { productRequestRoutes } from "./routes/productRequestRoutes.js";
 import { collaborativePurchaseOrderRoutes } from "./routes/collaborativePurchaseOrderRoutes.js";
+import { orderingSettingsRoutes } from "./routes/orderingSettingsRoutes.js";
+import { supplierRoutes } from "./routes/supplierRoutes.js";
+import { deliveryTicketRoutes } from "./routes/deliveryTicketRoutes.js";
 
 const app = express();
 
@@ -129,6 +133,9 @@ export const PROTECTED_MOUNTS = [
   ["/api/products", productRoutes],
   ["/api/product-requests", productRequestRoutes],
   ["/api/procurement/collaborative-purchase-orders", collaborativePurchaseOrderRoutes],
+  ["/api/ordering-settings", orderingSettingsRoutes],
+  ["/api/suppliers", supplierRoutes],
+  ["/api/delivery-tickets", deliveryTicketRoutes],
   ["/api/procurement", procurementRoutes],
   ["/api", operationsRoutes],
   ["/api/reports", reportRoutes],
@@ -142,7 +149,7 @@ export const PROTECTED_MOUNTS = [
 ];
 
 app.use("/api/auth", authLimiter, authRoutes);
-for (const [mountPath, router] of PROTECTED_MOUNTS) app.use(mountPath, authenticate, featureGate, router);
+for (const [mountPath, router] of PROTECTED_MOUNTS) app.use(mountPath, authenticate, featureGate, kitchenPriceFilter, router);
 
 
 // --- 6. ERROR HANDLING (OPTIONAL BUT RECOMMENDED) ---

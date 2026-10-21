@@ -40,8 +40,11 @@ test("daily-use products deduct oldest received batches first and capture weight
   assert.equal(response.status, 201, JSON.stringify(response.body));
   const batches = await StockBatch.find({ godownId: kitchen._id, stockItemId: rice._id }).sort({ receivedAt: 1 });
   assert.deepEqual(batches.map((batch) => batch.remainingQtyBaseUnit), [0, 10]);
-  assert.equal(response.body.items[0].amountAtIssue, 120);
-  assert.equal(response.body.items[0].unitPriceAtIssue, 12);
+  // The value is stored for admins; the kitchen's own response never carries prices.
+  assert.equal(response.body.items[0].amountAtIssue, undefined);
+  const saved = await Consumption.findById(response.body._id).lean();
+  assert.equal(saved.items[0].amountAtIssue, 120);
+  assert.equal(saved.items[0].unitPriceAtIssue, 12);
   assert.deepEqual(response.body.items[0].batchAllocations.map((line) => line.qtyBaseUnit), [8, 2]);
 });
 
@@ -150,4 +153,68 @@ test("an admin can edit one line while another line's stock row no longer exists
   assert.deepEqual(saved.items.map((item) => item.qtyBaseUnit), [12, 2]);
   const dalBatches = await StockBatch.find({ godownId: kitchen._id, stockItemId: dal._id });
   assert.deepEqual(dalBatches.map((batch) => batch.remainingQtyBaseUnit), [0]);
+});
+
+// --- Expiry-first usage (FEFO): what the kitchen app tells the cook to use first is what the records deduct ---
+
+const batch = (extra) => ({ godownId: kitchen._id, stockItemId: rice._id, sourceType: "collaborative_order", receivedQtyBaseUnit: 10, remainingQtyBaseUnit: 10, unitPrice: 10, ...extra });
+
+test("usage deducts the soonest-expiring batch first, even when it arrived later", async () => {
+  await StockBatch.deleteMany({});
+  const [later, soon] = await StockBatch.create([
+    batch({ receivedAt: new Date("2026-09-01"), expiryDate: new Date("2027-03-01") }),
+    batch({ receivedAt: new Date("2026-10-01"), expiryDate: new Date("2026-10-25") }),
+  ]);
+  const response = await request(app).post("/api/consumptions")
+    .set("Authorization", `Bearer ${cook.token}`)
+    .send({ date: "2026-10-20", items: [{ stockRecordId: stock._id, qtyBaseUnit: 12 }] });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  assert.equal((await StockBatch.findById(soon._id)).remainingQtyBaseUnit, 0);
+  assert.equal((await StockBatch.findById(later._id)).remainingQtyBaseUnit, 8);
+});
+
+test("batches without an expiry date are used after every dated one, oldest first", async () => {
+  await StockBatch.deleteMany({});
+  const [undatedOld, dated, undatedNew] = await StockBatch.create([
+    batch({ sourceType: "opening_balance", receivedAt: new Date("2026-01-01"), expiryDate: null }),
+    batch({ receivedAt: new Date("2026-10-01"), expiryDate: new Date("2027-01-01") }),
+    batch({ sourceType: "distribution", receivedAt: new Date("2026-10-05"), expiryDate: null }),
+  ]);
+  const response = await request(app).post("/api/consumptions")
+    .set("Authorization", `Bearer ${cook.token}`)
+    .send({ date: "2026-10-20", items: [{ stockRecordId: stock._id, qtyBaseUnit: 15 }] });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  assert.equal((await StockBatch.findById(dated._id)).remainingQtyBaseUnit, 0);
+  assert.equal((await StockBatch.findById(undatedOld._id)).remainingQtyBaseUnit, 5);
+  assert.equal((await StockBatch.findById(undatedNew._id)).remainingQtyBaseUnit, 10);
+});
+
+test("an expired batch is deducted before everything else: using it is allowed, never refused", async () => {
+  await StockBatch.deleteMany({});
+  const [expired, fresh] = await StockBatch.create([
+    batch({ receivedAt: new Date("2026-10-10"), expiryDate: new Date("2026-10-01") }),
+    batch({ receivedAt: new Date("2026-10-01"), expiryDate: new Date("2027-01-01") }),
+  ]);
+  const response = await request(app).post("/api/consumptions")
+    .set("Authorization", `Bearer ${cook.token}`)
+    .send({ date: "2026-10-20", items: [{ stockRecordId: stock._id, qtyBaseUnit: 4 }] });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  assert.equal((await StockBatch.findById(expired._id)).remainingQtyBaseUnit, 6);
+  assert.equal((await StockBatch.findById(fresh._id)).remainingQtyBaseUnit, 10);
+});
+
+test("my-kitchen-stock lists dated lots soonest first, grouped by date, with no batch ids or prices", async () => {
+  await StockBatch.deleteMany({});
+  await StockBatch.create([
+    batch({ receivedAt: new Date("2026-09-01"), expiryDate: new Date("2027-03-01T00:00:00+05:30"), remainingQtyBaseUnit: 7 }),
+    batch({ receivedAt: new Date("2026-10-01"), expiryDate: new Date("2026-10-25T00:00:00+05:30"), remainingQtyBaseUnit: 3 }),
+    batch({ receivedAt: new Date("2026-10-02"), expiryDate: new Date("2026-10-25T00:00:00+05:30"), remainingQtyBaseUnit: 4 }),
+    batch({ sourceType: "opening_balance", receivedAt: new Date("2026-01-01"), expiryDate: null, remainingQtyBaseUnit: 6 }),
+    batch({ receivedAt: new Date("2026-10-03"), expiryDate: new Date("2026-11-01T00:00:00+05:30"), remainingQtyBaseUnit: 0 }),
+  ]);
+  const response = await request(app).get("/api/my-kitchen-stock").set("Authorization", `Bearer ${cook.token}`);
+  assert.equal(response.status, 200, JSON.stringify(response.body));
+  const row = response.body.find((item) => String(item.stockItemId) === String(rice._id));
+  assert.deepEqual(row.expiries, [{ date: "2026-10-25", qtyBaseUnit: 7 }, { date: "2027-03-01", qtyBaseUnit: 7 }]);
+  assert.equal(JSON.stringify(row).includes("unitPrice"), false);
 });

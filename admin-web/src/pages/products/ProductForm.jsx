@@ -208,6 +208,10 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
               {error("defaultThreshold")}
             </Field>
           </div>
+          <label className="checkbox">
+            <input type="checkbox" checked={form.expiryRequired} onChange={(e) => set({ expiryRequired: e.target.checked })} />
+            <span>Kitchens must enter an expiry date when receiving<small className="product-form__hint">Untick for items with no expiry date, such as salt or cleaning materials.</small></span>
+          </label>
           {!canPrice && <p className="product-form__hint">Only a super-admin can set prices. A product without a price stays hidden from kitchens.</p>}
           <p className="product-form__hint">Kitchens record quantities in {unit ? `${unit.name.toLowerCase()} (${unit.symbol})` : "this unit"}, with no conversion.</p>
         </section>

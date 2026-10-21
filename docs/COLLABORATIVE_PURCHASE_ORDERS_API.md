@@ -12,7 +12,7 @@ Quantities are always stored and returned in the product's base unit. Pack field
 
 `GET /?status=open&page=1&limit=25`
 
-Available statuses are `open`, `closed`, `ordered`, and `cancelled`. The response contains `items`, `page`, `limit`, `total`, and `pages`.
+Available statuses are `open`, `closed`, `approved`, `ordered`, and `cancelled`. The response contains `items`, `page`, `limit`, `total`, and `pages`.
 
 ### Get one order
 
@@ -20,7 +20,9 @@ Available statuses are `open`, `closed`, `ordered`, and `cancelled`. The respons
 
 The response includes each kitchen contribution plus `kitchenCount` and `combinedItems`, which totals each product across all kitchens.
 
-### Open an order (kitchen only)
+What a kitchen user sees is limited: its own contribution is complete, but other kitchens' contributions list only `stockItemId` per item (no quantities, pack details or note), and `combinedItems` lists products without `qtyBaseUnit`. Admins see everything. As on every endpoint, price fields (`packPrice`, pack `price`, `pricePerUnit` and so on) are removed from kitchen responses by `kitchenPriceFilter` (`backend/src/utils/kitchenSafe.js`).
+
+### Open an order (kitchen, or admin on a kitchen's behalf)
 
 `POST /`
 
@@ -28,7 +30,7 @@ The response includes each kitchen contribution plus `kitchenCount` and `combine
 {
   "title": "Weekly staples",
   "orderNote": "Combine delivery with the regular vendor run",
-  "neededBy": "2026-10-25",
+  "neededIn": "1w",
   "note": "Kitchen A quantities",
   "items": [
     { "stockItemId": "PRODUCT_ID", "qtyBaseUnit": 20 }
@@ -37,6 +39,20 @@ The response includes each kitchen contribution plus `kitchenCount` and `combine
 ```
 
 The creating kitchen's contribution is added automatically. `items` must contain at least one available product with a positive quantity.
+
+When the items are needed is chosen, not typed: send `neededIn` (`1d`, `3d`, `1w`, `2w` or `1m`) or `"emergency": true` (needed within 1 hour). The server stores `neededBy`, `emergency` and `closesAt` on the order; a typed `neededBy` date is ignored and the request fails with 400 unless `neededIn` or `emergency` is given.
+
+`closesAt` is when other kitchens can no longer join. The order stays open for whichever is longer: the time until `neededBy` minus 3 days, or 25% of the time until `neededBy`. For example, needed in 10 days closes after 7 days; needed in 5 hours closes after 1¼ hours; an emergency closes after 15 minutes. These are the default figures; a super-admin can change them (see below). Orders keep the dates worked out when they were opened.
+
+## Ordering settings
+
+Base path: `/api/ordering-settings`
+
+`GET /` (any signed-in user) returns `{ settings, version }`. `settings` holds `neededInOptions` (`{ key, label, hours }` for the "needed by" dropdown), `emergencyHours`, `closeBeforeHours` and `minOpenShare`. `version` is 0 until the figures are first saved, and the defaults in `backend/src/ordering/window.js` apply until then.
+
+`PUT /` (super-admin only) with `{ expectedVersion, settings }` saves all four figures. If someone else saved since `expectedVersion`, it fails with 409 `VERSION_CONFLICT`. Figures outside these limits fail with 400 `INVALID_INPUT`: 1–10 options with unique short keys, labels up to 30 characters and 1 hour to 1 year each; emergency 15 minutes to 24 hours; closing before delivery 0–60 days; shortest window 5%–95%.
+
+An admin opens an order for a kitchen by also sending `godownId`. The contribution then belongs to that kitchen, which can edit it like its own, and the same product availability rules as for kitchens apply.
 
 ### Join an open order (kitchen only)
 
@@ -57,13 +73,110 @@ A kitchen can have only one contribution per order.
 
 `PUT /:id/contributions/me`
 
-The body is the same as the join request. It replaces that kitchen's complete item list.
+The body is the same as the join request. It replaces that kitchen's complete item list, with two limits once an admin has approved something:
+
+- An approved line (it has `approvedAt`) must come back unchanged, and no other line may name the same product. Otherwise the request fails with 409 `LINE_APPROVED`. Lines not yet approved can still be changed, removed or added.
+- If the kitchen's whole share is approved (the contribution has `approvedAt`), any edit fails with 409 `SHARE_APPROVED`.
+
+Edits are saved with a version check, so if the order changed since it was read (for example an approval landed), the request fails with 409 `VERSION_CONFLICT` and should be retried after reloading.
 
 ### Leave an order
 
 `DELETE /:id/contributions/me`
 
-The kitchen that originally opened the order cannot leave it, but can edit its contribution. Other kitchens may leave while the order is open.
+The kitchen that originally opened the order cannot leave it, but can edit its contribution. Other kitchens may leave while the order is open, unless any of their lines is approved (409 `LINE_APPROVED`).
+
+### Approve (admin only)
+
+`POST /:id/approve`
+
+| Body | Effect |
+| --- | --- |
+| `{}` | Approves every kitchen's share and moves the order to `approved`, closing it to every kitchen |
+| `{ "godownId": "KITCHEN_ID" }` | Approves that kitchen's whole share; other kitchens carry on |
+| `{ "godownId": "KITCHEN_ID", "items": [{ "stockItemId": "PRODUCT_ID", "packId": "optional" }] }` | Approves those lines of that kitchen's share; the rest stays editable |
+
+Approval works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSED`). Approved lines and shares carry `approvedAt` and `approvedBy`. A kitchen or product that is not on the order gives 404.
+
+### Dispatch (admin only)
+
+`POST /:id/dispatch`
+
+| Body | Effect |
+| --- | --- |
+| `{}` | Dispatch all: sends every kitchen's lines that have not been sent yet |
+| `{ "godownId": "KITCHEN_ID" }` | Sends that kitchen's remaining lines |
+| `{ "godownId": "KITCHEN_ID", "items": [{ "stockItemId": "PRODUCT_ID", "packId": "optional" }] }` | Sends just those lines; the rest can follow later |
+
+The order is placed once (`ordered`), but lines are sent separately: each line gets `dispatchedAt` and `dispatchedBy`, and the contribution gets them too once all its lines are sent. Whole lines only; a short quantity is a delivery problem, not a partial dispatch. The order must be `ordered` (otherwise 409 `NOT_ORDERED`); if nothing in the request is left to send, 409 `ALREADY_DISPATCHED`. Contributions dispatched before lines were tracked carry `dispatchedAt` only on the contribution; read a line as sent when either is set.
+
+### Upload a receiving photo (kitchen only)
+
+`POST /:id/photos` — multipart form, one field `photo` (JPEG, PNG or WebP, up to 8 MB)
+
+Returns 201 `{ url }`. The kitchen must be on the order (otherwise 404). The URL goes into `photos.goods` or `photos.label` of the receive body below. Photos are stored on Cloudinary (folder `mkm/receipts`, limited to 1600 px) when `CLOUDINARY_URL` or the three `CLOUDINARY_*` keys are set; otherwise they are written under the API's own `/uploads/receipts/` and the URL points at this API (local development and tests). Errors: `INVALID_INPUT` (400, not an image), `PHOTO_TOO_LARGE` (400), `PHOTO_REQUIRED` (400, no file).
+
+### Upload a voice note (kitchen only)
+
+`POST /:id/voice-notes` — multipart form, one field `audio` (webm, m4a/mp4, mp3, ogg or wav, up to 5 MB)
+
+Returns 201 `{ url }` for `problem.voiceNoteUrl` in the receive body. Same storage and kitchen check as photos (Cloudinary folder `mkm/voice-notes`, else `/uploads/voice-notes/`). The note is kept as audio only; there is no transcription.
+
+### Receive what has arrived (kitchen only)
+
+`POST /:id/receive`
+
+```json
+{
+  "items": [
+    {
+      "stockItemId": "<product id>",
+      "photos": { "goods": "<url>", "label": "<url>" },
+      "expiryDate": "2027-03-31",
+      "mfgDate": "2026-09-01",
+      "lotNumber": "B-4471",
+      "storage": "room",
+      "notes": ""
+    }
+  ]
+}
+```
+
+"All received": adds every line of the kitchen's own share that is on the way (sent, not yet received) to its stock, creates a stock batch per line and sets `deliveredAt`, `deliveredBy` and `trackingId` on those lines, all in one transaction. Lines sent later are received later. The contribution gets `deliveredAt` once every line is received.
+
+`items` carries the FSSAI receiving details, one entry per product that is arriving (entries for other products are ignored; a missing one fails with 400 `MISSING_ITEM_DETAILS`, and nothing is added to stock):
+
+- `photos.goods` and `photos.label` (required): URLs returned by the photo upload endpoint, or any `https://` URL. Missing or malformed → 400 `PHOTO_REQUIRED`.
+- `expiryDate` (`YYYY-MM-DD`): required unless the product's `expiryRequired` is `false` (the product in each line carries that flag). Missing → 400 `EXPIRY_REQUIRED`; already passed in business time → 400 `EXPIRED_GOODS`, with a message telling the kitchen to call the central store.
+- `mfgDate` (`YYYY-MM-DD`, optional): must not be in the future.
+- `lotNumber` (optional, up to 60): the manufacturer's batch number read off the label.
+- `storage` (optional): `room`, `fridge` or `freezer`.
+- `notes` (optional, up to 500).
+
+Each stock batch (`sourceType: "collaborative_order"`, `sourceId` = the order, priced at the product's `pricePerUnit` for valuation) stores these fields plus `trackingId` (`MKM-YYMM-NNNN`: year and month of receipt, then a running number that restarts each month and is unique across kitchens), `condition: "good"`, and a copy of the order's supplier as `supplierName` and `supplierFssaiLicence` (blank when the order has no supplier). `GET /api/procurement/stock-batches` (admin) returns them.
+
+**Problem with an item (Phase 3).** Instead of receiving an item, the kitchen reports a problem on it in the same call by adding `problem` to that item's entry:
+
+```json
+{ "stockItemId": "<product id>", "photos": { "goods": "<url>" }, "expiryDate": "2027-03-31",
+  "problem": { "reason": "short", "receivedQtyBaseUnit": 60, "note": "Only 60 kg came", "voiceNoteUrl": "<url>" } }
+```
+
+`reason` is `short`, `excess`, `damaged`, `wrong_item` or `expired`. `receivedQtyBaseUnit` is the usable quantity that actually arrived (default 0; `short` must be below the ordered quantity, `excess` above it). The goods photo is always required; the label photo is optional; an expiry is required only when some usable quantity arrived and the product needs one. The item is **not** added to stock: a `DeliveryTicket` is created, the line gets `ticketId` (populated as `{ status, reason, receivedQtyBaseUnit, resolution, raisedAt }`) and stays undelivered, and it no longer counts as on the way. The other items in the call are received as normal. The share is delivered only once every line, including settled problems, is delivered. Settlement by the admin is described under Delivery problems below.
+
+If nothing is on the way, 409 `NOT_DISPATCHED`; once everything is received, 409 `ALREADY_DELIVERED`. The product ledger lists each received line as a `RECEIVED` row on the day it arrived, referenced by `orderNo`.
+
+### Supplier and invoice (admin only)
+
+`PATCH /:id/purchase`
+
+```json
+{ "supplierId": "<supplier id>", "invoiceNo": "INV-2026-0042",
+  "supplierOverrides": [{ "stockItemId": "<product id>", "supplierId": "<other supplier id>" }],
+  "expiryDates": [{ "stockItemId": "<product id>", "expiryDate": "2027-03-31" }] }
+```
+
+Any key may be sent alone; only the keys present change. `supplierOverrides` is for a combined order split across vendors: one active supplier per product that did **not** come from the order's supplier (`null` clears it; products not on the order are refused). Responses carry `supplierByProduct` (`[{ stockItemId, supplierId: { _id, name, fssaiLicence } }]`); a product without an entry came from `supplier`. The kitchen receive screen groups items by supplier, and each stock batch copies the supplier its product came from. `expiryDates` is for bulk buys: one `YYYY-MM-DD` per product on the order (`null` clears it; a product not on the order or a past date is refused, the latter with `EXPIRED_GOODS`). Entries replace the same product's earlier date. Every response carries `expiryByProduct` (`[{ stockItemId, expiryDate }]`); the kitchen app pre-fills its receive form from it, and the cook may still change the date, which is then stored only on that kitchen's stock batch. `supplierId` must be an active supplier (see Suppliers below), or `null` to clear it while the order is still `approved` (an `ordered` order must keep a supplier: 400 `SUPPLIER_REQUIRED`). `invoiceNo` is up to 60 characters and is meant to be filled in after payment. The order must be `approved` or `ordered` (otherwise 409 `NOT_APPROVED`). Every response then carries `supplier` (`{ _id, name, fssaiLicence }` or `null`) and `invoiceNo`; admins also get the raw `supplierId`. Kitchens see `supplier` and `invoiceNo` read-only, and every stock batch they receive copies the supplier (see Receive).
 
 ### Change lifecycle status (admin only)
 
@@ -73,10 +186,42 @@ The kitchen that originally opened the order cannot leave it, but can edit its c
 { "status": "closed" }
 ```
 
+Moving to `ordered` requires a supplier: either already set through `PATCH /:id/purchase`, or named in the same call as `{ "status": "ordered", "supplierId": "<supplier id>" }`. Without one, 400 `SUPPLIER_REQUIRED` and the order stays `approved`.
+
 Allowed transitions:
 
 - `open` → `closed` or `cancelled`
-- `closed` → `open`, `ordered`, or `cancelled`
+- `closed` → `cancelled`
+- `approved` → `ordered` or `cancelled`
 - `ordered` and `cancelled` are final
 
-Closing the order immediately prevents kitchens from adding, editing, or removing contributions.
+`approved` is reached only through `POST /:id/approve` (from `open` or `closed`), so an order is always approved before it is ordered.
+
+A closed order is never reopened; a kitchen that still needs items starts a new order, or an admin opens one on its behalf.
+
+Closing the order immediately prevents kitchens from adding, editing, or removing contributions. Once `closesAt` passes, the order is closed automatically (with `statusChangedBy: null`) the next time any order is read or changed.
+
+## Delivery problems (admin only)
+
+Base path: `/api/delivery-tickets`. Part of the `purchase-orders` feature.
+
+- `GET /` lists tickets, `?status=open` (default), `settled` or `all`, optionally `&godownId=`. Each ticket: `{ _id, orderId, orderNo, godownId: { name }, stockItemId: { name, unitId: { symbol } }, packId, orderedQtyBaseUnit, reason, receivedQtyBaseUnit, note, voiceNoteUrl, details: { photos, expiryDate, mfgDate, lotNumber, storage }, status, raisedBy: { name }, raisedAt, resolution }`.
+- `GET /:id` returns one ticket.
+
+- `POST /:id/settle` with `{ "acceptedQtyBaseUnit": 60, "reorderShortfall": true, "note": "..." }` settles an open ticket in one transaction. `acceptedQtyBaseUnit` (0 up to the ticket's `receivedQtyBaseUnit`, else 400) enters the kitchen's stock as a stock batch built from the ticket's own details (tracking ID, photos, expiry, supplier; `condition` is `partial_damage` for a damaged reason). The order line gets `deliveredAt`, `trackingId` and `receivedQtyBaseUnit` = the accepted quantity, which is also what the product ledger shows. With `reorderShortfall: true` and ordered − accepted > 0, a normal open shared order titled `Missing items from "<original order title>"` (or `Missing <product name>` when the order has no title) is created for that kitchen with the missing quantity (first "needed by" option), and its id is returned in `resolution.followUpOrderId`. Already settled → 409 `ALREADY_SETTLED`.
+
+## Suppliers (admin only)
+
+Base path: `/api/suppliers`. Part of the `purchase-orders` feature.
+
+Supplier records hold the name and FSSAI licence that kitchens see read-only on the orders they receive (Phase 2 of the kitchen receiving work).
+
+- `GET /` lists active suppliers sorted by name; `GET /?status=all` includes archived ones. Each row: `{ _id, name, fssaiLicence, phone, active, createdAt, updatedAt }`.
+- `POST /` with `{ name, fssaiLicence, phone? }` creates one (201). The licence must be 14 digits; spaces are removed before checking. Names are unique ignoring case (409 `DUPLICATE_NAME`).
+- `PUT /:id` with any of `{ name, fssaiLicence, phone, active }` edits it. Archive by sending `active: false`.
+
+Errors use the shared `{ code, message }` shape: `INVALID_INPUT` (400), `NOT_FOUND` (404), `DUPLICATE_NAME` (409).
+
+## Errors
+
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `SUPPLIER_REQUIRED` (400), `ALREADY_SETTLED` (409), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).

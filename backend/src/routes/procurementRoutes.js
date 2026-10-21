@@ -466,7 +466,7 @@ procurementRoutes.delete("/godown-stocks/:id", adminOnly, async (req, res) => {
     await session.withTransaction(async () => {
       deletedStock = await GodownStock.findByIdAndDelete(req.params.id, { session });
       if (!deletedStock) return;
-      // Empty (not delete) the row's batches: they keep their history but can no longer feed FIFO usage.
+      // Empty (not delete) the row's batches: they keep their history but can no longer feed FEFO usage.
       await StockBatch.updateMany(
         { godownId: deletedStock.godownId, stockItemId: deletedStock.stockItemId, remainingQtyBaseUnit: { $gt: 0 } },
         { $set: { remainingQtyBaseUnit: 0 } },

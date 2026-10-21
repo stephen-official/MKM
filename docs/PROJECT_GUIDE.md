@@ -38,7 +38,7 @@ The code uses older inventory terms. Use the plain term in anything a user sees.
 | **Purchase order (PO)** | Supplies bought and received centrally (`PurchaseOrder`). |
 | **Distribution** | Splitting received PO stock across kitchens (`Distribution`, with `allocations` and `leftovers`). |
 | **Transfer** | Stock moved from one godown to another. The receiving kitchen accepts or rejects it (`Transfer`). |
-| **Usage** | Stock a kitchen used (`Consumption`). Every product, including products labelled `daily_use`, is stock-backed; prices and FIFO batch allocations are captured when usage is recorded. |
+| **Usage** | Stock a kitchen used (`Consumption`). Every product, including products labelled `daily_use`, is stock-backed; prices and first-expired-first-out (FEFO) batch allocations are captured when usage is recorded. |
 | **Request** | A kitchen asks admins to approve a usage record (`Request`, `requestType` = `usage`; legacy values remain readable). Approval deducts kitchen stock and creates a Consumption record. **This is not the same as an indent request.** |
 
 ---
@@ -87,6 +87,10 @@ realtime.js      io proxy so routes can emit without importing server.js
 | `/api/inventory` | inventoryRoutes | Master data lookups and CRUD for stock-groups and godowns (generic `/:type`), Excel export. Writes to `stock-items` are refused (use `/api/products`) and units are read-only presets. Kitchens only get complete, unarchived products from `GET /stock-items` |
 | `/api/products` | productRoutes | The product catalog (Products page): list with completeness, create/edit, preset units, image upload, archive/restore. Prices and archiving are super-admin only |
 | `/api/product-requests` | productRequestRoutes | Kitchens ask for a missing product; admins approve (creating or linking the product) or reject with a reason |
+| `/api/procurement/collaborative-purchase-orders` | collaborativePurchaseOrderRoutes | Shared orders kitchens start and join; admin approve, supplier/invoice, dispatch; kitchen photo upload and receive with FSSAI details. See `docs/COLLABORATIVE_PURCHASE_ORDERS_API.md` |
+| `/api/ordering-settings` | orderingSettingsRoutes | Needed-by options, emergency period and ordering window (super-admin writes) |
+| `/api/suppliers` | supplierRoutes | Admin supplier records (name, 14-digit FSSAI licence, phone, active) |
+| `/api/delivery-tickets` | deliveryTicketRoutes | Delivery problems kitchens raise while receiving (list, settle: accept a quantity into stock, follow-up order for the shortfall) |
 | `/api/procurement` | procurementRoutes | Indents, purchase orders, distributions, godown-stock thresholds, stock balance |
 | `/api` **and** `/api/operations` | operationsRoutes | Unified usage records, requests (approve/reject), transfers and user-transfers, godown-stocks, notifications. **Mounted twice on purpose.** featureGate normalises the alias. |
 | `/api/reports` | reportRoutes | Generic per-entity listings and Excel exports |
@@ -98,10 +102,14 @@ realtime.js      io proxy so routes can emit without importing server.js
 | `/api/report-schedules` | reportScheduleRoutes | Scheduled report emails (super-admin) |
 
 ### Models (`models/`)
-- `InventoryModels.js`: StockGroup, Unit, Godown, StockItem (catalog fields: `pricePerUnit`, `brand`, `productCode`, `soldInPacks` + `packs[{name,size,price}]`, `archived`)
+- `InventoryModels.js`: StockGroup, Unit, Godown, StockItem (catalog fields: `pricePerUnit`, `brand`, `productCode`, `soldInPacks` + `packs[{name,size,price}]`, `expiryRequired` (default true; kitchens must enter an expiry when receiving), `archived`)
+- `CollaborativePurchaseOrderModel.js`: shared orders (`contributions[]` per kitchen with lines; `neededBy`, `closesAt`, `supplierId`, `invoiceNo`; lines carry approval, dispatch, delivery times and the `trackingId` of the batch they became)
+- `SupplierModel.js`: Supplier (name unique ignoring case, `fssaiLicence` 14 digits, phone, active)
+- `DeliveryTicketModel.js`: DeliveryTicket (one problem line: reason short/excess/damaged/wrong_item/expired, usable `receivedQtyBaseUnit`, note, voice note URL, the receiving details for the usable part, `resolution` once settled)
+- `CounterModel.js`: named running numbers; `stock/trackingId.js` turns `batch-YYMM` into `MKM-YYMM-NNNN`
 - `ProductRequestModel.js`: ProductRequest (a kitchen's request for a product not in the catalog)
 - `FlowModels.js`: IndentRequest, Indent, PurchaseOrder, GodownStock, Distribution, Consumption, Request, Transfer, Notification, plus the **executive report indexes**
-- `StockBatchModel.js`: priced stock batches per kitchen/product, including received date, expiry, lot, condition, notes and remaining quantity
+- `StockBatchModel.js`: priced stock batches per kitchen/product, including received date, expiry, lot, condition, notes and remaining quantity, plus the kitchen receiving details (`trackingId`, `mfgDate`, `storage`, `photos.goods/label`, `supplierName`, `supplierFssaiLicence`)
 - `DailyUsageModel.js`: legacy DailyUsage shape, used only by the one-time usage-log migration
 - `User.js`: User (`role`, `godownId`, `active`, reset token fields, edit version)
 - `FeatureModels.js`: FeatureFlags (versioned singleton `_id: "global"` plus overrides), FeatureFlagAudit (append-only)
@@ -115,12 +123,14 @@ These are the only places that write `GodownStock.qtyBaseUnit`. Every one of the
 |---|---|---|
 | Admin creates a distribution | `routes/procurementRoutes.js` `POST /distributions` | `$inc` each allocated kitchen's stock **at dispatch time** (upsert) |
 | Kitchen receives an indent request | `routes/indentRequestRoutes.js` `POST /:id/receive` | Increases kitchen stock by the received quantity |
+| Kitchen receives a shared order | `routes/collaborativePurchaseOrderRoutes.js` `POST /:id/receive` | Adds every line on the way to kitchen stock and creates one StockBatch per line with a tracking ID, photos, expiry and the order's supplier. Refuses the whole receipt if any line lacks a photo or a required expiry. A line sent with `problem` becomes a DeliveryTicket instead and stays out of stock |
+| Admin settles a delivery problem | `routes/deliveryTicketRoutes.js` `POST /:id/settle` | Adds the accepted quantity (0 up to what usably arrived) as a StockBatch from the ticket's details, marks the order line delivered with that quantity, optionally opens a follow-up shared order for the shortfall |
 | Kitchen/admin records consumption directly | `routes/operationsRoutes.js` `handleStockProcessing` (`POST /consumptions`, legacy `POST /orders`) | Checks for enough stock, then decrements it. Emits `low_stock_alert` |
-| Admin approves a usage Request | `operationsRoutes.js` `POST /requests/:id/approve` | Decrements FIFO stock and creates a Consumption with the request reason. A future target date is recorded as the approval day |
+| Admin approves a usage Request | `operationsRoutes.js` `POST /requests/:id/approve` | Decrements stock FEFO and creates a Consumption with the request reason. A future target date is recorded as the approval day |
 | Kitchen accepts a transfer | `operationsRoutes.js` `POST /user-transfers/:id/accept` | Moves stock from source to destination atomically |
-| Edits and deletes of usage | `operationsRoutes.js` `PATCH/DELETE /consumptions/:id` | Replays FIFO allocations and adjusts stock by the difference |
+| Edits and deletes of usage | `operationsRoutes.js` `PATCH/DELETE /consumptions/:id` | Replays FEFO allocations and adjusts stock by the difference |
 
-`GodownStock.qtyBaseUnit` remains the fast aggregate balance. `StockBatch.remainingQtyBaseUnit` explains that balance by receipt and price. New inward stock creates a batch; consumption and accepted transfers deduct batches FIFO by `receivedAt` and capture their allocations. Existing balances without batches are treated as an opening batch at the product's current price on first use, or can be initialized ahead of deployment with `npm --prefix backend run migrate-stock-batches` (dry run; add `-- --apply` explicitly).
+`GodownStock.qtyBaseUnit` remains the fast aggregate balance. `StockBatch.remainingQtyBaseUnit` explains that balance by receipt and price. New inward stock creates a batch; consumption and accepted transfers deduct batches first-expired-first-out (`stock/batchService.js` `fefoOrder`): soonest `expiryDate` first (an expired batch before everything, since using it is warned about but allowed), then undated batches (opening balances, distributions) oldest `receivedAt` first, and they capture their allocations. `GET /my-kitchen-stock` adds each item's dated lots (`expiries: [{ date, qtyBaseUnit }]`, soonest first, no batch ids or prices) so the kitchen app marks the same stock "use first". Existing balances without batches are treated as an opening batch at the product's current price on first use, or can be initialized ahead of deployment with `npm --prefix backend run migrate-stock-batches` (dry run; add `-- --apply` explicitly).
 
 The README states the *intended* rule: "requesting or approving supplies does not change stock; receipt does." **Distributions do not follow it yet**: they credit kitchen stock as soon as they're dispatched. Usage always changes `GodownStock`; there is no untracked write-only usage path.
 
@@ -172,9 +182,9 @@ New endpoints return `{ code: "SCREAMING_SNAKE_CASE", message, ...details }`. Ol
 | Products | The master product list: add/edit popup (unit, price, packs, threshold, type, brand, code), completeness status, archive, kitchen product requests |
 | Inventory Setup | Product groups and godowns; preset units (read-only) |
 | Indent | Review kitchen indent requests; create indents; mark purchased; logs |
-| Purchase Orders | Receive goods against purchased indents (Intake) and history |
+| Purchase Orders | Receive goods against purchased indents (Intake) and history; **Shared orders** tab (approve, supplier + invoice + bulk expiry, mark ordered, dispatch); **Problems** tab (`pages/problems/`, settle delivery problems); **Suppliers** tab (`pages/suppliers/`) |
 | Stock Distribution | Allocate received PO stock to kitchens (splits, leftovers) |
-| Godowns | Stock levels per godown, low-stock thresholds |
+| Godowns | Stock levels per godown, low-stock thresholds; **Expiring** tab (`pages/godowns/`, kitchen batches expired or expiring within 7/14/30 days) |
 | Transfer Stock | Create godown→godown transfers; activity log |
 | Requests | Approve or reject kitchen usage requests |
 | Consumption | View, edit or delete the unified usage log; edits and deletes synchronize stock |
@@ -192,8 +202,8 @@ New endpoints return `{ code: "SCREAMING_SNAKE_CASE", message, ...details }`. Ol
 ## 6. Kitchen app (`client-web/src`)
 
 - Mobile-first, with a bottom tab bar (`components/kitchen/KitchenBottomNav.jsx`): **Home · Stock · Use (record usage) · Requests · More**.
-- `components/ClientStore.jsx` is the main container and state holder. Screens live in `components/kitchen/`: KitchenHome, KitchenStock, KitchenUsageScreen, SupplyRequestsDeliveries, KitchenReceiveDelivery, KitchenTransfers, KitchenActivity, KitchenMore, and others.
-- Pure logic lives in `features/kitchen/`: `workflows.js`, `selectors.js`, `normalize.js`, `status.js` and `featureTabs.js`. Tests run with `node --test`. **Put new logic there and test it.**
+- `components/ClientStore.jsx` is the main container and state holder. Screens live in `components/kitchen/`: KitchenHome ("Use first" list of expired/expiring stock), KitchenStock (expiry line per item), KitchenUsageScreen (expired and expiring-within-7-days items first, with "N days left" banners; expired stock is warned about, not blocked), KitchenOrders ("Ask for supplies", shared orders) with KitchenReceiveItems (per-item photos, expiry, batch, storage on receipt, or a problem report with reason, usable amount, note and voice note), SupplyRequestsDeliveries, KitchenReceiveDelivery (old indent flow), KitchenTransfers, KitchenActivity, KitchenMore, and others.
+- Pure logic lives in `features/kitchen/`: `workflows.js`, `selectors.js`, `normalize.js`, `status.js`, `featureTabs.js`, `orders.js`, `receiving.js` and `expiry.js` (days left, "use first" order). Tests run with `node --test`. **Put new logic there and test it.**
 - `features.js` / `featureToast.js`: kitchen-side feature flags. Disabled controls are **hidden**, not just blocked with a toast.
 - `socket.js`: Socket.IO client. `App.jsx` shows toasts for realtime events.
 - Android: `npm --prefix client-web run build && npx --prefix client-web cap sync android`, then build in Android Studio. On a phone, `VITE_API_URL` must be a reachable address, not localhost.

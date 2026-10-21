@@ -31,6 +31,13 @@ describe("product form", () => {
     expect(payloadFromForm({ ...form, soldInPacks: false }, { canPrice: true }).packs).toEqual([]);
   });
 
+  it("treats expiry as required unless the product says otherwise, and sends the choice back", () => {
+    expect(emptyProductForm().expiryRequired).toBe(true);
+    expect(formFromProduct({ name: "Rice" }).expiryRequired).toBe(true);
+    expect(formFromProduct({ name: "Salt", expiryRequired: false }).expiryRequired).toBe(false);
+    expect(payloadFromForm(filled({ expiryRequired: false }), { canPrice: false }).expiryRequired).toBe(false);
+  });
+
   it("blanks a legacy unit so it has to be re-chosen, and prefills a request's unit", () => {
     expect(formFromProduct({ name: "Oil", unit: { _id: "old", symbol: "Ltr", preset: false } })).toMatchObject({ unitId: "", legacyUnit: "Ltr" });
     expect(formFromProduct({ name: "Oil", unit: { _id: "u1", symbol: "L", preset: true } }).unitId).toBe("u1");

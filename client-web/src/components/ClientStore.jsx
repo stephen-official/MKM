@@ -12,6 +12,7 @@ import KitchenBottomNav from "./kitchen/KitchenBottomNav";
 import KitchenStock from "./kitchen/KitchenStock";
 import KitchenUsageScreen from "./kitchen/KitchenUsageScreen";
 import SupplyRequestsDeliveries from "./kitchen/SupplyRequestsDeliveries";
+import KitchenOrders from "./kitchen/KitchenOrders";
 import KitchenActivity from "./kitchen/KitchenActivity";
 import KitchenTransfers from "./kitchen/KitchenTransfers";
 import KitchenReceiveDelivery from "./kitchen/KitchenReceiveDelivery";
@@ -25,6 +26,8 @@ import { clearSession } from "../utils/session";
 import { FEATURE_DISABLED_EVENT, canOpenView, draftFeature, featureForView, fetchKitchenFlags, hiddenTabs as computeHidden, isDraftBlocked, isFeatureOn, isViewHidden, sameFlags, tabTarget } from "../features.js";
 import { toastFeatureDisabled } from "../featureToast.js";
 import Select from "./ui/Select";
+import { useConfirm } from "./ui/ConfirmDialog";
+import { hasArriving } from "../features/kitchen/orders";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
   <button
@@ -46,8 +49,17 @@ const limitTo3Decimals = (value) => {
 
   return Number(num.toFixed(3));
 };
-const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "more", "activity", "transfers"]);
+const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "past-requests", "more", "activity", "transfers"]);
 const legacyUiEnabled = import.meta.env.VITE_ENABLE_LEGACY_KITCHEN_UI === "true";
+const DISCARD_DRAFT = Object.freeze({
+  title: "Discard your unfinished entry?",
+  message: "The quantities you entered will be lost.",
+  confirmLabel: "Discard",
+  cancelLabel: "Keep editing",
+  danger: true,
+});
+const DELETE_REQUEST = Object.freeze({ title: "Delete this request?", message: "This can’t be undone.", confirmLabel: "Delete", danger: true });
+
 const viewFromLocation = () => {
   const view = window.location.hash.replace(/^#\/?/, "");
   return KITCHEN_VIEWS.has(view) ? view : "home";
@@ -63,6 +75,8 @@ const ClientStore = () => {
   const [orders, setOrders] = useState([]); 
   const [requests, setRequests] = useState([]); 
   const [indents, setIndents] = useState([]);
+  // Shared orders, kept here only to count deliveries waiting on the header bell and the home screen.
+  const [sharedOrders, setSharedOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 const [editIndentId, setEditIndentId] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -87,6 +101,7 @@ const [godowns, setGodowns] = useState([]);
   const hidden = useMemo(() => computeHidden(flags), [flags]);
 
   const navigate = useNavigate();
+  const [confirm, confirmDialog] = useConfirm();
 
   // True (after toasting) when the feature behind the view is off, so open* helpers can refuse before changing any state.
   const isBlocked = (view, transactionType) => {
@@ -163,6 +178,7 @@ setItems(formatted);
         const formattedItems = res.data.map(item => ({
           // False when the product's catalog details are incomplete or it is archived (see backend catalog/).
           available: item.available !== false,
+          archived: Boolean(item.archived),
           stockRecordId: item.stockRecordId, 
           _id: item.stockItemId?._id || item.stockItemId,
           name: item.name || item.stockItemId?.name || "Unknown Item",
@@ -171,7 +187,9 @@ setItems(formatted);
           unit: item.stockItemId?.unitId?.symbol || item.unit || "Units", 
           image: item.image || item.stockItemId?.imageUrl || "",
           soldInPacks: Boolean(item.soldInPacks),
-          packs: item.packs || []
+          packs: item.packs || [],
+          // Dated lots the kitchen holds, soonest first: [{ date, qtyBaseUnit }] (features/kitchen/expiry.js reads them).
+          expiries: Array.isArray(item.expiries) ? item.expiries : []
         })).sort((a, b) => a.name.localeCompare(b.name));
         setItems(formattedItems);
       }
@@ -187,6 +205,12 @@ setItems(formatted);
       setOrders(res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
     } catch { console.error("Failed to fetch orders"); }
   };
+  const fetchSharedOrders = async () => {
+    try {
+      const res = await api.get("/procurement/collaborative-purchase-orders", { params: { limit: 100 } });
+      setSharedOrders(res.data.items || []);
+    } catch { setSharedOrders([]); }
+  };
   const fetchMyRequests = async () => {
     try {
       const res = await api.get('/requests');
@@ -200,7 +224,8 @@ setItems(formatted);
     return Promise.all([
       wants("consumption") && fetchMyOrders(),
       wants("requests") && fetchMyRequests(),
-      wants("indent") && fetchIndents()
+      wants("indent") && fetchIndents(),
+      wants("purchase-orders") && fetchSharedOrders()
     ]);
   };
 
@@ -211,10 +236,11 @@ setItems(formatted);
     flagsRef.current = nextFlags;
     setFlags(nextFlags);
     const newlyOff = (key) => isFeatureOn(previous, key) && !isFeatureOn(nextFlags, key);
-    const newlyOn = ["consumption", "requests", "indent"].filter((key) => !isFeatureOn(previous, key) && isFeatureOn(nextFlags, key));
+    const newlyOn = ["consumption", "requests", "indent", "purchase-orders"].filter((key) => !isFeatureOn(previous, key) && isFeatureOn(nextFlags, key));
     if (newlyOff("consumption")) setOrders([]);
     if (newlyOff("requests")) setRequests([]);
     if (newlyOff("indent")) setIndents([]);
+    if (newlyOff("purchase-orders")) setSharedOrders([]);
     if (newlyOn.length) fetchFeatureData(nextFlags, newlyOn);
   };
 
@@ -297,17 +323,23 @@ setItems(formatted);
     const handleHistoryNavigation = () => {
       const nextView = viewFromLocation();
       if (nextView === activeTab) return;
-      if (hasDraft && !window.confirm("Discard your unfinished draft?")) {
+      if (hasDraft) {
+        // Stay on this screen while asking; move only if the cook agrees to lose the draft.
         const currentUrl = `${window.location.pathname}${window.location.search}#/${activeTab}`;
         window.history.pushState({ kitchenView: activeTab }, "", currentUrl);
+        confirm(DISCARD_DRAFT).then((discard) => {
+          if (!discard) return;
+          setCart([]);
+          setActiveTabState(nextView);
+          window.history.pushState({ kitchenView: nextView }, "", `${window.location.pathname}${window.location.search}#/${nextView}`);
+        });
         return;
       }
-      if (hasDraft) setCart([]);
       setActiveTabState(nextView);
     };
     window.addEventListener("popstate", handleHistoryNavigation);
     return () => window.removeEventListener("popstate", handleHistoryNavigation);
-  }, [activeTab, hasDraft]);
+  }, [activeTab, hasDraft, confirm]);
 
   // Products a kitchen may pick for usage, requests and transfers; the stock screen still lists the rest.
   const usableItems = useMemo(() => items.filter((item) => item.available !== false), [items]);
@@ -489,7 +521,7 @@ if (editIndentId !== null && editIndentId !== undefined) {
       setEditIndentId(null);
       if (activeTransactionType === "indent") {
         setSupplyInitialTab("requests");
-        setActiveTab("requests");
+        setActiveTab("past-requests");
       }
       setActiveTransactionType("usage");
       await Promise.all([fetchItems(false), fetchIndents(), fetchMyRequests(), fetchMyOrders()]);
@@ -513,7 +545,7 @@ if (editIndentId !== null && editIndentId !== undefined) {
       setReceiveItems({});
       setReceiveDetails({});
       setSupplyInitialTab("deliveries");
-      setActiveTab("requests");
+      setActiveTab("past-requests");
       await Promise.all([fetchItems(false), fetchIndents()]);
     } catch (err) {
       toast.error(err.response?.data?.message || err.response?.data?.error || "Failed to receive stock");
@@ -573,71 +605,82 @@ setEditIndentId(indent._id);
     setIsCartOpen(true);
   };
 
+  // Asks before an unfinished draft is thrown away; runs `proceed` when there is none or the cook agrees.
+  const leaveDraft = async (proceed) => {
+    if (hasDraft && !(await confirm(DISCARD_DRAFT))) return false;
+    return proceed();
+  };
+
   const openStock = (skipDraftCheck = false) => {
-    if (skipDraftCheck !== true && hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
-    setActiveTab("stock");
-    setActiveTransactionType("usage");
-    setCart([]);
-    fetchItems(false);
-    return true;
+    const go = () => {
+      setActiveTab("stock");
+      setActiveTransactionType("usage");
+      setCart([]);
+      fetchItems(false);
+      return true;
+    };
+    return skipDraftCheck === true ? go() : leaveDraft(go);
   };
 
   const openUsage = (skipDraftCheck = false) => {
     if (isBlocked("usage")) return false;
-    if (skipDraftCheck !== true && hasDraft && activeTab !== "usage" && !window.confirm("Discard your unfinished draft?")) return false;
-    setActiveTab("usage");
-    setActiveTransactionType("usage");
-    setCart([]);
-    setSelectedDate(toLocalDateKey());
-    fetchItems(false);
-    return true;
-  };
-
-  const openSupplyRequest = () => {
-    if (isBlocked("request-builder", "indent")) return false;
-    if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
-    setActiveTab("request-builder");
-    setActiveTransactionType("indent");
-    setCart([]);
-    setRequestReason("");
-    setEditIndentId(null);
-    fetchItems(true);
-    return true;
+    const go = () => {
+      setActiveTab("usage");
+      setActiveTransactionType("usage");
+      setCart([]);
+      setSelectedDate(toLocalDateKey());
+      fetchItems(false);
+      return true;
+    };
+    return skipDraftCheck === true || activeTab === "usage" ? go() : leaveDraft(go);
   };
 
   const openDeliveries = () => {
+    if (isBlocked("past-requests")) return false;
+    return leaveDraft(() => {
+      setCart([]);
+      setSupplyInitialTab("deliveries");
+      setActiveTab("past-requests");
+      return true;
+    });
+  };
+
+  // "Ask for supplies": shared orders, where every new request now starts.
+  const openOrders = () => {
     if (isBlocked("requests")) return false;
-    if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
-    setCart([]);
-    setSupplyInitialTab("deliveries");
-    setActiveTab("requests");
-    return true;
+    return leaveDraft(() => {
+      setCart([]);
+      setActiveTab("requests");
+      return true;
+    });
   };
 
   const openActivity = () => {
     if (isBlocked("activity")) return false;
-    if (hasDraft && !window.confirm("Discard your unfinished draft?")) return false;
-    setCart([]);
-    setIsReceiveView(false);
-    setIsActivityLogOpen(false);
-    setActiveTab("activity");
-    return true;
+    return leaveDraft(() => {
+      setCart([]);
+      setIsReceiveView(false);
+      setIsActivityLogOpen(false);
+      setActiveTab("activity");
+      return true;
+    });
   };
 
   const handleTabChange = (tab) => {
     if (tab === activeTab) return;
-    if (hasDraft && !window.confirm("Discard your unfinished draft?")) return;
-    setCart([]);
-    const target = tabTarget(tab);
-    if (!target) return;
-    if (target.view === "stock") return openStock(true);
-    if (target.view === "usage") return openUsage(true);
-    if (target.supplyTab) setSupplyInitialTab(target.supplyTab);
-    setActiveTab(target.view);
+    leaveDraft(() => {
+      setCart([]);
+      const target = tabTarget(tab);
+      if (!target) return;
+      if (target.view === "stock") return openStock(true);
+      if (target.view === "usage") return openUsage(true);
+      if (target.supplyTab) setSupplyInitialTab(target.supplyTab);
+      setActiveTab(target.view);
+    });
   };
 
   const deleteSupplyRequest = async (indent) => {
-    if (!indent?._id || !window.confirm("Delete this supply request?")) return;
+    if (!indent?._id || !(await confirm(DELETE_REQUEST))) return;
     try {
       await api.delete(`/indent-requests/${indent._id}`);
       toast.success("Supply request deleted");
@@ -656,18 +699,23 @@ setEditIndentId(indent._id);
 
   const usageItems = usableItems;
 
+  const oldDeliveriesWaiting = indents.filter((indent) =>
+    ["confirmed", "partially_received"].includes(indent.status)
+  ).length;
+  const sharedToReceive = sharedOrders.filter((order) => hasArriving(order, userInfo?.godown?._id)).length;
   const attentionCount =
-    requests.filter((request) => request.status === "pending").length +
-    indents.filter((indent) =>
-      ["confirmed", "partially_received"].includes(indent.status)
-    ).length;
+    requests.filter((request) => request.status === "pending").length + oldDeliveriesWaiting + sharedToReceive;
+
+  // Deliveries now arrive through shared orders; only an old-style delivery on its own still opens Past requests.
+  const openWaitingDeliveries = () => (oldDeliveriesWaiting > 0 && sharedToReceive === 0 ? openDeliveries() : openOrders());
 
   return (
     <div className="kitchen-app-shell min-h-screen bg-[#F8F9FA] pb-24 font-sans text-slate-900">
+      {confirmDialog}
       <KitchenHeader
         kitchenName={userInfo?.godown?.name || "Kitchen"}
         attentionCount={attentionCount}
-        onNotificationsClick={openDeliveries}
+        onNotificationsClick={openWaitingDeliveries}
         onLogout={handleLogout}
       />
 
@@ -680,8 +728,9 @@ setEditIndentId(indent._id);
           orders={orders}
           onRecordUsage={openUsage}
           onViewStock={openStock}
-          onRequestSupplies={openSupplyRequest}
-          onReceiveDelivery={openDeliveries}
+          onRequestSupplies={openOrders}
+          onReceiveDelivery={openWaitingDeliveries}
+          sharedToReceive={sharedToReceive}
           onOpenActivity={openActivity}
           hidden={hidden}
         />
@@ -696,8 +745,8 @@ setEditIndentId(indent._id);
           hidden={hidden}
           canRequestProduct={isFeatureOn(flags, "products")}
           onRefresh={() => fetchItems(false)}
-          onRecordUsage={(item) => {
-            if (openUsage()) addToCart(item, 1);
+          onRecordUsage={async (item) => {
+            if (await openUsage()) addToCart(item, 1);
           }}
         />
       ) : activeTab === "usage" ? (
@@ -708,15 +757,24 @@ setEditIndentId(indent._id);
           onDateChange={setSelectedDate}
           cart={cart}
           onQuantityChange={addToCart}
-          onReview={() => setIsCartOpen(true)}
+          onClear={() => setCart([])}
+          onSubmit={handleSubmit}
         />
       ) : activeTab === "requests" ? (
+        <KitchenOrders
+          products={usableItems}
+          onOrdersLoaded={setSharedOrders}
+          godownId={userInfo?.godown?._id}
+          canShowPast={!hidden.has("past-requests")}
+          onShowPast={() => { setSupplyInitialTab("requests"); setActiveTab("past-requests"); }}
+        />
+      ) : activeTab === "past-requests" ? (
         <SupplyRequestsDeliveries
           key={supplyInitialTab}
           indents={indents}
           loading={loading}
           initialTab={supplyInitialTab}
-          onCreateRequest={openSupplyRequest}
+          onBack={openOrders}
           onEditRequest={handleEditIndent}
           onDeleteRequest={deleteSupplyRequest}
           onReceiveDelivery={receiveDelivery}
@@ -774,8 +832,15 @@ setEditIndentId(indent._id);
           onCancel={() => {
             setCart([]);
             setEditIndentId(null);
-            setActiveTab(activeTransactionType === "transfer" ? "transfers" : "requests");
+            setActiveTab(activeTransactionType === "transfer" ? "transfers" : "past-requests");
           }}
+          destination={transferDestination}
+          destinations={godowns}
+          currentGodownId={userInfo?.godown?._id}
+          onDestinationChange={setTransferDestination}
+          onClear={() => setCart([])}
+          onSubmit={handleSubmit}
+          onReview={() => setIsCartOpen(true)}
         />
       )}
 
@@ -1001,7 +1066,7 @@ setEditIndentId(indent._id);
     onClick={async (e) => {
       e.preventDefault();
 
-      if (!window.confirm("Delete this indent?")) return;
+      if (!(await confirm(DELETE_REQUEST))) return;
 
       try {
         await api.delete(`/indent-requests/${indent._id}`);
@@ -1383,34 +1448,12 @@ activeTransactionType === "request"
           onSubmit={handleSubmit}
         />
       )}
-      {activeTab === "request-builder" && (
-        <div className="kitchen-builder-review fixed z-30 right-0 bottom-[67px] left-0 border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur-md">
-          <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
-            <div className="min-w-0">
-              <strong className="block text-sm text-gray-900">
-                {cart.filter(item => Number(item.requestedQty) > 0).length} items selected
-              </strong>
-              <span className="block truncate text-xs text-gray-500">
-                {activeTransactionType === "transfer" ? "Review destination and quantities" : "Review quantities, date and reason"}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsCartOpen(true)}
-              disabled={!cart.some(item => Number(item.requestedQty) > 0)}
-              className="min-h-11 shrink-0 rounded-xl bg-green-700 px-5 text-sm font-bold text-white disabled:bg-gray-200 disabled:text-gray-500"
-            >
-              Review &amp; continue
-            </button>
-          </div>
-        </div>
-      )}
       <KitchenBottomNav
         activeTab={
           activeTab === "request-builder"
             ? activeTransactionType === "transfer" ? "more" : "requests"
             : ["activity", "transfers"].includes(activeTab) ? "more"
-            : activeTab === "receive-delivery" ? "requests"
+            : ["receive-delivery", "past-requests"].includes(activeTab) ? "requests"
             : activeTab
         }
         onTabChange={handleTabChange}

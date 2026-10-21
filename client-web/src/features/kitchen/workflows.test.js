@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { buildReceiptPayload, buildTransactionItems, canRecordUsage, outstandingEntryQuantity, outstandingQuantity } from "./workflows.js";
-import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../../utils/date.js";
+import { formatDateKey, isSameLocalDate, localDateFromKey, toLocalDateKey } from "../../utils/date.js";
 import { isAccessTokenValid } from "../../utils/session.js";
 
 test("uses the local calendar date without UTC conversion", () => {
@@ -50,4 +50,10 @@ test("accepts only an unexpired access token", () => {
   assert.equal(isAccessTokenValid(token(2_000), 1_000_000), true);
   assert.equal(isAccessTokenValid(token(500), 1_000_000), false);
   assert.equal(isAccessTokenValid("not-a-token"), false);
+});
+
+test("shows dates the Indian way whatever the phone's language", () => {
+  assert.equal(formatDateKey("2026-10-18"), "Sun, 18 Oct 2026");
+  assert.equal(formatDateKey(""), "");
+  assert.equal(formatDateKey("18/10/2026"), "");
 });

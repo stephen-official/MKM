@@ -11,3 +11,14 @@ export const localDateFromKey = (dateKey) => {
   const [year, month, day] = dateKey.split("-").map(Number);
   return new Date(year, month - 1, day);
 };
+
+/** "Sun, 18 Oct 2026" for a YYYY-MM-DD key, the same on every phone whatever its language setting; "" if invalid. */
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Built by hand rather than with Intl, whose punctuation differs between phone browsers.
+export const formatDateKey = (dateKey) => {
+  const date = localDateFromKey(dateKey);
+  if (!date) return "";
+  return `${DAYS[date.getDay()]}, ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+};

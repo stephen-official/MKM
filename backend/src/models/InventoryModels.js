@@ -62,6 +62,8 @@ const stockItemSchema = new mongoose.Schema(
   priceUpdatedAt: { type: Date, default: null },
   priceUpdatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   // Ordered, distributed and stocked in packs too, e.g. a 25 kg bag of rice with its own price.
+  // Kitchens must enter an expiry date when receiving this product (FSSAI). Admins turn it off for items that have none.
+  expiryRequired: { type: Boolean, default: true },
   soldInPacks: { type: Boolean, default: false },
   packs: [{
     name: { type: String, trim: true, required: true },

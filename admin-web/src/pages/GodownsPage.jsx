@@ -10,6 +10,8 @@ import {
 import { useConfirm } from "../components/ui/useConfirm.jsx";
 import { stockQuantityLabel } from "./procurementPackaging.js";
 import { eligibleOpeningProducts, emptyOpeningBalance, openingBalanceErrors } from "./openingBalance.js";
+import { ExpiringPanel } from "./godowns/ExpiringPanel.jsx";
+import { expiringBatches } from "./godowns/expiring.js";
 
 const ROW_LIMIT = 100;
 
@@ -76,6 +78,8 @@ export const GodownsPage = ({ canSetOpeningBalance = false }) => {
   useEffect(() => { setShowAll(false); }, [viewMode, selectedGodownId, lowGodownId, searchQuery]);
 
   const lowStocks = useMemo(() => stocks.filter(isLow), [stocks]);
+  // Expired or expiring within the default window, for the tab count; the panel itself lets the admin widen the window.
+  const expiringCount = useMemo(() => expiringBatches(batches).length, [batches]);
 
   const countsByGodown = useMemo(() => {
     const total = {};
@@ -409,7 +413,8 @@ export const GodownsPage = ({ canSetOpeningBalance = false }) => {
           onChange={switchMode}
           items={[
             { value: "all", label: "All godowns" },
-            { value: "low-stock", label: "Low stock", count: lowStocks.length }
+            { value: "low-stock", label: "Low stock", count: lowStocks.length },
+            { value: "expiring", label: "Expiring", count: expiringCount }
           ]}
         />
         <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
@@ -422,7 +427,7 @@ export const GodownsPage = ({ canSetOpeningBalance = false }) => {
         </div>
       </PageHeader>
 
-      <SplitView rail={rail}>
+      {viewMode === "expiring" ? <ExpiringPanel batches={batches} loading={loading} /> : <SplitView rail={rail}>
         <DetailPanel
           head={
             <>
@@ -440,7 +445,7 @@ export const GodownsPage = ({ canSetOpeningBalance = false }) => {
             {body}
           </div>
         </DetailPanel>
-      </SplitView>
+      </SplitView>}
       {openingForm && (
         <Modal title="Record opening balance" onClose={() => !savingOpening && setOpeningForm(null)} actions={(
           <>

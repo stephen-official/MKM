@@ -42,6 +42,7 @@ export const ROUTE_RULES = Object.freeze([
   open("*", "/api/users"),
   open("*", "/api/report-schedules/*"),
   open("*", "/api/report-schedules"),
+  open("*", "/api/ordering-settings"),
 
   // --- shared lookups (other modules depend on them) ---
   lookup("GET", "/api/inventory/:type"),
@@ -94,12 +95,28 @@ export const ROUTE_RULES = Object.freeze([
   feature("GET", "/api/procurement/purchase-orders", ["purchase-orders", "stock-distribution"], "read"),
   feature("POST", "/api/procurement/purchase-orders", ["purchase-orders"], "mutation"),
   feature("GET", "/api/procurement/collaborative-purchase-orders", ["purchase-orders"], "read", "both"),
-  feature("POST", "/api/procurement/collaborative-purchase-orders", ["purchase-orders"], "mutation", "kitchen"),
+  feature("POST", "/api/procurement/collaborative-purchase-orders", ["purchase-orders"], "mutation", "both"),
   feature("GET", "/api/procurement/collaborative-purchase-orders/:id", ["purchase-orders"], "read", "both"),
   feature("POST", "/api/procurement/collaborative-purchase-orders/:id/contributions", ["purchase-orders"], "mutation", "kitchen"),
   feature("PUT", "/api/procurement/collaborative-purchase-orders/:id/contributions/me", ["purchase-orders"], "mutation", "kitchen"),
   feature("DELETE", "/api/procurement/collaborative-purchase-orders/:id/contributions/me", ["purchase-orders"], "mutation", "kitchen"),
+  feature("POST", "/api/procurement/collaborative-purchase-orders/:id/approve", ["purchase-orders"], "mutation"),
+  feature("POST", "/api/procurement/collaborative-purchase-orders/:id/dispatch", ["purchase-orders"], "mutation"),
+  feature("POST", "/api/procurement/collaborative-purchase-orders/:id/photos", ["purchase-orders"], "mutation", "kitchen"),
+  feature("POST", "/api/procurement/collaborative-purchase-orders/:id/voice-notes", ["purchase-orders"], "mutation", "kitchen"),
+  feature("POST", "/api/procurement/collaborative-purchase-orders/:id/receive", ["purchase-orders"], "mutation", "kitchen"),
   feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/status", ["purchase-orders"], "mutation"),
+  feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/purchase", ["purchase-orders"], "mutation"),
+
+  // --- delivery problems kitchens raise while receiving shared orders ---
+  feature("GET", "/api/delivery-tickets", ["purchase-orders"], "read"),
+  feature("GET", "/api/delivery-tickets/:id", ["purchase-orders"], "read"),
+  feature("POST", "/api/delivery-tickets/:id/settle", ["purchase-orders"], "mutation"),
+
+  // --- suppliers (admin records shown read-only to kitchens on received orders) ---
+  feature("GET", "/api/suppliers", ["purchase-orders"], "read"),
+  feature("POST", "/api/suppliers", ["purchase-orders"], "mutation"),
+  feature("PUT", "/api/suppliers/:id", ["purchase-orders"], "mutation"),
 
   // --- stock distribution ---
   feature("GET", "/api/procurement/distributions/logs", ["stock-distribution"], "read"),

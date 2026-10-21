@@ -15,6 +15,7 @@ import {
   StockGroup,
   Unit
 } from "../models/InventoryModels.js";
+import { collaborativeReceiptMovements } from "../ordering/ledgerMovements.js";
 
 
 // ============================================================
@@ -351,6 +352,8 @@ const indentDocs =
     // ========================================================
 
     const movements = [];
+    // Shares of collaborative orders the kitchen confirmed as received.
+    movements.push(...(await collaborativeReceiptMovements(godownId, productId)));
 
 
     // ========================================================
@@ -972,6 +975,8 @@ const indentDocs =
 
 
 const movements = [];
+// Shares of collaborative orders the kitchen confirmed as received.
+movements.push(...(await collaborativeReceiptMovements(godownId, productId)));
 
 
     // RECEIVED

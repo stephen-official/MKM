@@ -1,6 +1,7 @@
 import { CalendarDays, ClipboardCheck, History } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toLocalDateKey } from "../../utils/date";
+import DateField from "../ui/DateField";
 import "./KitchenSecondaryScreens.css";
 
 const formatDateTime = (value) => new Intl.DateTimeFormat("en-IN", {
@@ -22,7 +23,7 @@ export default function KitchenActivity({ entries = [] }) {
       </header>
       <label className="kss-date-filter">
         <CalendarDays size={19} aria-hidden="true" /><span>Filter by date</span>
-        <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+        <DateField value={date} label="Filter by date" placeholder="Any date" onChange={setDate} />
         {date && <button type="button" onClick={() => setDate("")}>Clear</button>}
       </label>
       {visibleEntries.length === 0 ? (

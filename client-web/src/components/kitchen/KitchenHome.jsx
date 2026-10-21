@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { createElement } from "react";
 import { toLocalDateKey } from "../../utils/date";
+import { expiryStatus, itemsToUseFirst } from "../../features/kitchen";
 import "./KitchenHome.css";
 
 const OPEN_REQUEST_STATUSES = new Set([
@@ -84,6 +85,7 @@ export default function KitchenHome({
   onViewStock,
   onRequestSupplies,
   onReceiveDelivery,
+  sharedToReceive = 0,
   onOpenActivity,
   hidden = NO_HIDDEN,
 }) {
@@ -104,8 +106,11 @@ export default function KitchenHome({
     return quantity > 0 && threshold > 0 && quantity <= threshold;
   });
   const attentionItems = [...outOfStock, ...lowStock];
+  // Expired or expiring within the week, most urgent first; usable items only, since the rest cannot be recorded anyway.
+  const useFirst = itemsToUseFirst(items.filter((item) => item.available !== false), today);
   const pendingRequests = [...requests, ...indents].filter((record) => OPEN_REQUEST_STATUSES.has(statusOf(record)));
-  const deliveries = indents.filter(isReceivable);
+  // Old-style deliveries plus shares of shared orders that have been dispatched to this kitchen.
+  const toReceive = indents.filter(isReceivable).length + sharedToReceive;
   const todaysEntries = orders.filter(
     (entry) => toLocalDateKey(entry?.date || entry?.usageDate || entry?.createdAt) === today,
   );
@@ -137,10 +142,10 @@ export default function KitchenHome({
             <strong>{attentionItems.length}</strong><span>Stock alerts</span>
             <small>{outOfStock.length} out of stock</small>
           </button>
-          {canUseRequests && <button type="button" className="kh-metric kh-metric--delivery" onClick={onReceiveDelivery} aria-label={`${deliveries.length} deliveries are ready to receive.`}>
+          {canUseRequests && <button type="button" className="kh-metric kh-metric--delivery" onClick={onReceiveDelivery} aria-label={`${toReceive} deliveries are ready to receive.`}>
             <PackageCheck size={22} aria-hidden="true" />
-            <strong>{deliveries.length}</strong><span>To receive</span>
-            <small>{deliveries.length ? "Check delivered items" : "Nothing waiting"}</small>
+            <strong>{toReceive}</strong><span>To receive</span>
+            <small>{toReceive ? "Check delivered items" : "Nothing waiting"}</small>
           </button>}
           {canUseRequests && <button type="button" className="kh-metric kh-metric--request" onClick={onRequestSupplies} aria-label={`${pendingRequests.length} supply requests are in progress.`}>
             <Clock3 size={22} aria-hidden="true" />
@@ -154,11 +159,32 @@ export default function KitchenHome({
         <div className="kh-section-heading"><div><p>Daily tasks</p><h2 id="actions-title">What would you like to do?</h2></div></div>
         <div className="kh-actions">
           {canRecordUsage && <ActionButton icon={Utensils} title="Record usage" description="Enter supplies used today" onClick={onRecordUsage} tone="primary" />}
-          <ActionButton icon={Boxes} title="View kitchen stock" description={`${items.length} items in this kitchen`} onClick={onViewStock} />
+          <ActionButton icon={Boxes} title="View kitchen stock" description={`${items.filter((item) => item.available !== false).length} items you can use`} onClick={onViewStock} />
           {canUseRequests && <ActionButton icon={Plus} title="Request supplies" description="Ask the central store for items" onClick={onRequestSupplies} />}
-          {canUseRequests && <ActionButton icon={PackageCheck} title="Receive a delivery" description={deliveries.length ? `${deliveries.length} waiting for confirmation` : "Check incoming supplies"} onClick={onReceiveDelivery} />}
+          {canUseRequests && <ActionButton icon={PackageCheck} title="Receive a delivery" description={toReceive ? `${toReceive} waiting for confirmation` : "Check incoming supplies"} onClick={onReceiveDelivery} />}
         </div>
       </section>
+
+      {canRecordUsage && useFirst.length > 0 && (
+        <section className="kh-alert-list" aria-labelledby="use-first-title">
+          <div className="kh-section-heading">
+            <div><p>Expiry</p><h2 id="use-first-title">Use first</h2></div>
+            <button type="button" onClick={onRecordUsage}>Record usage</button>
+          </div>
+          <div className="kh-alert-list__items">
+            {useFirst.slice(0, 3).map((item, index) => {
+              const expiry = expiryStatus(item, today);
+              return (
+                <button type="button" key={item._id || item.stockRecordId || `${item.name}-${index}`} onClick={onRecordUsage}>
+                  <span className={`kh-stock-dot ${expiry.key === "expired" ? "kh-stock-dot--out" : ""}`} aria-hidden="true" />
+                  <span><strong>{item.name || "Unnamed item"}</strong><small>{expiry.key === "expired" ? `${expiry.label} · check before using` : expiry.label}</small></span>
+                  <b>{expiry.qtyBaseUnit.toLocaleString("en-IN", { maximumFractionDigits: 3 })} {item.unit || item.unitId?.symbol || "units"}</b>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {attentionItems.length > 0 && (
         <section className="kh-alert-list" aria-labelledby="stock-alert-title">
