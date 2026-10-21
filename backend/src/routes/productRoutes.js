@@ -10,6 +10,8 @@ import { isSuperAdmin } from "../utils/roles.js";
 import {
   CatalogError, buildProductUpdate, ensurePresetUnits, kitchensHolding, sendCatalogError, serializeProduct
 } from "../catalog/productService.js";
+import { canonicalPackName, isPresetPackType, packNameMatch, summarizePackTypeUsage } from "../catalog/packTypes.js";
+import { spellingHints } from "../catalog/spellcheck.js";
 import { createProductWorkbook, PRODUCT_COLUMNS, rowToProduct } from "../catalog/productWorkbook.js";
 
 export const productRoutes = express.Router();
@@ -144,6 +146,51 @@ productRoutes.get("/", adminOnly, async (req, res) => {
 productRoutes.get("/:id", adminOnly, async (req, res) => {
   try {
     res.json(await loadOne(req.params.id));
+  } catch (error) {
+    sendCatalogError(res, error);
+  }
+});
+
+// Custom pack types. Presets are fixed and can never be retired.
+const packTypeName = (raw) => {
+  const name = canonicalPackName(raw);
+  if (!name) throw new CatalogError(400, "VALIDATION", "Say which pack type.");
+  if (isPresetPackType(name)) throw new CatalogError(400, "PRESET_PACK_TYPE", `${name} is a built-in pack type and cannot be deleted.`);
+  return name;
+};
+const packTypeUsage = async (name) => {
+  const products = await StockItem.find({ "packs.name": packNameMatch(name) }).select("name soldInPacks packs.name").sort({ name: 1 }).lean();
+  return summarizePackTypeUsage(products, name);
+};
+
+// Advisory only: never blocks a save. Presets are skipped.
+productRoutes.get("/pack-types/spellcheck", adminOnly, async (req, res) => {
+  try {
+    const name = canonicalPackName(req.query.name);
+    res.json({ name, hints: !name || isPresetPackType(name) ? [] : await spellingHints(name) });
+  } catch (error) {
+    sendCatalogError(res, error);
+  }
+});
+
+productRoutes.get("/pack-types/usage", adminOnly, async (req, res) => {
+  try {
+    const name = packTypeName(req.query.name);
+    res.json({ name, products: await packTypeUsage(name) });
+  } catch (error) {
+    sendCatalogError(res, error);
+  }
+});
+
+// Retires a custom pack type: its packs are removed from every product. A product left with bulk ordering on and
+// no pack becomes incomplete ("needs a pack"), which keeps it away from kitchens until a pack is added.
+// Past orders keep their own copy of the pack name, size and price, so history is unaffected.
+productRoutes.post("/pack-types/remove", adminOnly, async (req, res) => {
+  try {
+    const name = packTypeName(req.body?.name);
+    const products = await packTypeUsage(name);
+    await StockItem.updateMany({ _id: { $in: products.map((p) => p._id) } }, { $pull: { packs: { name: packNameMatch(name) } } });
+    res.json({ name, updated: products.length, disabled: products.filter((p) => p.disabled).length, products });
   } catch (error) {
     sendCatalogError(res, error);
   }

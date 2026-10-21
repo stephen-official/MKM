@@ -1,18 +1,35 @@
 import { useRef, useState } from "react";
-import { ImagePlus, Loader2, Lock, Package, Plus, Trash2 } from "lucide-react";
+import { ImagePlus, Info, Loader2, Lock, Package, Plus, Trash2, X } from "lucide-react";
 import { api } from "../../api.js";
 import { Button, Field, Modal, Select } from "../../components/ui/index.jsx";
-import { ITEM_TYPES, formatPrice, newPack, unitPriceFromPack, validateProductForm } from "./productForm.js";
+import { ITEM_TYPES, PACK_TYPES, capitalizeFirst, formatPrice, newPack, unitPriceFromPack, validateProductForm } from "./productForm.js";
 
 /**
  * Add / edit popup for one product. `canPrice` is true for a super-admin; anyone else sees prices read-only.
  * `serverErrors` are the field errors the API returned, in the same shape as validateProductForm's.
  */
-export function ProductForm({ title, initial, units, groups, canPrice, busy, serverErrors = {}, notice, submitLabel = "Save product", onCancel, onSubmit }) {
+const CUSTOM_KEY = "mkm.customPackTypes";
+const readCustomTypes = () => {
+  try {
+    const list = JSON.parse(localStorage.getItem(CUSTOM_KEY));
+    return Array.isArray(list) ? list.filter((n) => typeof n === "string") : [];
+  } catch { return []; }
+};
+const rememberCustomTypes = (names) => {
+  try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(names)); } catch { /* storage unavailable: the list still fills from saved products */ }
+};
+const isPreset = (name) => PACK_TYPES.some((t) => t.name === name);
+
+export function ProductForm({ title, initial, units, groups, canPrice, knownPackNames = [], onPackTypeRemoved, busy, serverErrors = {}, notice, submitLabel = "Save product", onCancel, onSubmit }) {
   const [form, setForm] = useState(initial);
   const [localErrors, setLocalErrors] = useState({});
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [customKeys, setCustomKeys] = useState(() => new Set());
+  const [savedCustom, setSavedCustom] = useState(readCustomTypes);
+  const [removed, setRemoved] = useState([]);
+  const [spelling, setSpelling] = useState({}); // pack key -> [{ word, suggestions }]
+  const [removing, setRemoving] = useState(null); // { name, products: null | [...], busy, error }
   const fileRef = useRef(null);
   const errors = { ...serverErrors, ...localErrors };
   const unit = units.find((u) => u._id === form.unitId);
@@ -44,14 +61,71 @@ export function ProductForm({ title, initial, units, groups, canPrice, busy, ser
     event.preventDefault();
     const found = validateProductForm(form, { canPrice });
     setLocalErrors(found);
-    if (Object.keys(found).length === 0) onSubmit(form);
+    if (Object.keys(found).length === 0) {
+      const used = form.packs.map((p) => p.name.trim()).filter((n) => n && !isPreset(n));
+      rememberCustomTypes(uniqueNames([...savedCustom, ...used]));
+      onSubmit(form);
+    }
+  };
+
+  const uniqueNames = (names) => names.filter((n, i) => names.findIndex((m) => m.toLowerCase() === n.toLowerCase()) === i);
+  // Custom names already used (here, on saved products, or on this form) become ordinary options next time.
+  const customOptions = uniqueNames([...savedCustom, ...knownPackNames, ...form.packs.map((p) => p.name)]
+    .map((n) => (n || "").trim()).filter((n) => n && !isPreset(n) && !removed.includes(n.toLowerCase())));
+  const toggleCustom = (key, on) => setCustomKeys((prev) => { const next = new Set(prev); if (on) next.add(key); else next.delete(key); return next; });
+
+  // Advisory only: a failed or slow check just shows nothing.
+  const checkSpelling = async (pack) => {
+    const name = pack.name.trim();
+    if (name.length < 3) return setSpelling((prev) => ({ ...prev, [pack.key]: [] }));
+    try {
+      const { data } = await api.get("/products/pack-types/spellcheck", { params: { name } });
+      setSpelling((prev) => ({ ...prev, [pack.key]: data.hints }));
+    } catch {
+      setSpelling((prev) => ({ ...prev, [pack.key]: [] }));
+    }
+  };
+  const applySuggestion = (pack, hint, suggestion) => {
+    const fixed = pack.name.replace(new RegExp(hint.word, "i"), suggestion);
+    setPack(pack.key, { name: capitalizeFirst(fixed) });
+    setSpelling((prev) => ({ ...prev, [pack.key]: [] }));
+  };
+
+  const startRemoving = async (name) => {
+    setRemoving({ name, products: null, busy: false, error: "" });
+    try {
+      const { data } = await api.get("/products/pack-types/usage", { params: { name } });
+      const products = data.products;
+      setRemoving({ name, products, busy: false, error: "" });
+    } catch (e) {
+      setRemoving({ name, products: null, busy: false, failed: true, error: e.response?.data?.message || "Could not check which products use it." });
+    }
+  };
+  const confirmRemoving = async () => {
+    const { name } = removing;
+    setRemoving((prev) => ({ ...prev, busy: true, error: "" }));
+    try {
+      await api.post("/products/pack-types/remove", { name });
+    } catch (e) {
+      setRemoving((prev) => ({ ...prev, busy: false, error: e.response?.data?.message || "The pack type could not be removed." }));
+      return;
+    }
+    const lower = name.toLowerCase();
+    const next = savedCustom.filter((n) => n.toLowerCase() !== lower);
+    rememberCustomTypes(next);
+    setSavedCustom(next);
+    setRemoved((prev) => [...prev, lower]);
+    // Pack rows in this form that used it go back to unchosen; rows already saved are gone server-side.
+    set({ packs: form.packs.map((pk) => (pk.name.trim().toLowerCase() === lower ? { ...pk, name: "" } : pk)) });
+    setRemoving(null);
+    onPackTypeRemoved?.(name);
   };
 
   const error = (key) => errors[key] && <span className="field__error" role="alert">{errors[key]}</span>;
   const packError = (index, key) => errors.packList?.[index]?.[key] && <span className="field__error" role="alert">{errors.packList[index][key]}</span>;
 
   return (
-    <Modal title={title} onClose={() => !busy && onCancel()} wide actions={(
+    <Modal title={title} onClose={() => !busy && !removing && onCancel()} wide actions={(
       <>
         <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
         <Button type="submit" form="product-form" disabled={busy || uploading}>{busy ? "Saving…" : submitLabel}</Button>
@@ -139,10 +213,10 @@ export function ProductForm({ title, initial, units, groups, canPrice, busy, ser
         </section>
 
         <section className="product-form__section" aria-labelledby="product-packs">
-          <h3 id="product-packs">Packs</h3>
+          <h3 id="product-packs">Ordered in Bulk</h3>
           <label className="checkbox">
             <input type="checkbox" checked={form.soldInPacks} onChange={(e) => togglePacks(e.target.checked)} />
-            <span>Ordered in packs<small className="product-form__hint">For example, rice bought as 25 kg bags. Packs are used for ordering, distribution and kitchen stock.</small></span>
+            <span>Ordered in bulk<small className="product-form__hint">For example, rice bought as 25 kg bags. Packs are used for ordering, distribution and kitchen stock.</small></span>
           </label>
           {form.soldInPacks && (
             <div className="product-packs">
@@ -151,10 +225,50 @@ export function ProductForm({ title, initial, units, groups, canPrice, busy, ser
                 return (
                   <fieldset className="product-pack" key={pack.key}>
                     <legend className="sr-only">Pack {index + 1}</legend>
-                    <Field label="Pack name">
-                      <input value={pack.name} placeholder="Bag" onChange={(e) => setPack(pack.key, { name: e.target.value })} maxLength={40} />
+                    <div className="field pack-types">
+                      <span className="field__label">Pack name</span>
+                      {PACK_TYPES.map((type) => (
+                        <span className="pack-type" key={type.name}>
+                          <label>
+                            <input type="radio" name={`pack-name-${pack.key}`} checked={!customKeys.has(pack.key) && pack.name === type.name} onChange={() => { toggleCustom(pack.key, false); setPack(pack.key, { name: type.name }); }} />
+                            {type.name}
+                          </label>
+                          <span className="pack-type__info" tabIndex={0} aria-label={`What a ${type.name} looks like`}>
+                            <Info size={14} aria-hidden="true" />
+                            <img className="pack-type__preview" src={type.image} alt={`${type.name} example`} />
+                          </span>
+                        </span>
+                      ))}
+                      {customOptions.map((name) => (
+                        <span className="pack-type" key={name}>
+                          <label>
+                            <input type="radio" name={`pack-name-${pack.key}`} checked={!customKeys.has(pack.key) && pack.name.trim().toLowerCase() === name.toLowerCase()} onChange={() => { toggleCustom(pack.key, false); setPack(pack.key, { name }); }} />
+                            {name}
+                          </label>
+                          <button type="button" className="pack-type__remove" aria-label={`Delete custom pack type ${name}`} onClick={() => startRemoving(name)}>
+                            <X size={12} aria-hidden="true" />
+                          </button>
+                        </span>
+                      ))}
+                      <span className="pack-type">
+                        <label>
+                          <input type="radio" name={`pack-name-${pack.key}`} checked={customKeys.has(pack.key)} onChange={() => { toggleCustom(pack.key, true); setPack(pack.key, { name: "" }); }} />
+                          Custom
+                        </label>
+                      </span>
+                      {customKeys.has(pack.key) && (
+                        <input value={pack.name} placeholder="New pack type, e.g. Sack" aria-label="Custom pack type" autoFocus spellCheck autoCapitalize="words" autoCorrect="on" maxLength={40} onBlur={() => checkSpelling(pack)} onChange={(e) => { setPack(pack.key, { name: capitalizeFirst(e.target.value) }); setSpelling((prev) => ({ ...prev, [pack.key]: [] })); }} />
+                      )}
+                      {customKeys.has(pack.key) && (spelling[pack.key] || []).map((hint) => (
+                        <small className="pack-spelling" key={hint.word} role="status">
+                          “{hint.word}” may be misspelled.{hint.suggestions.length > 0 && " Did you mean "}
+                          {hint.suggestions.map((suggestion) => (
+                            <button type="button" key={suggestion} onClick={() => applySuggestion(pack, hint, suggestion)}>{suggestion}</button>
+                          ))}
+                        </small>
+                      ))}
                       {packError(index, "name")}
-                    </Field>
+                    </div>
                     <Field label="One pack holds">
                       <span className="product-input-affix product-input-affix--end">
                         <input type="number" min="0" step="any" inputMode="decimal" value={pack.size} onChange={(e) => setPack(pack.key, { size: e.target.value })} />
@@ -187,6 +301,29 @@ export function ProductForm({ title, initial, units, groups, canPrice, busy, ser
           )}
         </section>
       </form>
+      {removing && (
+        <Modal title={`Delete “${removing.name}”?`} onClose={() => !removing.busy && setRemoving(null)} actions={(
+          <>
+            <Button variant="ghost" onClick={() => setRemoving(null)} disabled={removing.busy}>Cancel</Button>
+            <Button variant="danger" onClick={confirmRemoving} disabled={removing.busy || removing.products === null}>{removing.busy ? "Deleting…" : "Delete pack type"}</Button>
+          </>
+        )}>
+          {removing.products === null ? <p>{removing.failed ? "Nothing was deleted." : "Checking which products use it…"}</p> : removing.products.length === 0 ? (
+            <p>No products use this pack type. It will just be removed from the list.</p>
+          ) : (
+            <>
+              <p>{removing.products.length === 1 ? "1 product uses" : `${removing.products.length} products use`} this pack type. Its packs will be removed from {removing.products.length === 1 ? "it" : "them"}.</p>
+              <ul className="pack-remove-list">
+                {removing.products.map((p) => <li key={p._id}>{p.name}{p.disabled && <small> — will be disabled</small>}</li>)}
+              </ul>
+              {removing.products.some((p) => p.disabled)
+                ? <p>{removing.products.every((p) => p.disabled) ? "All of these products" : "Products marked above"} will be disabled: they have no other pack type but still have bulk ordering on, so kitchens won’t see them until a pack is added. The rest keep their other packs.</p>
+                : <p>None will be disabled, as each keeps another pack type.</p>}
+            </>
+          )}
+          {removing.error && <span className="field__error" role="alert">{removing.error}</span>}
+        </Modal>
+      )}
     </Modal>
   );
 }

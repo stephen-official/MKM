@@ -49,6 +49,19 @@
 .product-packs { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 14px; }
 .product-pack { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: start; width: 100%; margin: 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .product-pack__remove { margin-top: 22px; }
+.pack-types { gap: 6px; }
+.pack-type { display: flex; align-items: center; gap: 6px; }
+.pack-type label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.pack-type__info { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid var(--border-strong); border-radius: 50%; color: var(--ink-soft); cursor: help; }
+.pack-type__remove { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 1px solid var(--danger); border-radius: 3px; background: var(--danger-bg); color: var(--danger); cursor: pointer; }
+.pack-type__remove:hover, .pack-type__remove:focus-visible { background: var(--danger); color: var(--white); }
+.pack-spelling { color: var(--ink-soft); font-size: 12px; line-height: 1.8; }
+.pack-spelling button { margin-left: 6px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); color: var(--primary); font: inherit; cursor: pointer; }
+.pack-spelling button:hover { background: var(--primary-bg); }
+.pack-remove-list { margin: 8px 0; padding-left: 18px; max-height: 180px; overflow-y: auto; }
+.pack-remove-list small { color: var(--danger); }
+.pack-type__preview { display: none; position: absolute; left: 24px; top: 50%; z-index: 20; width: 160px; height: 120px; transform: translateY(-50%); border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); box-shadow: 0 6px 20px rgb(0 0 0 / 0.18); pointer-events: none; }
+.pack-type__info:hover .pack-type__preview, .pack-type__info:focus .pack-type__preview { display: block; }
 
 .product-requests { margin: 0; padding: 0; list-style: none; }
 .product-request { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
