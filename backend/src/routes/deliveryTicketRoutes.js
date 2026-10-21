@@ -80,6 +80,7 @@ deliveryTicketRoutes.post("/:id/settle", adminOnly, async (req, res) => {
       if (ticket.status !== "open") throw fail(409, "This problem has already been settled", "ALREADY_SETTLED");
       if (!Number.isFinite(accepted) || accepted < 0) throw fail(400, "Enter the quantity to accept into stock (0 or more)");
       if (accepted > ticket.receivedQtyBaseUnit) throw fail(400, `Only ${ticket.receivedQtyBaseUnit} usable arrived, so at most that can be accepted`);
+      if (ticket.reason === "wrong_item" && accepted !== 0) throw fail(400, "A wrong item cannot be added as the product that was ordered");
       const order = await CollaborativePurchaseOrder.findById(ticket.orderId)
         .populate("supplierId", "name fssaiLicence").populate("supplierByProduct.supplierId", "name fssaiLicence").session(session);
       if (!order) throw fail(404, "The order for this problem no longer exists");

@@ -345,6 +345,8 @@ export function ProductsPage() {
           units={units}
           groups={groups}
           canPrice={canPrice}
+          onPackTypeRemoved={() => loadProducts()}
+          knownPackNames={products.flatMap((p) => (p.packs || []).map((pack) => pack.name))}
           busy={busy}
           serverErrors={serverErrors}
           submitLabel={editing.request ? "Create and approve" : "Save product"}

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { parseLabel, scanChanges, scanSummary } from "../../features/kitchen/labelScan";
-import { EXPIRY_CHIPS, PROBLEM_REASONS, STORAGE_OPTIONS, adminExpiryFor, arrivingProducts, emptyProblem, emptyReceipt, groupBySupplier, usableQty, expiryFromChip, expiryNeeded, productIdOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
+import { EXPIRY_CHIPS, PROBLEM_REASONS, STORAGE_OPTIONS, adminExpiryFor, arrivingProducts, emptyProblem, emptyReceipt, groupBySupplier, usableQty, expiryFromChip, expiryNeeded, receiptKeyOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import { canScanLabels, readLabelText, stopLabelScanner } from "../../utils/labelOcr";
 import DateField from "../ui/DateField";
@@ -234,14 +234,14 @@ function ItemCard({ order, line, form, today, onChange }) {
 export default function KitchenReceiveItems({ order, lines, notSentCount = 0, onBack, onDone }) {
   const today = toLocalDateKey();
   const products = arrivingProducts(lines);
-  const [forms, setForms] = useState(() => Object.fromEntries(products.map((line) => [productIdOf(line), emptyReceipt(adminExpiryFor(order, line))])));
+  const [forms, setForms] = useState(() => Object.fromEntries(products.map((line) => [receiptKeyOf(line), emptyReceipt(adminExpiryFor(order, line))])));
   const [busy, setBusy] = useState(false);
   const ready = receiptReady(lines, forms, today);
-  const readyCount = products.filter((line) => receiptProblems(line, forms[productIdOf(line)], today).length === 0).length;
+  const readyCount = products.filter((line) => receiptProblems(line, forms[receiptKeyOf(line)], today).length === 0).length;
   /** `change` is a partial form, or a function of the latest form returning one (for changes that build on other fields). */
   const update = (line, change) => setForms((previous) => {
-    const current = previous[productIdOf(line)];
-    return { ...previous, [productIdOf(line)]: { ...current, ...(typeof change === "function" ? change(current) : change) } };
+    const current = previous[receiptKeyOf(line)];
+    return { ...previous, [receiptKeyOf(line)]: { ...current, ...(typeof change === "function" ? change(current) : change) } };
   });
   useEffect(() => () => { stopLabelScanner(); }, []); // free the OCR worker's memory when the cook leaves the screen
 
@@ -274,7 +274,7 @@ export default function KitchenReceiveItems({ order, lines, notSentCount = 0, on
         </div>
       </div>
       <div className="kr-items">
-        {group.lines.map((line) => <ItemCard key={productIdOf(line)} order={order} line={line} form={forms[productIdOf(line)]} today={today} onChange={(change) => update(line, change)} />)}
+        {group.lines.map((line) => <ItemCard key={receiptKeyOf(line)} order={order} line={line} form={forms[receiptKeyOf(line)]} today={today} onChange={(change) => update(line, change)} />)}
       </div>
     </section>)}
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
+import mongoose from "mongoose";
 import request from "supertest";
 import { clearDb, startDb, stopDb, syncAllIndexes } from "./helpers/db.js";
 import { createGodown, createUser } from "./helpers/auth.js";
@@ -93,6 +94,7 @@ test("problem details are checked in plain words, and nothing is saved when one 
   assert.match((await bad({ reason: "lost" })).body.message, /choose what went wrong/);
   assert.match((await bad({ reason: "short", receivedQtyBaseUnit: 100 })).body.message, /less than 100 arrived/);
   assert.match((await bad({ reason: "excess", receivedQtyBaseUnit: 100 })).body.message, /more than 100 arrived/);
+  assert.match((await bad({ reason: "wrong_item", receivedQtyBaseUnit: 1 })).body.message, /wrong item cannot be added as Rice/);
   assert.match((await bad({ reason: "short", receivedQtyBaseUnit: -1 })).body.message, /how much usable stock arrived/);
   assert.equal((await bad({ reason: "short", receivedQtyBaseUnit: 60 })).body.code, "EXPIRY_REQUIRED", "usable stock still needs its expiry");
   const noPhoto = await receive([good(ctx.dal), { stockItemId: ctx.rice._id, problem: { reason: "damaged" } }]);
@@ -103,6 +105,34 @@ test("problem details are checked in plain words, and nothing is saved when one 
   const ok = await receive([good(ctx.dal), { stockItemId: ctx.rice._id, photos: { goods: photos.goods }, problem: { reason: "damaged", note: "Bags torn and wet" } }]);
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
   assert.equal((await DeliveryTicket.findOne({}).lean()).receivedQtyBaseUnit, 0);
+});
+
+test("problem quantities stay attached to their own pack line", async () => {
+  const small = new mongoose.Types.ObjectId();
+  const large = new mongoose.Types.ObjectId();
+  const order = (await call(ctx.cookA, "post", "/").send({ neededIn: "1w", items: [
+    { stockItemId: ctx.rice._id, qtyBaseUnit: 25, packId: small, packName: "25 kg bag", packSize: 25, packQuantity: 1 },
+    { stockItemId: ctx.rice._id, qtyBaseUnit: 50, packId: large, packName: "50 kg bag", packSize: 50, packQuantity: 1 },
+  ] })).body;
+  await call(ctx.admin, "post", `/${order._id}/approve`).send({});
+  await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id });
+  await call(ctx.admin, "post", `/${order._id}/dispatch`).send({ godownId: ctx.kitchenA._id });
+
+  const ambiguous = await call(ctx.cookA, "post", `/${order._id}/receive`).send({ items: [
+    { stockItemId: ctx.rice._id, photos: { goods: photos.goods }, expiryDate: "2030-01-31", problem: { reason: "short", receivedQtyBaseUnit: 20 } },
+  ] });
+  assert.equal(ambiguous.status, 400);
+  assert.equal(ambiguous.body.code, "MISSING_ITEM_DETAILS");
+
+  const res = await call(ctx.cookA, "post", `/${order._id}/receive`).send({ items: [
+    { stockItemId: ctx.rice._id, packId: small, photos: { goods: photos.goods }, expiryDate: "2030-01-31", problem: { reason: "short", receivedQtyBaseUnit: 20 } },
+    { stockItemId: ctx.rice._id, packId: large, photos: { goods: photos.goods }, expiryDate: "2030-01-31", problem: { reason: "short", receivedQtyBaseUnit: 40 } },
+  ] });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const rows = await DeliveryTicket.find({ orderId: order._id }).sort({ orderedQtyBaseUnit: 1 }).lean();
+  assert.deepEqual(rows.map((row) => [row.orderedQtyBaseUnit, row.receivedQtyBaseUnit]), [[25, 20], [50, 40]]);
+  assert.equal(String(rows[0].packId), String(small));
+  assert.equal(String(rows[1].packId), String(large));
 });
 
 const settle = (id, body, actor = ctx.admin) => request(app).post(`/api/delivery-tickets/${id}/settle`).set("Authorization", `Bearer ${actor.token}`).send(body);

@@ -6,6 +6,16 @@ export const ITEM_TYPES = [
   { value: "daily_use", label: "Daily use" }
 ];
 
+export const PACK_TYPES = [
+  { name: "Box/Carton", image: "/pack-types/box-carton.avif" },
+  { name: "Bag", image: "/pack-types/bag.avif" },
+  { name: "Can", image: "/pack-types/can.avif" },
+  { name: "Tub", image: "/pack-types/tub.avif" }
+];
+
+/** Custom pack types always start with a capital letter ("sack" -> "Sack"); the server applies the same rule. */
+export const capitalizeFirst = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
 export const MISSING_LABELS = {
   group: "product group",
   unit: "preset unit",
@@ -69,7 +79,7 @@ export const validateProductForm = (form, { canPrice }) => {
   if (String(form.defaultThreshold).trim() === "" || !Number.isFinite(threshold) || threshold < 0) errors.defaultThreshold = "Enter zero or more.";
   if (canPrice && !positive(form.pricePerUnit)) errors.pricePerUnit = "Enter a price per unit greater than zero.";
   if (form.soldInPacks) {
-    if (form.packs.length === 0) errors.packs = "Add at least one pack, or untick “Ordered in packs”.";
+    if (form.packs.length === 0) errors.packs = "Add at least one pack, or untick “Ordered in bulk”.";
     const seen = new Set();
     const packList = form.packs.map((pack) => {
       const problems = {};

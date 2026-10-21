@@ -9,7 +9,7 @@ import { toastFeatureDisabled } from "./featureToast.js";
  * 1. Environment Variable (VITE_API_URL)
  * 2. Hardcoded Production Render URL
  */
-const BASE_URL = import.meta.env.VITE_API_URL || "https://mkm-backend-xr78.onrender.com/api";
+const BASE_URL = import.meta.env.VITE_API_URL || "https://mkm-backend-sng.onrender.com/api";
 
 export const api = axios.create({
   baseURL: BASE_URL,

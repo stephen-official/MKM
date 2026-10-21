@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { GodownStock } from "../models/FlowModels.js";
 import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
 import { isKitchenRole } from "../utils/roles.js";
+import { MAX_PACK_NAME_LENGTH, canonicalPackName } from "./packTypes.js";
 import { isAvailable, isValidPrice, missingFields } from "./completeness.js";
 import { UNIT_PRESETS, isPresetSymbol } from "./units.js";
 
@@ -104,10 +105,11 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
   const seenNames = new Set();
   update.packs = packsInput.map((input, index) => {
     const before = input._id ? previousPacks.get(String(input._id)) : null;
-    const packName = String(input.name ?? "").trim();
+    const packName = canonicalPackName(input.name);
     const size = toNumber(input.size);
     const problems = {};
     if (!packName) problems.name = "Name the pack, e.g. Bag.";
+    else if (packName.length > MAX_PACK_NAME_LENGTH) problems.name = `Keep the pack name to ${MAX_PACK_NAME_LENGTH} characters or fewer.`;
     else if (seenNames.has(packName.toLowerCase())) problems.name = "Each pack needs a different name.";
     seenNames.add(packName.toLowerCase());
     if (!Number.isFinite(size) || size <= 0) problems.size = "Enter how much one pack holds.";

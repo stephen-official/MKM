@@ -361,6 +361,19 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .tabs__tab--active, .tabs__tab--active:hover:not(:disabled) { color: var(--ink); background: var(--surface); box-shadow: var(--shadow-card); }
 .tabs__count { padding: 1px 7px; color: var(--ink-dim); background: var(--border); border-radius: var(--radius-pill); font-size: 11px; }
 
+.workflow-workspace { min-width: 0; }
+.workflow-workspace__nav {
+  display: flex; align-items: center; gap: 18px; min-height: 58px; padding: 9px 32px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.workflow-workspace__nav > strong { color: var(--ink); font-size: 14px; }
+.workflow-workspace__nav .tabs { overflow-x: auto; scrollbar-width: none; }
+.workflow-workspace__nav .tabs::-webkit-scrollbar { display: none; }
+@media (max-width: 700px) {
+  .workflow-workspace__nav { align-items: flex-start; flex-direction: column; gap: 8px; padding: 12px 16px; }
+  .workflow-workspace__nav .tabs { max-width: 100%; }
+}
+
 .badge--status { text-transform: capitalize; }
 
 /* ---- master / detail ------------------------------------------------------ */

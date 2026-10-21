@@ -48,8 +48,7 @@ const BOTTOM_TAB_TARGETS = Object.freeze({
   home: Object.freeze({ view: "home" }),
   stock: Object.freeze({ view: "stock" }),
   usage: Object.freeze({ view: "usage" }),
-  requests: Object.freeze({ view: "requests", supplyTab: "requests" }),
-  more: Object.freeze({ view: "more" })
+  requests: Object.freeze({ view: "requests", supplyTab: "requests" })
 });
 
 /** The view (and requests sub-tab, if any) a bottom-nav tab opens, or null for an unknown tab. */

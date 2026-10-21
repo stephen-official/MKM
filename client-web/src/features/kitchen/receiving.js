@@ -12,9 +12,10 @@ export const arrivingLines = (order, godownId) => {
   return share.items.filter((line) => lineState(line, share) === "on_the_way");
 };
 
-/** One receipt form per product; two lines of the same product (different packs) share one. */
+/** Receipt forms are per order line so different packs of one product cannot share problem quantities. */
 export const productIdOf = (line) => idOf(line?.stockItemId);
-export const arrivingProducts = (lines) => [...new Map(lines.map((line) => [productIdOf(line), line])).values()];
+export const receiptKeyOf = (line) => `${productIdOf(line)}${line?.packId ? `:${idOf(line.packId)}` : ""}`;
+export const arrivingProducts = (lines) => [...lines];
 
 /** Whether the admin asks for an expiry date on this product (on unless turned off). */
 export const expiryNeeded = (line) => line?.stockItemId?.expiryRequired !== false;
@@ -104,6 +105,7 @@ export const receiptProblems = (line, form = emptyReceipt(), todayKey = toLocalD
     const qty = usableQty(problem);
     if (!problem.reason) problems.push("What went wrong");
     if (qty === null) problems.push("How much usable stock arrived");
+    else if (problem.reason === "wrong_item" && qty !== 0) problems.push("Enter 0 usable — the wrong item cannot be added as this product");
     else if (problem.reason === "short" && qty >= ordered) problems.push(`Less than ${ordered} must have arrived`);
     else if (problem.reason === "excess" && qty <= ordered) problems.push(`More than ${ordered} must have arrived`);
     if (qty > 0 && !form.expiryDate && expiryNeeded(line)) problems.push("Expiry date for the usable part");
@@ -116,14 +118,15 @@ export const receiptProblems = (line, form = emptyReceipt(), todayKey = toLocalD
 };
 
 export const receiptReady = (lines, forms, todayKey) =>
-  arrivingProducts(lines).every((line) => receiptProblems(line, forms[productIdOf(line)], todayKey).length === 0);
+  arrivingProducts(lines).every((line) => receiptProblems(line, forms[receiptKeyOf(line)], todayKey).length === 0);
 
 /** The body for POST /:id/receive. */
 export const receiptPayload = (lines, forms) => ({
   items: arrivingProducts(lines).map((line) => {
-    const form = forms[productIdOf(line)] || emptyReceipt();
+    const form = forms[receiptKeyOf(line)] || emptyReceipt();
     return {
       stockItemId: productIdOf(line),
+      ...(line.packId ? { packId: idOf(line.packId) } : {}),
       photos: { goods: form.photos.goods, label: form.photos.label },
       expiryDate: form.expiryDate || undefined,
       mfgDate: form.mfgDate || undefined,
