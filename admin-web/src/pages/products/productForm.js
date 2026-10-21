@@ -7,10 +7,10 @@ export const ITEM_TYPES = [
 ];
 
 export const PACK_TYPES = [
-  { name: "Box/Carton", image: "/pack-types/box-carton.svg" },
-  { name: "Bag", image: "/pack-types/bag.svg" },
-  { name: "Can", image: "/pack-types/can.svg" },
-  { name: "Tub", image: "/pack-types/tub.svg" }
+  { name: "Box/Carton", image: "/pack-types/box-carton.avif" },
+  { name: "Bag", image: "/pack-types/bag.avif" },
+  { name: "Can", image: "/pack-types/can.avif" },
+  { name: "Tub", image: "/pack-types/tub.avif" }
 ];
 
 /** Custom pack types always start with a capital letter ("sack" -> "Sack"); the server applies the same rule. */

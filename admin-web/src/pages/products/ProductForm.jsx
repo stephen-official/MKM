@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
-import { ImagePlus, Info, Loader2, Lock, Package, Plus, Trash2, X } from "lucide-react";
+import { ImagePlus, Loader2, Lock, Package, Plus, Trash2 } from "lucide-react";
 import { api } from "../../api.js";
 import { Button, Field, Modal, Select } from "../../components/ui/index.jsx";
+import { PackTypeSelect } from "./PackTypeSelect.jsx";
 import { ITEM_TYPES, PACK_TYPES, capitalizeFirst, formatPrice, newPack, unitPriceFromPack, validateProductForm } from "./productForm.js";
 
 /**
@@ -230,36 +231,17 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
                   <fieldset className="product-pack" key={pack.key}>
                     <legend className="sr-only">Pack {index + 1}</legend>
                     <div className="field pack-types">
-                      <span className="field__label">Pack name</span>
-                      {PACK_TYPES.map((type) => (
-                        <span className="pack-type" key={type.name}>
-                          <label>
-                            <input type="radio" name={`pack-name-${pack.key}`} checked={!customKeys.has(pack.key) && pack.name === type.name} onChange={() => { toggleCustom(pack.key, false); setPack(pack.key, { name: type.name }); }} />
-                            {type.name}
-                          </label>
-                          <span className="pack-type__info" tabIndex={0} aria-label={`What a ${type.name} looks like`}>
-                            <Info size={14} aria-hidden="true" />
-                            <img className="pack-type__preview" src={type.image} alt={`${type.name} example`} />
-                          </span>
-                        </span>
-                      ))}
-                      {customOptions.map((name) => (
-                        <span className="pack-type" key={name}>
-                          <label>
-                            <input type="radio" name={`pack-name-${pack.key}`} checked={!customKeys.has(pack.key) && pack.name.trim().toLowerCase() === name.toLowerCase()} onChange={() => { toggleCustom(pack.key, false); setPack(pack.key, { name }); }} />
-                            {name}
-                          </label>
-                          <button type="button" className="pack-type__remove" aria-label={`Delete custom pack type ${name}`} onClick={() => startRemoving(name)}>
-                            <X size={12} aria-hidden="true" />
-                          </button>
-                        </span>
-                      ))}
-                      <span className="pack-type">
-                        <label>
-                          <input type="radio" name={`pack-name-${pack.key}`} checked={customKeys.has(pack.key)} onChange={() => { toggleCustom(pack.key, true); setPack(pack.key, { name: "" }); }} />
-                          Custom
-                        </label>
-                      </span>
+                      <label className="field__label" htmlFor={`pack-type-${pack.key}`}>Pack name</label>
+                      <PackTypeSelect
+                        id={`pack-type-${pack.key}`}
+                        value={pack.name}
+                        custom={customKeys.has(pack.key)}
+                        customOptions={customOptions}
+                        invalid={Boolean(errors.packList?.[index]?.name)}
+                        onPick={(name) => { toggleCustom(pack.key, false); setPack(pack.key, { name }); }}
+                        onCustom={() => { toggleCustom(pack.key, true); setPack(pack.key, { name: "" }); }}
+                        onDelete={startRemoving}
+                      />
                       {customKeys.has(pack.key) && (
                         <input value={pack.name} placeholder="New pack type, e.g. Sack" aria-label="Custom pack type" autoFocus spellCheck autoCapitalize="words" autoCorrect="on" maxLength={40} onBlur={() => checkSpelling(pack)} onChange={(e) => { setPack(pack.key, { name: capitalizeFirst(e.target.value) }); setSpelling((prev) => ({ ...prev, [pack.key]: [] })); }} />
                       )}
@@ -292,9 +274,13 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
                       {packError(index, "price")}
                       {implied !== null && <small className="product-form__hint">{formatPrice(implied)} per {unitLabel}</small>}
                     </Field>
-                    <Button size="sm" variant="ghost" className="product-pack__remove" onClick={() => set({ packs: form.packs.filter((p) => p.key !== pack.key) })} aria-label={`Remove pack ${pack.name || index + 1}`}>
-                      <Trash2 size={14} aria-hidden="true" />
-                    </Button>
+                    <div className="field product-pack__remove-cell">
+                      <span className="field__label" aria-hidden="true">&nbsp;</span>
+                      <Button variant="ghost" className="product-pack__remove" onClick={() => set({ packs: form.packs.filter((p) => p.key !== pack.key) })} aria-label={`Remove pack ${pack.name || index + 1}`}>
+                        <span aria-hidden="true">&#8203;</span>
+                        <Trash2 size={16} aria-hidden="true" />
+                      </Button>
+                    </div>
                   </fieldset>
                 );
               })}
