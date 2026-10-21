@@ -14,7 +14,7 @@
 .kh-day__text { flex: 1 1 220px; min-width: 0; display: flex; align-items: center; gap: 14px; }
 .kh-day__text h2 { font-size: 16px; }
 .kh-day .kg-btn { flex: none; }
-.kh-tile { padding: 14px 18px; min-height: 74px; display: flex; align-items: center; gap: 14px; text-align: left; background: linear-gradient(160deg, rgba(252,239,237,.9), rgba(255,255,255,.62)); }
+.kh-tile { padding: 14px 18px; min-height: 74px; display: flex; align-items: center; gap: 14px; text-align: left; }
 .kh-tile__icon { color: var(--st-expired-fg); border-color: var(--st-expired-line); }
 .kh-tile > span:last-child { display: grid; gap: 2px; }
 .kh-tile .kg-label { color: var(--st-expired-fg); opacity: .85; }

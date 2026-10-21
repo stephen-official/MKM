@@ -37,6 +37,10 @@
   --btn-glass-primary-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(228, 237, 249, 0.75));
   --nav-glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.38));
   --nav-glass-blur: blur(34px) saturate(180%);
+  /* Tinted glass for cards whose state deserves a hint of colour; the tint fades to white across the card. */
+  --tint-rose: linear-gradient(160deg, rgba(252, 239, 237, 0.92), rgba(255, 255, 255, 0.62));
+  --tint-warm: linear-gradient(160deg, rgba(253, 245, 230, 0.92), rgba(255, 255, 255, 0.62));
+  --tint-cool: linear-gradient(160deg, rgba(233, 240, 249, 0.92), rgba(255, 255, 255, 0.62));
   --glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.58));
   --glass-border: rgba(255, 255, 255, 0.98);
   --glass-outline: rgba(170, 186, 210, 0.42);

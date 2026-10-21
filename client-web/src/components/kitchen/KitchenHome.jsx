@@ -118,11 +118,14 @@ export default function KitchenHome({
     (entry) => toLocalDateKey(entry?.date || entry?.usageDate || entry?.createdAt) === today,
   );
   const usageComplete = todaysEntries.length > 0;
+  // A hint of colour on the cards whose state asks for attention; plain glass otherwise.
+  const useFirstTint = expiredCount > 0 ? " kg-glass--rose" : useFirst.length > 0 ? " kg-glass--warm" : "";
+  const lowTint = outOfStock.length > 0 ? " kg-glass--rose" : lowStock.length > 0 ? " kg-glass--cool" : "";
 
   return (
     <main className="kh-shell">
       <section className="kh-top" aria-label="Today">
-        {canRecordUsage && <div className="kg-glass kg-lift kh-day">
+        {canRecordUsage && <div className={`kg-glass kg-lift kh-day${usageComplete ? "" : " kg-glass--warm"}`}>
           <span className="kg-orb kh-day__icon" aria-hidden="true">{usageComplete ? <CheckCircle2 size={20} strokeWidth={1.6} /> : <CalendarDays size={20} strokeWidth={1.6} />}</span>
           <div className="kh-day__text">
             <p className="kg-label">{longDate(today)}{usageComplete ? ` · ${todaysEntries.length} ${todaysEntries.length === 1 ? "entry" : "entries"}` : ""}</p>
@@ -132,7 +135,7 @@ export default function KitchenHome({
             {usageComplete ? "Add more" : "Record usage"}<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" />
           </button>
         </div>}
-        {canRecordUsage && expiredCount > 0 && <button type="button" className="kg-glass kg-lift kh-tile" onClick={onRecordUsage} aria-label={`${expiredCount} expired ${expiredCount === 1 ? "item" : "items"}. Check before using.`}>
+        {canRecordUsage && expiredCount > 0 && <button type="button" className="kg-glass kg-glass--rose kg-lift kh-tile" onClick={onRecordUsage} aria-label={`${expiredCount} expired ${expiredCount === 1 ? "item" : "items"}. Check before using.`}>
           <span className="kg-orb kh-tile__icon" aria-hidden="true"><AlertTriangle size={20} strokeWidth={1.7} /></span>
           <span><span className="kg-label">Check before using</span><strong>{expiredCount} expired</strong></span>
         </button>}
@@ -140,7 +143,7 @@ export default function KitchenHome({
 
       <div className="kh-cols">
         <div className="kh-col">
-          {canRecordUsage && <section className="kg-glass kg-lift kh-card" aria-labelledby="use-first-title">
+          {canRecordUsage && <section className={`kg-glass kg-lift kh-card${useFirstTint}`} aria-labelledby="use-first-title">
             <header className="kh-card__head">
               <div><p className="kg-label">Today’s work</p><h2 id="use-first-title">Use first</h2></div>
               <button type="button" className="kg-chip" onClick={onRecordUsage}>Record usage</button>
@@ -155,7 +158,7 @@ export default function KitchenHome({
             })}
           </section>}
 
-          <section className="kg-glass kg-lift kh-card" aria-labelledby="running-low-title">
+          <section className={`kg-glass kg-lift kh-card${lowTint}`} aria-labelledby="running-low-title">
             <header className="kh-card__head">
               <div><p className="kg-label">Stock</p><h2 id="running-low-title">Running low</h2></div>
               <button type="button" className="kg-chip" onClick={onViewStock}>View all</button>
@@ -172,7 +175,7 @@ export default function KitchenHome({
         </div>
 
         {canUseRequests && <div className="kh-col kh-col--side">
-          <section className="kg-glass kg-lift kh-card" aria-labelledby="deliveries-title">
+          <section className={`kg-glass kg-lift kh-card${toReceive > 0 ? " kg-glass--cool" : ""}`} aria-labelledby="deliveries-title">
             <header className="kh-card__head kh-card__head--count">
               <div><p className="kg-label">On its way</p><h2 id="deliveries-title">Deliveries to receive</h2></div>
               <span className="kh-count" aria-hidden="true">{toReceive}</span>

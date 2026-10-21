@@ -208,8 +208,29 @@
 }
 
 .kitchen-bottom-nav__item--active {
+  position: relative;
   color: var(--blue-deep);
   font-weight: 500;
+}
+
+/* The blue dot marks the current tab; it scales in once when the tab changes and then sits still. */
+.kitchen-bottom-nav__item--active::after {
+  content: "";
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+  animation: kitchen-dot-in var(--dur-glass) var(--ease-glass);
+}
+
+@keyframes kitchen-dot-in {
+  from { transform: scale(0.3); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 
 .kitchen-bottom-nav__item:disabled {
@@ -266,8 +287,9 @@
 
 .kitchen-header__action:focus-visible,
 .kitchen-bottom-nav__item:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: 2px;
+  outline: none;
+  color: var(--blue-deep);
+  background: var(--blue-soft);
 }
 
 @media (min-width: 760px) {
@@ -315,6 +337,7 @@
   .kitchen-bottom-nav__item { position: relative; }
   .kitchen-bottom-nav__item .kitchen-bottom-nav__icon-wrap:has(.kitchen-bottom-nav__badge) { flex: 1 1 auto; display: flex; justify-content: flex-start; gap: 12px; }
   .kitchen-bottom-nav__label { font-size: 14px; }
+  .kitchen-bottom-nav__item--active::after { top: 50%; right: 14px; bottom: auto; left: auto; margin: -3px 0 0; }
   .kitchen-builder-review, .ktb-submit, .kus-review, .kss-submit { left: 232px; bottom: 0; }
   .kitchen-more { max-width: 900px !important; padding: 32px !important; }
   .kitchen-builder-review > div { width: min(100%, 1208px); max-width: 1208px !important; }
@@ -365,6 +388,9 @@
 
 /* ---- Glass primitives (shared by the restyled kitchen screens) ---- */
 .kg-glass { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-glass); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.25), 0 0 0 1px var(--glass-outline), 0 0 0 0 rgba(255,255,255,0), 0 0 0 0 rgba(166,182,206,0), var(--glass-shadow); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
+.kg-glass--rose { background: var(--tint-rose); }
+.kg-glass--warm { background: var(--tint-warm); }
+.kg-glass--cool { background: var(--tint-cool); }
 .kg-lift { transition: transform var(--dur-glass) var(--ease-glass), box-shadow var(--dur-glass) var(--ease-glass); }
 .kg-lift:hover, .kg-lift:active, .kg-lift:focus-within { transform: scale(.985); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.25), 0 0 0 1px var(--glass-outline), 0 0 0 9px rgba(255,255,255,.4), 0 0 0 10px rgba(166,182,206,.55), 0 14px 30px rgba(30,52,92,.07); }
 .kg-row { background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: var(--radius-row); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; color: var(--ink-2); }
@@ -382,6 +408,7 @@
 .kg-pill--low { background: var(--st-low-bg); border-color: var(--st-low-line); color: var(--st-low-fg); }
 .kg-pill--routine { background: var(--st-routine-bg); border-color: var(--st-routine-line); color: var(--st-routine-fg); }
 @media (prefers-reduced-motion: reduce) {
+  .kitchen-bottom-nav__item--active::after { animation: none; }
   .kg-lift, .kg-btn, .kg-chip { transition: none; }
   .kg-lift:hover, .kg-lift:active, .kg-lift:focus-within, .kg-btn:hover, .kg-btn:active, .kg-btn:focus-visible, .kg-chip:hover, .kg-chip:active, .kg-chip:focus-visible { transform: none; }
 }
