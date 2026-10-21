@@ -9,15 +9,9 @@
   --kitchen-danger: var(--color-danger);
 }
 
-/* The canvas every kitchen screen sits on: pale wash with soft blue circles, fixed so glass has something to blur. */
+/* The wash every kitchen screen sits on is painted by html (index.css); the shell stays transparent over it. */
 .kitchen-app-shell {
-  background-color: var(--canvas-2);
-  background-image:
-    radial-gradient(circle at 12% -6%, var(--wash-circle), rgba(186, 208, 240, 0) 34%),
-    radial-gradient(circle at 96% 28%, rgba(204, 220, 244, 0.6), rgba(204, 220, 244, 0) 30%),
-    radial-gradient(circle at 42% 112%, rgba(222, 230, 242, 0.8), rgba(222, 230, 242, 0) 32%);
-  background-attachment: fixed;
-  background-repeat: no-repeat;
+  background: transparent !important; /* overrides the leftover bg-[#F8F9FA] utility class on the shell */
   font-family: var(--font-kitchen);
 }
 

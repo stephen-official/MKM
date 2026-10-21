@@ -42,14 +42,21 @@
   --ease-glass: cubic-bezier(0.2, 0.8, 0.2, 1);
   --dur-glass: 0.35s;
   color: var(--color-ink);
-  background: var(--color-canvas);
+  /* The wash every screen sits on, also covering the overscroll area above the header. (:root outranks html.) */
+  background-color: var(--canvas-2);
+  background-image:
+    radial-gradient(circle at 12% -6%, var(--wash-circle), rgba(186, 208, 240, 0) 34%),
+    radial-gradient(circle at 96% 28%, rgba(204, 220, 244, 0.6), rgba(204, 220, 244, 0) 30%),
+    radial-gradient(circle at 42% 112%, rgba(222, 230, 242, 0.8), rgba(222, 230, 242, 0) 32%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
 
-html { min-width: 320px; background: var(--color-canvas); }
-body { min-width: 320px; min-height: 100vh; margin: 0; background: var(--color-canvas); }
+html { min-width: 320px; }
+body { min-width: 320px; min-height: 100vh; margin: 0; background: transparent; }
 button, input, select, textarea { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 
