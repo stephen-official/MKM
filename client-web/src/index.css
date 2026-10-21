@@ -19,6 +19,28 @@
   --section-space: 28px;
   --card-padding: 16px;
   --layout-gap: 12px;
+  /* Glass restyle (website first, Home done 2026-10-21): white surfaces, soft blue accent, strong status colours. */
+  --font-kitchen: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --canvas-2: #f1f4f8;
+  --wash-circle: rgba(186, 208, 240, 0.55);
+  --ink-2: #1c2a43;
+  --muted-2: #55647d;
+  --blue: #3f6cb0;
+  --blue-deep: #234a7e;
+  --blue-soft: #e4edf9;
+  --st-expired-fg: #a3271d; --st-expired-bg: #fbe6e3;
+  --st-soon-fg: #87540a; --st-soon-bg: #fcefd6;
+  --st-low-fg: #2a5490; --st-low-bg: #e2ebf8;
+  --st-routine-fg: #4a5872; --st-routine-bg: #eef1f6;
+  --glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.58));
+  --glass-border: rgba(255, 255, 255, 0.98);
+  --glass-outline: rgba(170, 186, 210, 0.42);
+  --glass-shadow: 0 22px 44px rgba(30, 52, 92, 0.08);
+  --glass-blur: blur(26px) saturate(160%);
+  --radius-glass: 26px;
+  --radius-row: 18px;
+  --ease-glass: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-glass: 0.35s;
   color: var(--color-ink);
   background: var(--color-canvas);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;

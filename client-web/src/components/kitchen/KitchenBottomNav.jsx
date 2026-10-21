@@ -63,8 +63,8 @@ export default function KitchenBottomNav({
             >
               <span className="kitchen-bottom-nav__icon-wrap" aria-hidden="true">
                 {createElement(Icon, {
-                  size: 22,
-                  strokeWidth: isActive ? 2.5 : 2,
+                  size: 20,
+                  strokeWidth: isActive ? 1.8 : 1.6,
                 })}
                 {showBadge && (
                   <span className="kitchen-bottom-nav__badge">

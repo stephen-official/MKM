@@ -655,17 +655,6 @@ setEditIndentId(indent._id);
     });
   };
 
-  const openActivity = () => {
-    if (isBlocked("activity")) return false;
-    return leaveDraft(() => {
-      setCart([]);
-      setIsReceiveView(false);
-      setIsActivityLogOpen(false);
-      setActiveTab("activity");
-      return true;
-    });
-  };
-
   const handleTabChange = (tab) => {
     if (tab === activeTab) return;
     leaveDraft(() => {
@@ -726,12 +715,12 @@ setEditIndentId(indent._id);
           requests={requests}
           indents={indents}
           orders={orders}
+          sharedOrders={sharedOrders}
           onRecordUsage={openUsage}
           onViewStock={openStock}
           onRequestSupplies={openOrders}
           onReceiveDelivery={openWaitingDeliveries}
           sharedToReceive={sharedToReceive}
-          onOpenActivity={openActivity}
           hidden={hidden}
         />
       ) : activeTab === "stock" ? (
