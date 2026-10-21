@@ -52,6 +52,11 @@
 .kr-revert { align-items: center; background: #e3f4f1; border: 1px solid #8fc7bf; border-radius: 10px; color: #0b5f58; display: inline-flex; font-size: .8rem; font-weight: 750; gap: 6px; justify-self: start; min-height: 40px; padding: 0 12px; text-align: left; }
 .kr-prefill { color: #0f766e; font-size: .78rem; font-weight: 700; line-height: 1.35; }
 
+.kr-scan { align-items: flex-start; border-radius: 10px; display: flex; font-size: .8rem; gap: 7px; line-height: 1.4; margin: 0; padding: 8px 10px; }
+.kr-scan svg { flex: none; margin-top: 2px; }
+.kr-scan--reading { background: #f1f5f3; color: #5d7068; }
+.kr-scan--done { background: #e6f7f4; color: #0f766e; font-weight: 700; }
+.kr-scan--none, .kr-scan--failed { background: #fff7e6; color: #82520c; }
 .kr-todo { background: #fff7e6; border-radius: 10px; color: #82520c; font-size: .8rem; font-weight: 700; line-height: 1.4; margin: 0; padding: 8px 10px; }
 
 .kr-submit { align-items: center; background: #fff; border-top: 1px solid #dde6e0; bottom: 68px; box-shadow: 0 -6px 18px rgba(26, 47, 33, .06); display: flex; gap: 12px; justify-content: space-between; left: 0; padding: 12px var(--page-gutter); position: fixed; right: 0; z-index: 30; }

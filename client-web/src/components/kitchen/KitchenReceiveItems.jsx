@@ -1,9 +1,11 @@
-import { AlertTriangle, ArrowLeft, Camera, Check, Loader2, Mic, PackageCheck, RotateCcw, Square, Trash2, Truck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Camera, Check, Loader2, Mic, PackageCheck, RotateCcw, ScanLine, Square, Trash2, Truck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
+import { parseLabel, scanChanges, scanSummary } from "../../features/kitchen/labelScan";
 import { EXPIRY_CHIPS, PROBLEM_REASONS, STORAGE_OPTIONS, adminExpiryFor, arrivingProducts, emptyProblem, emptyReceipt, groupBySupplier, usableQty, expiryFromChip, expiryNeeded, productIdOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
+import { canScanLabels, readLabelText, stopLabelScanner } from "../../utils/labelOcr";
 import DateField from "../ui/DateField";
 import "./SupplyRequestsDeliveries.css";
 import "./KitchenReceive.css";
@@ -113,6 +115,7 @@ function Chips({ options, value, onPick, label }) {
 /** One card per arriving product: two photos, expiry, manufacture date, batch number from the label, storage. */
 function ItemCard({ order, line, form, today, onChange }) {
   const [uploading, setUploading] = useState({});
+  const [scan, setScan] = useState(null); // null | { status: reading | done | none | failed, rows }
   const expiryInput = useRef(null);
   const product = line.stockItemId || {};
   const problems = receiptProblems(line, form, today);
@@ -128,11 +131,27 @@ function ItemCard({ order, line, form, today, onChange }) {
     return expiryInput.current?.focus();
   };
 
+  /** Reads the label photo on the phone and fills in only what it found; any failure leaves the form as it is. */
+  const scanLabel = async (blob) => {
+    if (!canScanLabels()) return;
+    setScan({ status: "reading" });
+    try {
+      const parsed = parseLabel(await readLabelText(blob), today);
+      const changes = scanChanges(parsed);
+      if (Object.keys(changes).length) onChange(changes);
+      setScan({ status: Object.keys(changes).length ? "done" : "none", rows: scanSummary(parsed) });
+    } catch {
+      setScan({ status: "failed" });
+    }
+  };
+
   const upload = async (kind, file) => {
     setUploading((previous) => ({ ...previous, [kind]: true }));
     try {
+      const shrunk = await shrinkPhoto(file);
+      if (kind === "label") scanLabel(shrunk); // alongside the upload, never holding it up
       const body = new FormData();
-      body.append("photo", await shrinkPhoto(file), `${kind}.jpg`);
+      body.append("photo", shrunk, `${kind}.jpg`);
       const { data } = await api.post(`${BASE}/${order._id}/photos`, body, { headers: { "Content-Type": "multipart/form-data" } });
       onChange({ photos: { ...form.photos, [kind]: data.url } });
     } catch (error) {
@@ -152,6 +171,12 @@ function ItemCard({ order, line, form, today, onChange }) {
       <PhotoButton label="Photo of goods" url={form.photos.goods} busy={uploading.goods} onPick={(file) => upload("goods", file)} />
       <PhotoButton label={problem ? "Photo of label (optional)" : "Photo of label"} url={form.photos.label} busy={uploading.label} onPick={(file) => upload("label", file)} />
     </div>
+    {scan && <p className={`kr-scan kr-scan--${scan.status}`} role="status">
+      {scan.status === "reading" && <><Loader2 size={15} className="kr-spin" aria-hidden="true" /> <span>Reading the label…</span></>}
+      {scan.status === "done" && <><ScanLine size={15} aria-hidden="true" /> <span>Filled in from the label: {scan.rows.map((row) => `${row.label} — ${row.from}${row.guessed ? " (please check)" : ""}`).join(" · ")}. Change anything that is wrong.</span></>}
+      {scan.status === "none" && <><ScanLine size={15} aria-hidden="true" /> <span>Could not read dates on this label. Enter them below.</span></>}
+      {scan.status === "failed" && <><ScanLine size={15} aria-hidden="true" /> <span>Label reading did not work this time. Enter the dates below.</span></>}
+    </p>}
 
     <button type="button" className={`kr-problem-toggle${problem ? " is-on" : ""}`} aria-pressed={Boolean(problem)} onClick={() => onChange({ problem: problem ? null : emptyProblem() })}>
       <AlertTriangle size={17} aria-hidden="true" /> {problem ? "Problem with this item — tap to cancel" : "Problem with this item?"}
@@ -214,6 +239,7 @@ export default function KitchenReceiveItems({ order, lines, notSentCount = 0, on
   const ready = receiptReady(lines, forms, today);
   const readyCount = products.filter((line) => receiptProblems(line, forms[productIdOf(line)], today).length === 0).length;
   const update = (line, change) => setForms((previous) => ({ ...previous, [productIdOf(line)]: { ...previous[productIdOf(line)], ...change } }));
+  useEffect(() => () => { stopLabelScanner(); }, []); // free the OCR worker's memory when the cook leaves the screen
 
   const submit = async () => {
     setBusy(true);

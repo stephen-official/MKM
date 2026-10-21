@@ -27,6 +27,7 @@
     "react-pull-to-refresh": "^2.0.1",
     "react-router-dom": "^7.13.2",
     "socket.io-client": "^4.8.3",
+    "tesseract.js": "^7.0.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
