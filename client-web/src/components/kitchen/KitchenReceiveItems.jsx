@@ -153,7 +153,7 @@ function ItemCard({ order, line, form, today, onChange }) {
       const body = new FormData();
       body.append("photo", shrunk, `${kind}.jpg`);
       const { data } = await api.post(`${BASE}/${order._id}/photos`, body, { headers: { "Content-Type": "multipart/form-data" } });
-      onChange({ photos: { ...form.photos, [kind]: data.url } });
+      onChange((latest) => ({ photos: { ...latest.photos, [kind]: data.url } })); // from the latest form: the other photo may have finished meanwhile
     } catch (error) {
       toast.error(errorText(error, "Photo did not upload. Check your connection and try again."));
     } finally {
@@ -238,7 +238,11 @@ export default function KitchenReceiveItems({ order, lines, notSentCount = 0, on
   const [busy, setBusy] = useState(false);
   const ready = receiptReady(lines, forms, today);
   const readyCount = products.filter((line) => receiptProblems(line, forms[productIdOf(line)], today).length === 0).length;
-  const update = (line, change) => setForms((previous) => ({ ...previous, [productIdOf(line)]: { ...previous[productIdOf(line)], ...change } }));
+  /** `change` is a partial form, or a function of the latest form returning one (for changes that build on other fields). */
+  const update = (line, change) => setForms((previous) => {
+    const current = previous[productIdOf(line)];
+    return { ...previous, [productIdOf(line)]: { ...current, ...(typeof change === "function" ? change(current) : change) } };
+  });
   useEffect(() => () => { stopLabelScanner(); }, []); // free the OCR worker's memory when the cook leaves the screen
 
   const submit = async () => {
