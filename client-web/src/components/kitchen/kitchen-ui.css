@@ -37,13 +37,13 @@
   width: 100%;
   min-height: 76px;
   padding: max(12px, env(safe-area-inset-top)) var(--page-gutter) 12px;
-  background: var(--glass-bg);
+  background: var(--nav-glass-bg);
   border: 1px solid var(--glass-border);
   border-top: 0;
   border-radius: 0 0 var(--radius-glass) var(--radius-glass);
   box-shadow: inset 0 1px 0 #fff, 0 0 0 1px var(--glass-outline), 0 8px 24px rgba(30, 52, 92, 0.06);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--nav-glass-blur);
+  backdrop-filter: var(--nav-glass-blur);
 }
 
 .kitchen-header__brand {
@@ -96,7 +96,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--ink-2);
-  font-size: clamp(16px, 4.6vw, 20px);
+  font-size: clamp(15px, 4.2vw, 17px);
   font-weight: 400;
   line-height: 1.2;
   letter-spacing: -0.01em;
@@ -108,7 +108,7 @@
 .kitchen-header__city {
   flex: none;
   color: var(--muted-2);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 300;
 }
 
@@ -155,7 +155,7 @@
   padding: 0 4px;
   place-items: center;
   color: #fff;
-  background: #c2463b;
+  background: var(--alert-dot);
   border: 2px solid #fff;
   border-radius: 999px;
   font-size: 9px;
@@ -170,11 +170,11 @@
   bottom: 0;
   left: 0;
   padding: 6px 8px max(6px, env(safe-area-inset-bottom));
-  background: var(--glass-bg);
+  background: var(--nav-glass-bg);
   border-top: 1px solid var(--glass-border);
   box-shadow: 0 0 0 1px var(--glass-outline), 0 -8px 24px rgba(30, 52, 92, 0.07);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--nav-glass-blur);
+  backdrop-filter: var(--nav-glass-blur);
 }
 
 .kitchen-bottom-nav__items {
@@ -245,8 +245,8 @@
   height: 17px;
   padding: 0 4px;
   place-items: center;
-  color: #fff;
-  background: var(--blue);
+  color: var(--blue-deep);
+  background: var(--blue-soft);
   border: 2px solid #fff;
   border-radius: 999px;
   font-size: 8px;
@@ -303,18 +303,18 @@
 
 @media (min-width: 1024px) {
   .kitchen-app-shell { min-height: 100vh; padding-bottom: 0 !important; padding-left: 232px; }
-  .kitchen-header { position: static; width: calc(100% + 232px - 56px); min-height: 72px; margin: 22px 28px 0 calc(28px - 232px); padding: 12px 14px; border: 1px solid var(--glass-border); border-radius: var(--radius-glass); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.25), 0 0 0 1px var(--glass-outline), var(--glass-shadow); }
-  .kitchen-bottom-nav { top: 128px; right: auto; bottom: auto; left: 16px; width: 200px; padding: 10px; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-glass); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.25), 0 0 0 1px var(--glass-outline), var(--glass-shadow); transform: none; }
-  .kitchen-bottom-nav__items { display: flex; width: 100%; flex-direction: column; gap: 4px; }
-  .kitchen-bottom-nav__item { min-height: 48px; padding: 0 14px; justify-content: flex-start; flex-direction: row; gap: 12px; border-radius: var(--radius-row); }
-  .kitchen-bottom-nav__item--active { background: rgba(228, 237, 249, 0.9); border-color: var(--glass-border); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
+  .kitchen-header { position: static; width: calc(100% + 232px - 56px); height: 72px; min-height: 0; margin: 22px 28px 0 calc(28px - 232px); padding: 0 14px; border: 1px solid var(--glass-border); border-radius: var(--radius-glass); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.25), 0 0 0 1px var(--glass-outline), var(--glass-shadow); }
+  .kitchen-bottom-nav { top: 128px; right: auto; bottom: auto; left: 28px; width: 188px; padding: 8px; background: var(--nav-glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-glass); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.25), 0 0 0 1px var(--glass-outline), var(--glass-shadow); -webkit-backdrop-filter: var(--nav-glass-blur); backdrop-filter: var(--nav-glass-blur); transform: none; }
+  .kitchen-bottom-nav__items { display: flex; width: 100%; flex-direction: column; gap: 2px; }
+  .kitchen-bottom-nav__item { min-height: 44px; padding: 0 12px; justify-content: flex-start; flex-direction: row; gap: 11px; border-radius: 14px; }
+  .kitchen-bottom-nav__item--active { background: var(--btn-glass-bg); border-color: var(--glass-border); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff, 0 4px 12px rgba(30,52,92,.06); }
   .kitchen-bottom-nav__icon-wrap { flex: 0 0 24px; min-width: 0; padding: 0; }
   .kitchen-bottom-nav__item--active .kitchen-bottom-nav__icon-wrap,
   .kitchen-bottom-nav__item--primary .kitchen-bottom-nav__icon-wrap { color: inherit; background: transparent; }
   .kitchen-bottom-nav__badge { position: static; margin-left: auto; min-width: 22px; height: 22px; font-size: 11px; border: 0; }
   .kitchen-bottom-nav__item { position: relative; }
   .kitchen-bottom-nav__item .kitchen-bottom-nav__icon-wrap:has(.kitchen-bottom-nav__badge) { flex: 1 1 auto; display: flex; justify-content: flex-start; gap: 12px; }
-  .kitchen-bottom-nav__label { font-size: 15px; }
+  .kitchen-bottom-nav__label { font-size: 14px; }
   .kitchen-builder-review, .ktb-submit, .kus-review, .kss-submit { left: 232px; bottom: 0; }
   .kitchen-more { max-width: 900px !important; padding: 32px !important; }
   .kitchen-builder-review > div { width: min(100%, 1208px); max-width: 1208px !important; }
@@ -369,23 +369,24 @@
 .kg-lift:hover, .kg-lift:active, .kg-lift:focus-within { transform: scale(.985); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.25), 0 0 0 1px var(--glass-outline), 0 0 0 9px rgba(255,255,255,.4), 0 0 0 10px rgba(166,182,206,.55), 0 14px 30px rgba(30,52,92,.07); }
 .kg-row { background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: var(--radius-row); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; color: var(--ink-2); }
 .kg-orb { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 50%; color: #4a5c7a; background: rgba(255,255,255,.72); border: 1px solid rgba(166,182,206,.55); box-shadow: inset 0 1px 0 #fff, 0 2px 6px rgba(30,52,92,.06); }
-.kg-label { margin: 0; color: var(--muted-2); font-size: 12px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
-.kg-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 46px; padding: 0 22px; border-radius: 999px; background: var(--blue); border: 1px solid #3a65a6; color: #fff; font: inherit; font-size: 14px; font-weight: 500; letter-spacing: .02em; text-decoration: none; cursor: pointer; box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 0 0 0 rgba(255,255,255,0), 0 0 0 0 rgba(150,172,206,0), 0 8px 18px rgba(63,108,176,.18); transition: transform var(--dur-glass) var(--ease-glass), box-shadow var(--dur-glass) var(--ease-glass); }
-.kg-btn:hover, .kg-btn:active, .kg-btn:focus-visible { color: #fff; transform: scale(.97); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55), 0 4px 10px rgba(63,108,176,.16); }
-.kg-btn:disabled { cursor: default; opacity: .55; transform: none; }
-.kg-chip { display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 18px; border-radius: 999px; background: rgba(255,255,255,.65); border: 1px solid rgba(160,178,204,.6); box-shadow: inset 0 1px 0 #fff; color: #2f5d9c; font: inherit; font-size: 12px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; white-space: nowrap; cursor: pointer; }
-.kg-chip:hover, .kg-chip:focus-visible { background: var(--blue-soft); color: var(--blue-deep); }
-.kg-pill { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 999px; font-size: 13px; font-weight: 500; white-space: nowrap; border: 1px solid transparent; }
-.kg-pill--expired { background: var(--st-expired-bg); border-color: rgba(214,150,142,.6); color: var(--st-expired-fg); }
-.kg-pill--soon { background: var(--st-soon-bg); border-color: rgba(214,176,112,.6); color: var(--st-soon-fg); }
-.kg-pill--low { background: var(--st-low-bg); border-color: rgba(150,176,214,.55); color: var(--st-low-fg); }
-.kg-pill--routine { background: var(--st-routine-bg); border-color: rgba(170,186,210,.5); color: var(--st-routine-fg); }
+.kg-label { margin: 0; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
+/* Buttons are frosted glass pills, like the reference: translucent white, light rim, blur, dark text. The primary action only carries a faint blue tint. */
+.kg-btn, .kg-chip { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 999px; border: 1px solid var(--glass-border); color: var(--ink-2); font: inherit; text-decoration: none; white-space: nowrap; cursor: pointer; -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: 0 0 0 1px var(--glass-outline), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.2), 0 0 0 0 rgba(255,255,255,0), 0 0 0 0 rgba(150,172,206,0), 0 6px 16px rgba(30,52,92,.07); transition: transform var(--dur-glass) var(--ease-glass), box-shadow var(--dur-glass) var(--ease-glass); }
+.kg-btn { height: 42px; padding: 0 20px; background: var(--btn-glass-primary-bg); color: var(--blue-deep); font-size: 13px; font-weight: 500; letter-spacing: .02em; }
+.kg-chip { height: 36px; padding: 0 14px; background: var(--btn-glass-bg); color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
+.kg-btn:hover, .kg-btn:active, .kg-btn:focus-visible, .kg-chip:hover, .kg-chip:active, .kg-chip:focus-visible { transform: scale(.97); color: var(--blue-deep); box-shadow: 0 0 0 1px var(--glass-outline), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.2), 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55), 0 4px 10px rgba(30,52,92,.06); }
+.kg-btn:disabled, .kg-chip:disabled { cursor: default; opacity: .55; transform: none; }
+.kg-pill { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; border: 1px solid transparent; }
+.kg-pill--expired { background: var(--st-expired-bg); border-color: var(--st-expired-line); color: var(--st-expired-fg); }
+.kg-pill--soon { background: var(--st-soon-bg); border-color: var(--st-soon-line); color: var(--st-soon-fg); }
+.kg-pill--low { background: var(--st-low-bg); border-color: var(--st-low-line); color: var(--st-low-fg); }
+.kg-pill--routine { background: var(--st-routine-bg); border-color: var(--st-routine-line); color: var(--st-routine-fg); }
 @media (prefers-reduced-motion: reduce) {
-  .kg-lift, .kg-btn { transition: none; }
-  .kg-lift:hover, .kg-lift:active, .kg-lift:focus-within, .kg-btn:hover, .kg-btn:active, .kg-btn:focus-visible { transform: none; }
+  .kg-lift, .kg-btn, .kg-chip { transition: none; }
+  .kg-lift:hover, .kg-lift:active, .kg-lift:focus-within, .kg-btn:hover, .kg-btn:active, .kg-btn:focus-visible, .kg-chip:hover, .kg-chip:active, .kg-chip:focus-visible { transform: none; }
 }
 /* Plain white where the browser cannot blur what is behind a panel. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .kg-glass, .kitchen-header, .kitchen-bottom-nav { background: #fff; }
+  .kg-glass, .kitchen-header, .kitchen-bottom-nav, .kg-btn, .kg-chip { background: #fff; }
   .kg-row { background: #fff; }
 }
