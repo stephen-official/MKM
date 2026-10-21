@@ -18,6 +18,8 @@ import { Banner, Button, LoadingState } from "./components/ui/index.jsx";
 import ProductLedger from "./pages/ProductLedger.jsx";
 import { Layout } from "./components/Layout.jsx";
 import { NAV, SUPER_NAV } from "./components/navItems.js";
+import { WORKSPACE_NAV, SUPER_WORKSPACE_NAV } from "./components/navItems.js";
+import { WorkspacePage } from "./components/WorkspacePage.jsx";
 import { FeatureFlagsProvider } from "./features/FeatureFlagsProvider.jsx";
 import { useFeatureFlags } from "./features/FeatureFlagsContext.js";
 import { FeatureDisabledPage } from "./features/FeatureDisabledPage.jsx";
@@ -50,8 +52,27 @@ function AdminShell({ onLogout, routeMap }) {
         <Banner variant="warn">Feature settings could not be loaded. Some pages may be unavailable.</Banner>
       )}
       <Routes>
+        {[...WORKSPACE_NAV, ...SUPER_WORKSPACE_NAV].filter((workspace) => workspace.tabs).map((workspace) => (
+          <Route
+            key={workspace.path}
+            path={`${workspace.path}/*`}
+            element={isPathAllowed(workspace.path, { flags, role })
+              ? <WorkspacePage workspace={workspace} routeMap={routeMap} />
+              : <Navigate to={home} replace />}
+          />
+        ))}
         {[...NAV, ...SUPER_NAV].map(({ label, path }) => (
-          <Route key={path} path={path} element={guard(path, label, routeMap[path] || <ModulePage title={label} />)} />
+          <Route
+            key={path}
+            path={path}
+            element={guard(
+              path,
+              label,
+              legacyWorkspacePath(path)
+                ? <Navigate to={legacyWorkspacePath(path)} replace />
+                : (routeMap[path] || <ModulePage title={label} />)
+            )}
+          />
         ))}
         <Route path={NO_ACCESS_PATH} element={<FeatureDisabledPage label="No pages available" homePath={null} />} />
         <Route path="*" element={<Navigate to={home} replace />} />
@@ -59,6 +80,13 @@ function AdminShell({ onLogout, routeMap }) {
     </Layout>
   );
 }
+
+const legacyWorkspacePath = (path) => {
+  const workspace = [...WORKSPACE_NAV, ...SUPER_WORKSPACE_NAV]
+    .find((item) => item.tabs?.some((tab) => tab.route === path));
+  const tab = workspace?.tabs.find((item) => item.route === path);
+  return workspace && tab ? `${workspace.path}/${tab.slug}` : null;
+};
 
 export const App = () => {
   const [session, setSession] = useState(() => {

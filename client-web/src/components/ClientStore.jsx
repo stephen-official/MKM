@@ -18,7 +18,7 @@ import KitchenTransfers from "./kitchen/KitchenTransfers";
 import KitchenReceiveDelivery from "./kitchen/KitchenReceiveDelivery";
 import KitchenItemBuilder from "./kitchen/KitchenItemBuilder";
 import KitchenReviewPanel from "./kitchen/KitchenReviewPanel";
-import KitchenMore from "./kitchen/KitchenMore";
+import KitchenSectionNav from "./kitchen/KitchenSectionNav";
 import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../utils/date";
 import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../features/kitchen/workflows";
 import { withPackaging } from "../features/kitchen";
@@ -49,7 +49,7 @@ const limitTo3Decimals = (value) => {
 
   return Number(num.toFixed(3));
 };
-const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "past-requests", "more", "activity", "transfers"]);
+const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "past-requests", "activity", "transfers"]);
 const legacyUiEnabled = import.meta.env.VITE_ENABLE_LEGACY_KITCHEN_UI === "true";
 const DISCARD_DRAFT = Object.freeze({
   title: "Discard your unfinished entry?",
@@ -735,31 +735,49 @@ setEditIndentId(indent._id);
           hidden={hidden}
         />
       ) : activeTab === "stock" ? (
-        <KitchenStock
-          items={items}
-          loading={loading}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          filter={stockFilter}
-          onFilterChange={setStockFilter}
-          hidden={hidden}
-          canRequestProduct={isFeatureOn(flags, "products")}
-          onRefresh={() => fetchItems(false)}
-          onRecordUsage={async (item) => {
-            if (await openUsage()) addToCart(item, 1);
-          }}
-        />
+        <>
+          <KitchenSectionNav
+            label="Stock sections"
+            value="stock"
+            items={[
+              { value: "stock", label: "Stock levels" },
+              ...(!hidden.has("transfers") ? [{ value: "transfers", label: "Transfers" }] : [])
+            ]}
+            onChange={(view) => setActiveTab(view)}
+          />
+          <KitchenStock
+            items={items}
+            loading={loading}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            filter={stockFilter}
+            onFilterChange={setStockFilter}
+            hidden={hidden}
+            canRequestProduct={isFeatureOn(flags, "products")}
+            onRefresh={() => fetchItems(false)}
+            onRecordUsage={async (item) => {
+              if (await openUsage()) addToCart(item, 1);
+            }}
+          />
+        </>
       ) : activeTab === "usage" ? (
-        <KitchenUsageScreen
-          items={usageItems}
-          loading={loading}
-          selectedDate={selectedDate}
-          onDateChange={setSelectedDate}
-          cart={cart}
-          onQuantityChange={addToCart}
-          onClear={() => setCart([])}
-          onSubmit={handleSubmit}
-        />
+        <>
+          <KitchenSectionNav
+            label="Usage sections"
+            value="usage"
+            items={[{ value: "usage", label: "Record usage" }, { value: "activity", label: "History" }]}
+            onChange={(view) => setActiveTab(view)}
+          />
+          <KitchenUsageScreen
+            items={usageItems}
+            loading={loading}
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+            cart={cart}
+            onQuantityChange={addToCart}
+            onReview={() => setIsCartOpen(true)}
+          />
+        </>
       ) : activeTab === "requests" ? (
         <KitchenOrders
           products={usableItems}
@@ -781,17 +799,33 @@ setEditIndentId(indent._id);
           refresh={fetchIndents}
         />
       ) : activeTab === "activity" ? (
-        <KitchenActivity entries={usageHistory} />
+        <>
+          <KitchenSectionNav
+            label="Usage sections"
+            value="activity"
+            items={[{ value: "usage", label: "Record usage" }, { value: "activity", label: "History" }]}
+            onChange={(view) => setActiveTab(view)}
+          />
+          <KitchenActivity entries={usageHistory} />
+        </>
       ) : activeTab === "transfers" ? (
-        <KitchenTransfers
-          onCreate={() => {
-            setActiveTransactionType("transfer");
-            setActiveTab("request-builder");
-            setCart([]);
-            setTransferDestination("");
-            fetchItems(false);
-          }}
-        />
+        <>
+          <KitchenSectionNav
+            label="Stock sections"
+            value="transfers"
+            items={[{ value: "stock", label: "Stock levels" }, { value: "transfers", label: "Transfers" }]}
+            onChange={(view) => setActiveTab(view)}
+          />
+          <KitchenTransfers
+            onCreate={() => {
+              setActiveTransactionType("transfer");
+              setActiveTab("request-builder");
+              setCart([]);
+              setTransferDestination("");
+              fetchItems(false);
+            }}
+          />
+        </>
       ) : activeTab === "receive-delivery" ? (
         <KitchenReceiveDelivery
           indent={activeReceiveIndent}
@@ -817,8 +851,6 @@ setEditIndentId(indent._id);
           }}
           onSubmit={submitReceive}
         />
-      ) : activeTab === "more" ? (
-        <KitchenMore userInfo={userInfo} hidden={hidden} onActivity={openActivity} onTransfers={() => setActiveTab("transfers")} onLogout={handleLogout} />
       ) : (
         <KitchenItemBuilder
           type={activeTransactionType}
@@ -1451,8 +1483,9 @@ activeTransactionType === "request"
       <KitchenBottomNav
         activeTab={
           activeTab === "request-builder"
-            ? activeTransactionType === "transfer" ? "more" : "requests"
-            : ["activity", "transfers"].includes(activeTab) ? "more"
+              ? activeTransactionType === "transfer" ? "stock" : "requests"
+            : activeTab === "activity" ? "usage"
+            : activeTab === "transfers" ? "stock"
             : ["receive-delivery", "past-requests"].includes(activeTab) ? "requests"
             : activeTab
         }

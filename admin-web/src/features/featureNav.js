@@ -1,18 +1,20 @@
-import { NAV, SUPER_NAV } from "../components/navItems.js";
+import { NAV, SUPER_NAV, WORKSPACE_NAV, SUPER_WORKSPACE_NAV } from "../components/navItems.js";
 import { isSuperAdmin } from "../roles.js";
 
-const SECTION_ORDER = ["Setup", "Stock Operations", "Usage", "Records", "Executive", "Administration"];
+const SECTION_ORDER = ["Workspace", "Insights", "Manage"];
 export const NO_ACCESS_PATH = "/no-access";
 
 const enabled = (flags, key) => !flags || flags[key] !== false;
 
 export const buildSections = ({ flags, role }) => {
   const superAdmin = isSuperAdmin(role);
-  const items = [
-    ...NAV.filter((item) => superAdmin || enabled(flags, item.feature))
-      .map((item) => ({ ...item, hiddenFromAdmins: superAdmin && !enabled(flags, item.feature) })),
-    ...(superAdmin ? SUPER_NAV : [])
-  ].filter((item) => !item.hiddenFromNav);
+  const items = WORKSPACE_NAV
+    .filter((workspace) => superAdmin || workspace.tabs.some((tab) => enabled(flags, tab.feature)))
+    .map((workspace) => ({
+      ...workspace,
+      hiddenFromAdmins: superAdmin && workspace.tabs.every((tab) => !enabled(flags, tab.feature))
+    }));
+  if (superAdmin) items.push(...SUPER_WORKSPACE_NAV);
   return SECTION_ORDER
     .map((title) => ({ title, items: items.filter((item) => item.section === title) }))
     .filter((section) => section.items.length > 0);
@@ -25,6 +27,12 @@ export const disabledFeatureForPath = (path, { flags, role }) => {
 };
 
 export const isPathAllowed = (path, { flags, role }) => {
+  const workspace = [...WORKSPACE_NAV, ...SUPER_WORKSPACE_NAV].find((item) => path === item.path || path.startsWith(`${item.path}/`));
+  if (workspace) {
+    if (workspace.superOnly && !isSuperAdmin(role)) return false;
+    if (!workspace.tabs) return isSuperAdmin(role);
+    return isSuperAdmin(role) || workspace.tabs.some((tab) => enabled(flags, tab.feature));
+  }
   if (SUPER_NAV.some((n) => n.path === path)) return isSuperAdmin(role);
   return disabledFeatureForPath(path, { flags, role }) === null;
 };

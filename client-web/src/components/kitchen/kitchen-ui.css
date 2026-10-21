@@ -312,3 +312,33 @@
     transform: scale(0.94);
   }
 }
+.kitchen-section-nav {
+  display: flex;
+  gap: 4px;
+  margin: 14px auto 0;
+  padding: 4px;
+  width: min(calc(100% - 28px), 720px);
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #f1f5f9;
+}
+
+.kitchen-section-nav__item {
+  flex: 1;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 10px;
+  color: #64748b;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.kitchen-section-nav__item--active {
+  color: #0f172a;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.12);
+}

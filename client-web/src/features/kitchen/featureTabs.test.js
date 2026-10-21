@@ -73,7 +73,8 @@ describe("bottom tab targets", () => {
   });
 
   it("maps the other tabs to their own view and ignores unknown tabs", () => {
-    for (const tab of ["home", "stock", "usage", "more"]) assert.deepEqual(tabTarget(tab), { view: tab });
+    for (const tab of ["home", "stock", "usage"]) assert.deepEqual(tabTarget(tab), { view: tab });
+    assert.equal(tabTarget("more"), null);
     assert.equal(tabTarget("nope"), null);
   });
 
