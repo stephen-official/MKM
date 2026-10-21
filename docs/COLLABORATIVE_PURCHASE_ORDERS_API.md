@@ -131,6 +131,7 @@ Returns 201 `{ url }` for `problem.voiceNoteUrl` in the receive body. Same stora
   "items": [
     {
       "stockItemId": "<product id>",
+      "packId": "<pack id, when this is a pack line>",
       "photos": { "goods": "<url>", "label": "<url>" },
       "expiryDate": "2027-03-31",
       "mfgDate": "2026-09-01",
@@ -144,7 +145,7 @@ Returns 201 `{ url }` for `problem.voiceNoteUrl` in the receive body. Same stora
 
 "All received": adds every line of the kitchen's own share that is on the way (sent, not yet received) to its stock, creates a stock batch per line and sets `deliveredAt`, `deliveredBy` and `trackingId` on those lines, all in one transaction. Lines sent later are received later. The contribution gets `deliveredAt` once every line is received.
 
-`items` carries the FSSAI receiving details, one entry per product that is arriving (entries for other products are ignored; a missing one fails with 400 `MISSING_ITEM_DETAILS`, and nothing is added to stock):
+`items` carries the FSSAI receiving details, one entry per arriving line. `packId` identifies the line when the same product appears in more than one pack size; it may be omitted when that product has only one arriving line. Entries for other products are ignored; a missing or ambiguous entry fails with 400 `MISSING_ITEM_DETAILS`, and nothing is added to stock:
 
 - `photos.goods` and `photos.label` (required): URLs returned by the photo upload endpoint, or any `https://` URL. Missing or malformed → 400 `PHOTO_REQUIRED`.
 - `expiryDate` (`YYYY-MM-DD`): required unless the product's `expiryRequired` is `false` (the product in each line carries that flag). Missing → 400 `EXPIRY_REQUIRED`; already passed in business time → 400 `EXPIRED_GOODS`, with a message telling the kitchen to call the central store.
@@ -162,7 +163,7 @@ Each stock batch (`sourceType: "collaborative_order"`, `sourceId` = the order, p
   "problem": { "reason": "short", "receivedQtyBaseUnit": 60, "note": "Only 60 kg came", "voiceNoteUrl": "<url>" } }
 ```
 
-`reason` is `short`, `excess`, `damaged`, `wrong_item` or `expired`. `receivedQtyBaseUnit` is the usable quantity that actually arrived (default 0; `short` must be below the ordered quantity, `excess` above it). The goods photo is always required; the label photo is optional; an expiry is required only when some usable quantity arrived and the product needs one. The item is **not** added to stock: a `DeliveryTicket` is created, the line gets `ticketId` (populated as `{ status, reason, receivedQtyBaseUnit, resolution, raisedAt }`) and stays undelivered, and it no longer counts as on the way. The other items in the call are received as normal. The share is delivered only once every line, including settled problems, is delivered. Settlement by the admin is described under Delivery problems below.
+`reason` is `short`, `excess`, `damaged`, `wrong_item` or `expired`. `receivedQtyBaseUnit` is the usable quantity that actually arrived (default 0; `short` must be below the ordered quantity, `excess` above it, and `wrong_item` must be 0 because it cannot be credited as the ordered product). The goods photo is always required; the label photo is optional; an expiry is required only when some usable quantity arrived and the product needs one. The item is **not** added to stock: a `DeliveryTicket` is created, the line gets `ticketId` (populated as `{ status, reason, receivedQtyBaseUnit, resolution, raisedAt }`) and stays undelivered, and it no longer counts as on the way. The other items in the call are received as normal. The share is delivered only once every line, including settled problems, is delivered. Settlement by the admin is described under Delivery problems below.
 
 If nothing is on the way, 409 `NOT_DISPATCHED`; once everything is received, 409 `ALREADY_DELIVERED`. The product ledger lists each received line as a `RECEIVED` row on the day it arrived, referenced by `orderNo`.
 

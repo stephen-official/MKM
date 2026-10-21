@@ -468,6 +468,7 @@ export const problemDetails = (input, line, product, today) => {
   const ordered = Number(line.qtyBaseUnit);
   const received = problem.receivedQtyBaseUnit === undefined || problem.receivedQtyBaseUnit === "" ? 0 : Number(problem.receivedQtyBaseUnit);
   if (!Number.isFinite(received) || received < 0) throw fail(400, `${name}: enter how much usable stock arrived`);
+  if (reason === "wrong_item" && received !== 0) throw fail(400, `${name}: a wrong item cannot be added as ${name}; enter 0 usable`);
   if (reason === "short" && received >= ordered) throw fail(400, `${name}: a short delivery means less than ${ordered} arrived`);
   if (reason === "excess" && received <= ordered) throw fail(400, `${name}: an excess delivery means more than ${ordered} arrived`);
   const voiceNoteUrl = String(problem.voiceNoteUrl || "").trim();
@@ -487,8 +488,10 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
   const session = await mongoose.startSession();
   try {
     if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
+    const detailKey = (stockItemId, packId) => `${String(stockItemId)}:${packId ? String(packId) : "base"}`;
     const details = new Map((Array.isArray(req.body?.items) ? req.body.items : [])
-      .filter((entry) => mongoose.isValidObjectId(entry?.stockItemId)).map((entry) => [String(entry.stockItemId), entry]));
+      .filter((entry) => mongoose.isValidObjectId(entry?.stockItemId))
+      .map((entry) => [detailKey(entry.stockItemId, entry.packId), entry]));
     await session.withTransaction(async () => {
       const order = await CollaborativePurchaseOrder.findById(req.params.id)
         .populate("supplierId", "name fssaiLicence").populate("supplierByProduct.supplierId", "name fssaiLicence").session(session);
@@ -499,12 +502,22 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
       // Lines with an open problem wait for the admin; they are neither on the way nor received.
       const arriving = order.status === "ordered" ? share.items.filter((line) => isSent(line, share) && !isReceived(line, share) && !line.ticketId) : [];
       if (arriving.length === 0) throw fail(409, "Nothing is on the way to your kitchen right now", "NOT_DISPATCHED");
+      const lineCountByProduct = arriving.reduce((counts, line) => {
+        const key = String(line.stockItemId);
+        counts.set(key, (counts.get(key) || 0) + 1);
+        return counts;
+      }, new Map());
       const receivedAt = new Date();
       const today = businessDateOf(receivedAt);
       for (const line of arriving) {
         const supplier = supplierSnapshotFor(order, line.stockItemId);
         const product = await StockItem.findById(line.stockItemId).select("name pricePerUnit expiryRequired").session(session);
-        const input = details.get(String(line.stockItemId));
+        const productId = String(line.stockItemId);
+        // Older clients sent details by product only. That remains unambiguous for a single line; when the
+        // same product appears in multiple pack lines, each line must identify its pack so quantities cannot
+        // be copied onto multiple delivery-problem tickets.
+        const input = details.get(detailKey(productId, line.packId))
+          || (lineCountByProduct.get(productId) === 1 ? details.get(detailKey(productId, null)) : null);
         if (!input) throw fail(400, `${product?.name || "An item"} is missing its receiving details`, "MISSING_ITEM_DETAILS");
         if (input.problem) {
           const problem = problemDetails(input, line, product, today);

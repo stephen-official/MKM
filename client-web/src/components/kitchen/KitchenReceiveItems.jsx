@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowLeft, Camera, Check, Loader2, Mic, PackageCheck, Ro
 import { useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
-import { EXPIRY_CHIPS, PROBLEM_REASONS, STORAGE_OPTIONS, adminExpiryFor, arrivingProducts, emptyProblem, emptyReceipt, groupBySupplier, usableQty, expiryFromChip, expiryNeeded, productIdOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
+import { EXPIRY_CHIPS, PROBLEM_REASONS, STORAGE_OPTIONS, adminExpiryFor, arrivingProducts, emptyProblem, emptyReceipt, groupBySupplier, usableQty, expiryFromChip, expiryNeeded, receiptKeyOf, receiptPayload, receiptProblems, receiptReady } from "../../features/kitchen/receiving";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import DateField from "../ui/DateField";
 import "./SupplyRequestsDeliveries.css";
@@ -209,11 +209,11 @@ function ItemCard({ order, line, form, today, onChange }) {
 export default function KitchenReceiveItems({ order, lines, notSentCount = 0, onBack, onDone }) {
   const today = toLocalDateKey();
   const products = arrivingProducts(lines);
-  const [forms, setForms] = useState(() => Object.fromEntries(products.map((line) => [productIdOf(line), emptyReceipt(adminExpiryFor(order, line))])));
+  const [forms, setForms] = useState(() => Object.fromEntries(products.map((line) => [receiptKeyOf(line), emptyReceipt(adminExpiryFor(order, line))])));
   const [busy, setBusy] = useState(false);
   const ready = receiptReady(lines, forms, today);
-  const readyCount = products.filter((line) => receiptProblems(line, forms[productIdOf(line)], today).length === 0).length;
-  const update = (line, change) => setForms((previous) => ({ ...previous, [productIdOf(line)]: { ...previous[productIdOf(line)], ...change } }));
+  const readyCount = products.filter((line) => receiptProblems(line, forms[receiptKeyOf(line)], today).length === 0).length;
+  const update = (line, change) => setForms((previous) => ({ ...previous, [receiptKeyOf(line)]: { ...previous[receiptKeyOf(line)], ...change } }));
 
   const submit = async () => {
     setBusy(true);
@@ -244,7 +244,7 @@ export default function KitchenReceiveItems({ order, lines, notSentCount = 0, on
         </div>
       </div>
       <div className="kr-items">
-        {group.lines.map((line) => <ItemCard key={productIdOf(line)} order={order} line={line} form={forms[productIdOf(line)]} today={today} onChange={(change) => update(line, change)} />)}
+        {group.lines.map((line) => <ItemCard key={receiptKeyOf(line)} order={order} line={line} form={forms[receiptKeyOf(line)]} today={today} onChange={(change) => update(line, change)} />)}
       </div>
     </section>)}
 
