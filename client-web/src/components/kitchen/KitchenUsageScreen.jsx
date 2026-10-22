@@ -54,6 +54,17 @@ const daysLeftText = (expiry) => {
   return `${days} ${days === 1 ? "day" : "days"} left until it expires`;
 };
 
+/** Filter chips over the list. An item can sit in two groups (expired and low), so each chip counts it. */
+const FILTERS = [{ key: "all", label: "All" }, { key: "expired", label: "Expired" }, { key: "soon", label: "Expiring soon" }, { key: "low", label: "Low stock" }, { key: "out", label: "Out of stock" }];
+const filterKeysOf = (item, today) => {
+  const keys = [];
+  const expiry = expiryStatus(item, today).key;
+  if (expiry === "expired" || expiry === "soon") keys.push(expiry);
+  const health = getStockHealth(item).key;
+  if (health === "low" || health === "out") keys.push(health);
+  return keys;
+};
+
 /** From 900px the ticket is a column beside the list; below that it lives in a bottom sheet behind the ticket bar. */
 const WIDE = "(min-width: 900px)";
 const useWide = () => {
@@ -82,6 +93,7 @@ export default function KitchenUsageScreen({
   submitting = false,
 }) {
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
   const [ticketOpen, setTicketOpen] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
   // Cards the cook has tapped "Add" on but not counted yet: { [id]: { unit: null | "base" | packId } }.
@@ -95,12 +107,15 @@ export default function KitchenUsageScreen({
   // Expired and soon-to-expire stock first, so the cook uses it first; the deduction on the server follows the same order.
   const visibleItems = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    const ordered = sortByExpiry(items, today);
-    if (!query) return ordered;
-    return ordered.filter((item) =>
-      String(item?.name || "").toLocaleLowerCase().includes(query),
-    );
-  }, [items, search, today]);
+    return sortByExpiry(items, today)
+      .filter((item) => filter === "all" || filterKeysOf(item, today).includes(filter))
+      .filter((item) => !query || String(item?.name || "").toLocaleLowerCase().includes(query));
+  }, [filter, items, search, today]);
+  const counts = useMemo(() => {
+    const result = { all: items.length, expired: 0, soon: 0, low: 0, out: 0 };
+    items.forEach((item) => filterKeysOf(item, today).forEach((key) => { result[key] += 1; }));
+    return result;
+  }, [items, today]);
 
   const selectedItems = useMemo(
     () => items.filter((item) => numericQuantity(quantityFor(quantitySource, item)) > 0),
@@ -230,6 +245,13 @@ export default function KitchenUsageScreen({
           />
           {search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search">Clear</button>}
         </label>
+        <div className="kus-filters" role="group" aria-label="Show only">
+          {FILTERS.map(({ key, label }) => (
+            <button type="button" key={key} className={filter === key ? "kus-filter is-on" : "kus-filter"} aria-pressed={filter === key} onClick={() => setFilter(key)}>
+              {label}<span>{counts[key]}</span>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="kus-stock" aria-labelledby="kus-stock-title" aria-busy={loading}>
@@ -241,7 +263,8 @@ export default function KitchenUsageScreen({
         {loading ? (
           <div className="kg-glass kus-state" role="status"><span className="kus-spinner" />Loading kitchen stock…</div>
         ) : visibleItems.length === 0 ? (
-          <div className="kg-glass kus-state"><Search size={25} aria-hidden="true" /><strong>No supplies found</strong><span>Try a different item name.</span></div>
+          <div className="kg-glass kus-state"><Search size={25} aria-hidden="true" /><strong>No supplies found</strong><span>{filter === "all" ? "Try a different item name." : "Nothing in this group right now."}</span>
+            {filter !== "all" && <button type="button" className="kg-chip" onClick={() => setFilter("all")}>Show all</button>}</div>
         ) : (
           <div className="kus-list">
             {visibleItems.map((item, index) => {

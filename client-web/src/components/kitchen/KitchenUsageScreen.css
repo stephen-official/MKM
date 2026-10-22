@@ -23,6 +23,13 @@
 .kus-search input { width: 100%; min-height: 42px; border: 0; outline: 0; color: var(--ink-2); background: transparent; font: inherit; font-size: 14px; }
 .kus-search input::placeholder { color: var(--muted-2); font-weight: 300; }
 .kus-search button { border: 0; color: var(--blue-deep); background: transparent; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+/* Filter chips (All · Expired · Expiring soon · Low stock · Out of stock), the same pills as "Count in" on a card. */
+.kus-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 4px; }
+.kus-filter { flex: none; }
+/* On a phone the chips are one row the cook swipes sideways (the row bleeds to the glass edge, so the last chip peeks in). */
+@media (max-width: 699px) { .kus-filters { flex-wrap: nowrap; overflow-x: auto; margin: 0 -10px; padding: 2px 14px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; } .kus-filters::-webkit-scrollbar { display: none; } }
+.kus-filter span { display: inline-grid; min-width: 20px; height: 20px; margin-left: 6px; padding: 0 6px; place-items: center; color: var(--muted-2); background: rgba(255,255,255,.8); border-radius: 999px; font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.kus-filter.is-on span { color: var(--blue-deep); background: #fff; }
 
 /* List heading */
 .kus-section-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 12px; padding-inline: 4px; }
@@ -64,8 +71,8 @@
 .kus-item__entry .kus-stepper { margin-left: auto; }
 .kus-unit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(170,186,210,.28); }
 .kus-unit .kus-item__label { flex: 1 1 100%; margin-bottom: 2px; }
-.kus-unit button { min-height: 34px; padding: 0 12px; border: 1px solid var(--glass-border); border-radius: 999px; background: rgba(255,255,255,.55); color: var(--muted-2); box-shadow: 0 0 0 1px rgba(170,186,210,.28), inset 0 1px 0 #fff; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
-.kus-unit button.is-on { color: var(--blue-deep); background: rgba(228,237,249,.9); box-shadow: 0 0 0 1px rgba(120,152,198,.55), inset 0 1px 0 #fff; }
+.kus-unit button, .kus-filter { min-height: 34px; padding: 0 12px; border: 1px solid var(--glass-border); border-radius: 999px; background: rgba(255,255,255,.55); color: var(--muted-2); box-shadow: 0 0 0 1px rgba(170,186,210,.28), inset 0 1px 0 #fff; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.kus-unit button.is-on, .kus-filter.is-on { color: var(--blue-deep); background: rgba(228,237,249,.9); box-shadow: 0 0 0 1px rgba(120,152,198,.55), inset 0 1px 0 #fff; }
 .kus-unit__note { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; color: var(--muted-2); font-size: 12.5px; font-weight: 300; line-height: 1.4; }
 .kus-unit__note strong { font-weight: 500; color: var(--ink-2); }
 .kus-unit__note--error { color: var(--st-expired-fg); font-weight: 500; }
@@ -123,11 +130,11 @@
 .kus-stepper:focus-within { box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
 /* Room under the list for the ticket bar on top of the tabs. */
 @media (max-width: 899px) { .kus-screen { padding-bottom: calc(var(--page-bottom-space) + 64px); } }
-.kus-stepper button:focus-visible, .kus-unit button:focus-visible { outline: none; background: var(--blue-soft); }
+.kus-stepper button:focus-visible, .kus-unit button:focus-visible, .kus-filter:focus-visible { outline: none; background: var(--blue-soft); }
 @keyframes kus-spin { to { transform: rotate(360deg); } }
 
 @media (min-width: 700px) { .kus-screen { max-width: 760px; margin: auto; padding-right: 24px; padding-left: 24px; } .kus-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kus-bar { right: 50%; left: 50%; width: 712px; max-width: calc(100% - 48px); transform: translateX(-50%); } .kus-bar:active { transform: translateX(-50%) scale(.98); } }
 @media (min-width: 900px) { .kus-layout { align-items: start; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; } .kus-layout .kt-ticket { order: 2; position: sticky; top: 16px; } }
 @media (prefers-reduced-motion: reduce) { .kus-spinner { animation: none; } .kus-bar { transition: none; } .kus-sheet__panel, .kus-stepper--open, .kus-stepper--done { animation: none; } }
 @media (max-width: 420px) { .kus-item__entry { align-items: flex-start; flex-direction: column; } .kus-stepper { width: 100%; } .kus-stepper input { flex: 1; } .kus-item__remaining { text-align: left; } }
-@media (min-width: 1024px) { .kus-screen { max-width: 1240px; padding: 34px 28px 56px; } .kus-controls { grid-template-columns: auto minmax(320px, 1fr); } .kus-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; } .kus-item__media { height: 158px; } .kus-item__body { padding: 16px 18px 18px; } }
+@media (min-width: 1024px) { .kus-screen { max-width: 1240px; padding: 34px 28px 56px; } .kus-controls { grid-template-columns: auto minmax(320px, 1fr); } .kus-filters { grid-column: 1 / -1; } .kus-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; } .kus-item__media { height: 158px; } .kus-item__body { padding: 16px 18px 18px; } }
