@@ -2,7 +2,7 @@ import { AlertTriangle, ChevronUp, Minus, Plus, Search, Utensils, X } from "luci
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
-import { expiryStatus, formatStockQuantity, needsAttention, productPacks, sortByExpiry, withPackaging } from "../../features/kitchen";
+import { expiryStatus, formatStockQuantity, productPacks, sortByExpiry, withPackaging } from "../../features/kitchen";
 import DateField from "../ui/DateField";
 import { useConfirm } from "../ui/ConfirmDialog";
 import OrderTicket from "./OrderTicket";
@@ -44,6 +44,15 @@ const packFor = (quantities, item) => {
 /** Cooks count rice in bags and oil in tins, so the biggest pack is the starting unit; the toggle switches to kg. */
 const defaultPackFor = (item) => [...productPacks(item)].sort((a, b) => Number(b.size) - Number(a.size))[0] || null;
 const packLabel = (pack, count) => (count === 1 ? pack.packName : `${pack.packName}s`);
+const initialOf = (name) => (String(name).trim().charAt(0) || "?").toUpperCase();
+/** "5 days left until it expires", "expires today", "expired 4 days ago": the quiet line under the expiry date (same words as Stock). */
+const daysLeftText = (expiry) => {
+  const days = expiry.daysLeft;
+  if (days === null || days === undefined) return "";
+  if (days < 0) return days === -1 ? "expired yesterday" : `expired ${-days} days ago`;
+  if (days === 0) return "expires today";
+  return `${days} ${days === 1 ? "day" : "days"} left until it expires`;
+};
 
 /** From 900px the ticket is a column beside the list; below that it lives in a bottom sheet behind the ticket bar. */
 const WIDE = "(min-width: 900px)";
@@ -75,6 +84,9 @@ export default function KitchenUsageScreen({
   const [search, setSearch] = useState("");
   const [ticketOpen, setTicketOpen] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Cards the cook has tapped "Add" on but not counted yet: { [id]: { unit: null | "base" | packId } }.
+  // The number box stays locked until a unit is chosen; items with no packs have only one unit, so it is chosen for them.
+  const [started, setStarted] = useState({});
   const wide = useWide();
   const [confirm, confirmDialog] = useConfirm();
   const quantitySource = cart ?? quantities;
@@ -126,10 +138,14 @@ export default function KitchenUsageScreen({
   };
   const setAmount = (item, amount, pack) => updateQuantity(item, amount > 0 ? String(amount) : "", pack);
   // First tap on "Add": start counting in the biggest pack when the product has one.
-  const addItem = (item) => {
-    const pack = defaultPackFor(item);
-    const chosen = pack ? { packId: pack._id, packName: pack.name, packSize: Number(pack.size) } : null;
-    setAmount(item, Math.min(1, availableQuantity(item) / (chosen ? chosen.packSize : 1)), chosen);
+  const addItem = (item) => setStarted((previous) => ({ ...previous, [itemId(item)]: { unit: productPacks(item).length ? null : "base" } }));
+  const chooseUnit = (item, unit) => {
+    setStarted((previous) => ({ ...previous, [itemId(item)]: { unit } }));
+    switchUnit(item, unit);
+  };
+  const removeItem = (item) => {
+    setAmount(item, 0);
+    setStarted((previous) => { const next = { ...previous }; delete next[itemId(item)]; return next; });
   };
   // Switching the unit keeps what was entered: 2 bags becomes 50 kg, 50 kg becomes 2 bags.
   const switchUnit = (item, packId) => {
@@ -153,7 +169,7 @@ export default function KitchenUsageScreen({
   const [seenCount, setSeenCount] = useState(rowCount);
   if (seenCount !== rowCount) {
     setSeenCount(rowCount);
-    if (rowCount === 0) setSheetOpen(false);
+    if (rowCount === 0) { setSheetOpen(false); setStarted({}); }
   }
   useEffect(() => {
     if (!sheetOpen) return undefined;
@@ -229,58 +245,84 @@ export default function KitchenUsageScreen({
               const isSelected = used > 0;
               const expiry = expiryStatus(item, today);
               const entryUnit = pack ? packLabel(pack, used || 1) : unit;
+              const begun = isSelected || Boolean(started[id]);
+              const chosenUnit = isSelected ? (pack ? pack.packId : "base") : started[id]?.unit ?? null;
+              const unitChosen = chosenUnit !== null;
+              const image = item?.image && item.image !== "null" ? item.image : "";
+              const tone = expiry.key === "expired" ? " kus-item--expired" : expiry.key === "soon" ? " kus-item--soon" : "";
 
               return (
-                <article className={`kg-glass kg-lift kus-item${isSelected ? " kus-item--selected" : ""}`} key={id}>
-                  <div className="kus-item__top">
-                    {item?.image ? <img src={item.image} alt="" loading="lazy" /> : <span className="kus-item__placeholder" aria-hidden="true">{String(item?.name || "?").charAt(0)}</span>}
-                    <div className="kus-item__identity">
-                      <h3>{item?.name || "Unnamed supply"}</h3>
-                      <p className={available === 0 ? "kus-item__available kus-item__available--empty" : "kus-item__available"}>
-                        Available: <strong>{formatStockQuantity(available, unit, item)}</strong>{packs.length > 0 && available > 0 && <small> · {displayNumber(available)} {unit}</small>}
-                      </p>
-                    </div>
+                <article className={`kg-glass kg-lift kus-item${isSelected ? " kus-item--selected" : ""}${tone}`} key={id}>
+                  <div className={`kus-item__media${image ? " has-image" : ""}`} aria-hidden="true">
+                    {image ? <img src={image} alt="" loading="lazy" decoding="async" /> : <span>{initialOf(item?.name || "?")}</span>}
                   </div>
-                  {needsAttention(expiry) && (
-                    <p className={`kus-item__expiry kus-item__expiry--${expiry.tone}`} role={expiry.key === "expired" ? "alert" : undefined}>
-                      <AlertTriangle size={15} aria-hidden="true" />
-                      <span>{expiry.key === "expired"
-                        ? <><strong>{expiry.label}</strong> · {displayNumber(expiry.qtyBaseUnit)} {unit} · check before using</>
-                        : <><strong>Use first:</strong> {expiry.label} · {displayNumber(expiry.qtyBaseUnit)} {unit}</>}</span>
-                    </p>
-                  )}
-                  <div className="kus-item__entry">
-                    <label htmlFor={`usage-${id}`}>Quantity used</label>
-                    {!isSelected ? (
-                      <button type="button" className="kt-add" onClick={() => addItem(item)} disabled={available === 0 || submitting} aria-label={`Add ${item?.name || "item"}`}><Plus size={17} aria-hidden="true" /> Add<span>{defaultPackFor(item)?.name || unit}</span></button>
+                  <div className="kus-item__body">
+                    <h3>{item?.name || "Unnamed supply"}</h3>
+                    <dl className="kus-facts">
+                      <div>
+                        <dt>Available</dt>
+                        <dd>{available === 0
+                          ? <span className="kus-facts__none">Out of stock</span>
+                          : <>{formatStockQuantity(available, unit, item)}{packs.length > 0 && <small> · {displayNumber(available)} {unit}</small>}</>}</dd>
+                      </div>
+                      <div>
+                        <dt>Expiry</dt>
+                        <dd>
+                          {expiry.key === "none" ? <span className="kus-facts__none">No date</span> : formatDateKey(expiry.date)}
+                          {expiry.key !== "none" && <em className={`kus-facts__days kus-facts__days--${expiry.tone}`}>{daysLeftText(expiry)}</em>}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    {!begun ? (
+                      <div className="kus-item__entry">
+                        <span className="kus-item__label">Quantity used</span>
+                        <button type="button" className="kt-add" onClick={() => addItem(item)} disabled={available === 0 || submitting} aria-label={`Add ${item?.name || "item"}`}><Plus size={17} aria-hidden="true" /> Add<span>{defaultPackFor(item)?.name || unit}</span></button>
+                      </div>
                     ) : (
-                    <div className="kus-stepper">
-                      <button type="button" onClick={() => setAmount(item, Math.max(used - 1, 0))} disabled={submitting} aria-label={used <= 1 ? `Remove ${item?.name || "item"}` : `Decrease ${item?.name || "item"} quantity`}>{used <= 1 ? <X size={17} /> : <Minus size={17} />}</button>
-                      <input
-                        id={`usage-${id}`}
-                        type="text"
-                        inputMode="decimal"
-                        value={rawQuantity}
-                        placeholder="0"
-                        disabled={available === 0 || submitting}
-                        onChange={(event) => updateQuantity(item, event.target.value)}
-                        aria-describedby={`remaining-${id}`}
-                      />
-                      <span>{entryUnit}</span>
-                      <button type="button" onClick={() => updateQuantity(item, Math.min(used + 1, available / (pack ? pack.packSize : 1)))} disabled={usedBase >= available || available === 0 || submitting} aria-label={`Increase ${item?.name || "item"} quantity`}><Plus size={17} /></button>
-                    </div>
+                      <>
+                        {packs.length > 0 && (
+                          <div className="kus-unit" role="group" aria-label={`Count ${item?.name || "item"} in`}>
+                            <span className="kus-item__label">Count in</span>
+                            {packs.map((candidate) => <button type="button" key={candidate._id} className={String(chosenUnit) === String(candidate._id) ? "is-on" : ""} aria-pressed={String(chosenUnit) === String(candidate._id)} disabled={submitting} onClick={() => chooseUnit(item, candidate._id)}>{candidate.name}</button>)}
+                            <button type="button" className={chosenUnit === "base" ? "is-on" : ""} aria-pressed={chosenUnit === "base"} disabled={submitting} onClick={() => chooseUnit(item, "base")}>{unit}</button>
+                          </div>
+                        )}
+                        {packs.length > 0 && (
+                          !unitChosen
+                            ? <p className="kus-unit__note kus-unit__note--error" role="alert"><AlertTriangle size={14} aria-hidden="true" /> Please select units</p>
+                            : <p className="kus-unit__note">{pack
+                              ? <>1 × {pack.packName} = <strong>{displayNumber(pack.packSize)} {unit}</strong></>
+                              : <>Counted in {unit} · 1 × {packs[0].name} = {displayNumber(packs[0].size)} {unit}</>}</p>
+                        )}
+                        <div className="kus-item__entry">
+                          <label htmlFor={`usage-${id}`}>Quantity used</label>
+                          <div className="kus-stepper">
+                            <button type="button" onClick={() => (used <= 1 ? removeItem(item) : setAmount(item, used - 1))} disabled={submitting} aria-label={used <= 1 ? `Remove ${item?.name || "item"}` : `Decrease ${item?.name || "item"} quantity`}>{used <= 1 ? <X size={17} /> : <Minus size={17} />}</button>
+                            <input
+                              key={String(chosenUnit)}
+                              id={`usage-${id}`}
+                              type="text"
+                              inputMode="decimal"
+                              value={rawQuantity}
+                              placeholder="0"
+                              disabled={!unitChosen || available === 0 || submitting}
+                              autoFocus={unitChosen && Boolean(started[id])}
+                              onChange={(event) => updateQuantity(item, event.target.value)}
+                              aria-describedby={`remaining-${id}`}
+                            />
+                            <span>{unitChosen ? entryUnit : "—"}</span>
+                            <button type="button" onClick={() => updateQuantity(item, Math.min(used + 1, available / (pack ? pack.packSize : 1)))} disabled={!unitChosen || usedBase >= available || available === 0 || submitting} aria-label={`Increase ${item?.name || "item"} quantity`}><Plus size={17} /></button>
+                          </div>
+                        </div>
+                        <p id={`remaining-${id}`} className="kus-item__remaining">
+                          {isSelected
+                            ? <>{pack && <em>= {displayNumber(usedBase)} {unit} · </em>}Remaining after usage: <strong>{formatStockQuantity(remaining, unit, item)}</strong>{packs.length > 0 && <> ({displayNumber(remaining)} {unit})</>}</>
+                            : unitChosen ? "Type how much you used" : ""}
+                        </p>
+                      </>
                     )}
                   </div>
-                  {isSelected && packs.length > 0 && (
-                    <div className="kus-unit" role="group" aria-label={`Count ${item?.name || "item"} in`}>
-                      {packs.map((candidate) => <button type="button" key={candidate._id} className={pack?.packId === candidate._id ? "is-on" : ""} aria-pressed={pack?.packId === candidate._id} disabled={submitting} onClick={() => switchUnit(item, candidate._id)}>{candidate.name}</button>)}
-                      <button type="button" className={pack ? "" : "is-on"} aria-pressed={!pack} disabled={submitting} onClick={() => switchUnit(item, "base")}>{unit}</button>
-                      {pack && used > 0 && <em>= {displayNumber(usedBase)} {unit}</em>}
-                    </div>
-                  )}
-                  <p id={`remaining-${id}`} className="kus-item__remaining">
-                    {isSelected ? <>Remaining after usage: <strong>{formatStockQuantity(remaining, unit, item)}</strong>{packs.length > 0 && <> ({displayNumber(remaining)} {unit})</>}</> : available === 0 ? "This item is out of stock" : "Tap Add if you used this today"}
-                  </p>
                 </article>
               );
             })}
