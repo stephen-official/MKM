@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronUp, Minus, Plus, Search, Utensils, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronUp, Plus, Search, Utensils, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
@@ -301,7 +301,7 @@ export default function KitchenUsageScreen({
                         <div className="kus-item__entry">
                           <label htmlFor={`usage-${id}`}>Quantity used</label>
                           <div className="kus-stepper">
-                            <button type="button" onClick={() => (used <= 1 ? removeItem(item) : setAmount(item, used - 1))} disabled={submitting} aria-label={used <= 1 ? `Remove ${item?.name || "item"}` : `Decrease ${item?.name || "item"} quantity`}>{used <= 1 ? <X size={17} /> : <Minus size={17} />}</button>
+                            <button type="button" onClick={() => removeItem(item)} disabled={submitting} aria-label={`Remove ${item?.name || "item"}`}><X size={17} /></button>
                             <input
                               key={String(chosenUnit)}
                               id={`usage-${id}`}
@@ -315,7 +315,8 @@ export default function KitchenUsageScreen({
                               aria-describedby={`remaining-${id}`}
                             />
                             <span>{unitChosen ? entryUnit : "—"}</span>
-                            <button type="button" onClick={() => updateQuantity(item, Math.min(used + 1, available / (pack ? pack.packSize : 1)))} disabled={!unitChosen || usedBase >= available || available === 0 || submitting} aria-label={`Increase ${item?.name || "item"} quantity`}><Plus size={17} /></button>
+                            {/* The tick only puts the keyboard away: the amount is already on the ticket as it is typed. */}
+                            <button type="button" onClick={() => document.getElementById(`usage-${id}`)?.blur()} disabled={!unitChosen || submitting} aria-label={`Done entering ${item?.name || "item"}`}><Check size={17} /></button>
                           </div>
                         </div>
                         <p id={`remaining-${id}`} className="kus-item__remaining">

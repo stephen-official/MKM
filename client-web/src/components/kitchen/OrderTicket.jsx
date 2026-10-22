@@ -8,6 +8,9 @@ const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFract
  *  commits every valid amount at once, and removes the row if it is left empty. */
 function TicketQty({ row, onChange }) {
   const [draft, setDraft] = useState(null);
+  // The screen may cap what was typed (no more than the stock): a finished number that the screen did not accept as is snaps
+  // to the real amount, so the box never shows more than is on the ticket.
+  if (draft !== null && Number(draft) > 0 && !draft.endsWith(".") && Number(draft) !== row.amount) setDraft(String(row.amount));
   const edit = (value) => {
     if (!/^\d*(\.\d{0,3})?$/.test(value)) return;
     setDraft(value);
