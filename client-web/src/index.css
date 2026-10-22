@@ -34,7 +34,9 @@
   --st-routine-fg: #55647d; --st-routine-bg: #f0f3f7; --st-routine-line: rgba(180,194,214,.45);
   --alert-dot: #d0675d;
   --btn-glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.62));
-  --btn-glass-primary-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(228, 237, 249, 0.75));
+  --btn-glass-primary-bg: linear-gradient(160deg, rgba(246, 249, 254, 0.95), rgba(214, 228, 247, 0.92));
+  --btn-glass-primary-line: rgba(120, 152, 198, 0.55);
+  --btn-glass-line: rgba(140, 160, 190, 0.5);
   --nav-glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.38));
   --nav-glass-blur: blur(34px) saturate(180%);
   /* Tinted glass for cards whose state deserves a hint of colour; the tint fades to white across the card. */
