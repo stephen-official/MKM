@@ -126,11 +126,11 @@
   height: 44px;
   padding: 0;
   place-items: center;
-  color: #4a5c7a;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(166, 182, 206, 0.55);
+  color: var(--ink-2);
+  background: var(--btn-glass-bg);
+  border: 1px solid var(--glass-border);
   border-radius: 50%;
-  box-shadow: inset 0 1px 0 #fff, 0 2px 6px rgba(30, 52, 92, 0.06);
+  box-shadow: 0 0 0 1px var(--btn-glass-line), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170, 186, 210, 0.25), 0 4px 12px rgba(30, 52, 92, 0.07);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
