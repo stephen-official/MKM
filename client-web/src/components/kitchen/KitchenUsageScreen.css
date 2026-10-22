@@ -73,6 +73,15 @@
 .kus-stepper input { width: 52px; border: 0; outline: 0; text-align: right; background: transparent; font: inherit; font-size: 15px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .kus-stepper input:disabled { color: var(--muted-2); cursor: not-allowed; }
 .kus-stepper > span { max-width: 84px; padding: 0 8px 0 4px; overflow: hidden; color: var(--muted-2); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+/* Tick: the open field sinks away and the confirmed row rises in its place; tapping the row brings the field back. */
+.kus-stepper--open { animation: kus-pop var(--dur-glass) var(--ease-glass); }
+.kus-stepper--done { background: rgba(228,237,249,.9); animation: kus-sink var(--dur-glass) var(--ease-glass); }
+.kus-stepper .kus-stepper__value { display: flex; flex: 1; width: auto; min-width: 0; height: 36px; align-items: center; gap: 6px; padding: 0 12px 0 2px; border: 0; background: transparent; color: var(--blue-deep); font-size: 14px; font-weight: 500; text-align: left; white-space: nowrap; }
+.kus-stepper .kus-stepper__value small { overflow: hidden; color: var(--muted-2); font-size: 12px; font-weight: 300; text-overflow: ellipsis; }
+.kus-stepper .kus-stepper__value svg { flex: none; margin-left: auto; }
+.kus-stepper .kus-stepper__value:hover:not(:disabled) { background: rgba(255,255,255,.6); }
+@keyframes kus-sink { from { transform: scale(.96); opacity: 0; } }
+@keyframes kus-pop { from { transform: translateY(6px) scale(.98); opacity: 0; } }
 .kus-item__remaining { min-height: 18px; margin: 8px 0 0; color: var(--muted-2); font-size: 12px; font-weight: 300; text-align: right; }
 .kus-item__remaining strong { font-weight: 500; color: var(--ink-2); }
 .kus-item__remaining em { color: var(--blue-deep); font-style: normal; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -112,6 +121,6 @@
 
 @media (min-width: 700px) { .kus-screen { max-width: 760px; margin: auto; padding-right: 24px; padding-left: 24px; } .kus-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kus-bar { right: 50%; left: 50%; width: 712px; max-width: calc(100% - 48px); transform: translateX(-50%); } .kus-bar:active { transform: translateX(-50%) scale(.98); } }
 @media (min-width: 900px) { .kus-layout { align-items: start; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; } .kus-layout .kt-ticket { order: 2; position: sticky; top: 16px; } }
-@media (prefers-reduced-motion: reduce) { .kus-spinner { animation: none; } .kus-bar { transition: none; } .kus-sheet__panel { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .kus-spinner { animation: none; } .kus-bar { transition: none; } .kus-sheet__panel, .kus-stepper--open, .kus-stepper--done { animation: none; } }
 @media (max-width: 420px) { .kus-item__entry { align-items: flex-start; flex-direction: column; } .kus-stepper { width: 100%; } .kus-stepper input { flex: 1; } .kus-item__remaining { text-align: left; } }
 @media (min-width: 1024px) { .kus-screen { max-width: 1240px; padding: 34px 28px 56px; } .kus-controls { grid-template-columns: auto minmax(320px, 1fr); } .kus-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; } .kus-item__media { height: 158px; } .kus-item__body { padding: 16px 18px 18px; } }

@@ -143,6 +143,15 @@ export default function KitchenUsageScreen({
     setStarted((previous) => ({ ...previous, [itemId(item)]: { unit } }));
     switchUnit(item, unit);
   };
+  // Tick: the field sinks into a confirmed row (only when something was typed); tapping that row brings the field back.
+  const confirmItem = (item, used) => {
+    document.getElementById(`usage-${itemId(item)}`)?.blur();
+    if (used > 0) setStarted((previous) => ({ ...previous, [itemId(item)]: { ...previous[itemId(item)], unit: previous[itemId(item)]?.unit ?? "base", done: true } }));
+  };
+  const reopenItem = (item) => setStarted((previous) => {
+    const current = previous[itemId(item)] || { unit: "base" };
+    return { ...previous, [itemId(item)]: { ...current, done: false, round: (current.round || 0) + 1 } };
+  });
   const removeItem = (item) => {
     setAmount(item, 0);
     setStarted((previous) => { const next = { ...previous }; delete next[itemId(item)]; return next; });
@@ -251,6 +260,7 @@ export default function KitchenUsageScreen({
               const begun = isSelected || Boolean(started[id]);
               const chosenUnit = isSelected ? (pack ? pack.packId : "base") : started[id]?.unit ?? null;
               const unitChosen = chosenUnit !== null;
+              const confirmed = Boolean(started[id]?.done) && isSelected;
               const image = item?.image && item.image !== "null" ? item.image : "";
               const tone = expiry.key === "expired" ? " kus-item--expired" : expiry.key === "soon" ? " kus-item--soon" : "";
 
@@ -284,14 +294,14 @@ export default function KitchenUsageScreen({
                       </div>
                     ) : (
                       <>
-                        {packs.length > 0 && (
+                        {packs.length > 0 && !confirmed && (
                           <div className="kus-unit" role="group" aria-label={`Count ${item?.name || "item"} in`}>
                             <span className="kus-item__label">Count in</span>
                             {packs.map((candidate) => <button type="button" key={candidate._id} className={String(chosenUnit) === String(candidate._id) ? "is-on" : ""} aria-pressed={String(chosenUnit) === String(candidate._id)} disabled={submitting} onClick={() => chooseUnit(item, candidate._id)}>{candidate.name}</button>)}
                             <button type="button" className={chosenUnit === "base" ? "is-on" : ""} aria-pressed={chosenUnit === "base"} disabled={submitting} onClick={() => chooseUnit(item, "base")}>{unit}</button>
                           </div>
                         )}
-                        {packs.length > 0 && (
+                        {packs.length > 0 && !confirmed && (
                           !unitChosen
                             ? <p className="kus-unit__note kus-unit__note--error" role="alert"><AlertTriangle size={14} aria-hidden="true" /> Please select units</p>
                             : <p className="kus-unit__note">{pack
@@ -300,10 +310,18 @@ export default function KitchenUsageScreen({
                         )}
                         <div className="kus-item__entry">
                           <label htmlFor={`usage-${id}`}>Quantity used</label>
-                          <div className="kus-stepper">
+                          {confirmed ? (
+                            <div className="kus-stepper kus-stepper--done">
+                              <button type="button" onClick={() => removeItem(item)} disabled={submitting} aria-label={`Remove ${item?.name || "item"}`}><X size={17} /></button>
+                              <button type="button" className="kus-stepper__value" onClick={() => reopenItem(item)} disabled={submitting} aria-label={`Change ${item?.name || "item"} quantity`}>
+                                {pack ? <>{displayNumber(used)} × {pack.packName}<small> · {displayNumber(usedBase)} {unit}</small></> : <>{displayNumber(used)} {unit}</>}<Check size={15} aria-hidden="true" />
+                              </button>
+                            </div>
+                          ) : (
+                          <div className="kus-stepper kus-stepper--open">
                             <button type="button" onClick={() => removeItem(item)} disabled={submitting} aria-label={`Remove ${item?.name || "item"}`}><X size={17} /></button>
                             <input
-                              key={String(chosenUnit)}
+                              key={`${chosenUnit}-${started[id]?.round || 0}`}
                               id={`usage-${id}`}
                               type="text"
                               inputMode="decimal"
@@ -316,8 +334,9 @@ export default function KitchenUsageScreen({
                             />
                             <span>{unitChosen ? entryUnit : "—"}</span>
                             {/* The tick only puts the keyboard away: the amount is already on the ticket as it is typed. */}
-                            <button type="button" onClick={() => document.getElementById(`usage-${id}`)?.blur()} disabled={!unitChosen || submitting} aria-label={`Done entering ${item?.name || "item"}`}><Check size={17} /></button>
+                            <button type="button" onClick={() => confirmItem(item, used)} disabled={!unitChosen || submitting} aria-label={`Done entering ${item?.name || "item"}`}><Check size={17} /></button>
                           </div>
+                          )}
                         </div>
                         <p id={`remaining-${id}`} className="kus-item__remaining">
                           {isSelected
