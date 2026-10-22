@@ -10,7 +10,7 @@ const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFract
  */
 export default function OrderTicket({ title = "Order ticket", rows = [], meta = [], emptyText = "Tap “Add” on an item below and it will be listed here.", open = true, onToggle, onChange, onClear, clearLabel = "Remove all items" }) {
   const count = rows.length;
-  return <section className="kt-ticket" id="kitchen-ticket" aria-labelledby="kt-ticket-title">
+  return <section className="kg-glass kt-ticket" id="kitchen-ticket" aria-labelledby="kt-ticket-title">
     <button type="button" className="kt-ticket__head" onClick={onToggle} aria-expanded={open} aria-controls="kt-ticket-body">
       <span><p>{title}</p><h2 id="kt-ticket-title">{count === 0 ? "Nothing added yet" : `${count} ${count === 1 ? "item" : "items"}`}</h2></span>
       <ChevronDown size={20} className={open ? "is-open" : ""} aria-hidden="true" />

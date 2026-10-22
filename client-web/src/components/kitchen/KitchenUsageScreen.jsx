@@ -154,7 +154,7 @@ export default function KitchenUsageScreen({
         emptyText="Tap “Add” on a supply below and it will be listed here." open={ticketOpen} onToggle={() => setTicketOpen((value) => !value)}
         onChange={changeRow} onClear={onClear ? clearTicket : undefined} />
       <div className="kus-main">
-      <section className="kus-controls" aria-label="Usage details">
+      <section className="kg-glass kus-controls" aria-label="Usage details">
         <label className="kus-date">
           <span>Usage date</span>
           <DateField value={selectedDate} max={today} required label="Usage date"
@@ -181,9 +181,9 @@ export default function KitchenUsageScreen({
         </div>
 
         {loading ? (
-          <div className="kus-state" role="status"><span className="kus-spinner" />Loading kitchen stock…</div>
+          <div className="kg-glass kus-state" role="status"><span className="kus-spinner" />Loading kitchen stock…</div>
         ) : visibleItems.length === 0 ? (
-          <div className="kus-state"><Search size={25} aria-hidden="true" /><strong>No supplies found</strong><span>Try a different item name.</span></div>
+          <div className="kg-glass kus-state"><Search size={25} aria-hidden="true" /><strong>No supplies found</strong><span>Try a different item name.</span></div>
         ) : (
           <div className="kus-list">
             {visibleItems.map((item, index) => {
@@ -201,7 +201,7 @@ export default function KitchenUsageScreen({
               const entryUnit = pack ? packLabel(pack, used || 1) : unit;
 
               return (
-                <article className={`kus-item${isSelected ? " kus-item--selected" : ""}`} key={id}>
+                <article className={`kg-glass kg-lift kus-item${isSelected ? " kus-item--selected" : ""}`} key={id}>
                   <div className="kus-item__top">
                     {item?.image ? <img src={item.image} alt="" loading="lazy" /> : <span className="kus-item__placeholder" aria-hidden="true">{String(item?.name || "?").charAt(0)}</span>}
                     <div className="kus-item__identity">

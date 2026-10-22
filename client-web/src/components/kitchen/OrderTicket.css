@@ -1,29 +1,33 @@
-/* Receipt look: dashed rules, no prices. On a phone it sits above the list and folds away; from 900px it is a sticky column (see .ko-picker__layout / .kus-layout). */
-.kt-ticket { background: #fffdf8; border: 1px solid #e6dcc6; border-radius: 16px; box-shadow: 0 6px 18px rgba(60, 45, 10, .06); padding: 4px 14px 12px; }
-.kt-ticket__head { align-items: center; background: none; border: 0; border-bottom: 1px dashed #d8ccb2; color: #17231c; display: flex; gap: 10px; justify-content: space-between; min-height: 52px; padding: 8px 0; text-align: left; width: 100%; }
-.kt-ticket__head p { color: #8a7a52; font-size: .68rem; font-weight: 800; letter-spacing: .12em; margin: 0 0 2px; text-transform: uppercase; }
-.kt-ticket__head h2 { font-size: 1rem; margin: 0; }
-.kt-ticket__head svg { color: #8a7a52; flex: none; transition: transform .15s; }
+/* Receipt-style ticket, glass edition: a glass card with hairline rows and no prices. On a phone it sits above the list and
+   folds away; from 900px it is a sticky column (see .ko-picker__layout / .kus-layout). Shared by usage, orders and transfers. */
+.kt-ticket { padding: 4px 16px 12px; font-family: var(--font-kitchen); color: var(--ink-2); }
+.kt-ticket__head { align-items: center; background: none; border: 0; border-bottom: 1px solid rgba(170,186,210,.28); color: var(--ink-2); display: flex; gap: 10px; justify-content: space-between; min-height: 52px; padding: 8px 0; text-align: left; width: 100%; font: inherit; cursor: pointer; }
+.kt-ticket__head p { color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; margin: 0 0 2px; text-transform: uppercase; }
+.kt-ticket__head h2 { font-size: 18px; font-weight: 300; letter-spacing: -.01em; margin: 0; }
+.kt-ticket__head svg { color: var(--muted-2); flex: none; transition: transform .15s; }
 .kt-ticket__head svg.is-open { transform: rotate(180deg); }
-.kt-ticket__meta { border-bottom: 1px dashed #d8ccb2; display: flex; font-size: .82rem; justify-content: space-between; margin: 0; padding: 10px 0; }
-.kt-ticket__meta dt { color: #5d7068; }
-.kt-ticket__meta dd { font-weight: 750; margin: 0; }
-.kt-ticket__empty { color: #7a857f; font-size: .84rem; line-height: 1.45; margin: 12px 0 4px; }
+.kt-ticket__meta { border-bottom: 1px solid rgba(170,186,210,.28); display: flex; font-size: 12.5px; justify-content: space-between; margin: 0; padding: 10px 0; }
+.kt-ticket__meta dt { color: var(--muted-2); font-weight: 300; }
+.kt-ticket__meta dd { font-weight: 500; margin: 0; }
+.kt-ticket__empty { color: var(--muted-2); font-size: 13px; font-weight: 300; line-height: 1.45; margin: 12px 0 4px; }
 .kt-ticket__rows { list-style: none; margin: 0; padding: 0; }
-.kt-ticket__cols { color: #8a7a52; display: flex; font-size: .66rem; font-weight: 800; justify-content: space-between; letter-spacing: .12em; padding: 10px 0 4px; text-transform: uppercase; }
-.kt-ticket__rows li + li:not(.kt-ticket__cols) { border-top: 1px dashed #eee4d0; }
+.kt-ticket__cols { color: var(--muted-2); display: flex; font-size: 11px; font-weight: 500; justify-content: space-between; letter-spacing: .14em; padding: 10px 0 4px; text-transform: uppercase; }
+.kt-ticket__rows li + li:not(.kt-ticket__cols) { border-top: 1px solid rgba(170,186,210,.22); }
 .kt-ticket__rows li:not(.kt-ticket__cols) { align-items: center; display: flex; gap: 10px; justify-content: space-between; padding: 9px 0; }
 .kt-ticket__name { min-width: 0; }
-.kt-ticket__name strong { display: block; font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kt-ticket__name small { color: #7a857f; font-size: .74rem; }
-.kt-ticket__stepper { align-items: center; background: #fff; border: 1px solid #e0d6c0; border-radius: 999px; display: flex; flex: none; gap: 2px; padding: 2px; }
-.kt-ticket__stepper button { align-items: center; background: #f4efe3; border: 0; border-radius: 50%; color: #4d4020; display: flex; height: 36px; justify-content: center; width: 36px; }
-.kt-ticket__stepper button:first-child:not(:disabled) { color: #a52c23; }
-.kt-ticket__stepper button:disabled { color: #b9b0a0; }
-.kt-ticket__stepper b { font-size: .95rem; min-width: 34px; text-align: center; }
-.kt-ticket__clear { background: none; border: 0; color: #8f2a1f; display: block; font-size: .78rem; font-weight: 750; margin: 8px auto 0; min-height: 40px; padding: 0 10px; }
-/* "Add" on an item card, before it has a quantity. */
-.kt-add { align-items: center; background: #0f766e; border: 0; border-radius: 10px; color: #fff; display: inline-flex; font-size: .84rem; font-weight: 800; gap: 5px; min-height: 44px; padding: 0 16px; }
-.kt-add span { color: #c9e7e2; font-size: .72rem; font-weight: 600; margin-left: 2px; }
-.kt-add:disabled { background: #dde5e0; color: #8fa198; }
-.kt-add:disabled span { color: #8fa198; }
+.kt-ticket__name strong { display: block; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kt-ticket__name small { color: var(--muted-2); font-size: 12px; font-weight: 300; }
+.kt-ticket__stepper { align-items: center; background: rgba(255,255,255,.6); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; display: flex; flex: none; gap: 2px; padding: 2px; }
+.kt-ticket__stepper button { align-items: center; background: transparent; border: 0; border-radius: 50%; color: var(--blue-deep); display: flex; height: 34px; justify-content: center; width: 34px; cursor: pointer; }
+.kt-ticket__stepper button:hover:not(:disabled) { background: var(--blue-soft); }
+.kt-ticket__stepper button:first-child:not(:disabled) { color: var(--st-expired-fg); }
+.kt-ticket__stepper button:disabled { color: rgba(85,100,125,.4); cursor: default; }
+.kt-ticket__stepper b { font-size: 15px; font-weight: 400; min-width: 34px; text-align: center; font-variant-numeric: tabular-nums; }
+.kt-ticket__clear { background: none; border: 0; color: var(--st-expired-fg); display: block; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; margin: 8px auto 0; min-height: 40px; padding: 0 10px; cursor: pointer; }
+.kt-ticket__clear:focus-visible, .kt-ticket__head:focus-visible, .kt-ticket__stepper button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+/* "Add" on an item card, before it has a quantity: the glass primary pill. */
+.kt-add { align-items: center; display: inline-flex; gap: 6px; height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--glass-border); background: var(--btn-glass-primary-bg); color: var(--blue-deep); font: inherit; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; box-shadow: 0 0 0 1px var(--btn-glass-primary-line), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(120,152,198,.25), 0 6px 16px rgba(63,108,176,.14); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); transition: transform var(--dur-glass) var(--ease-glass), box-shadow var(--dur-glass) var(--ease-glass); }
+.kt-add:hover:not(:disabled), .kt-add:focus-visible { transform: scale(.97); box-shadow: 0 0 0 1px var(--btn-glass-primary-line), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55), 0 4px 10px rgba(30,52,92,.06); }
+.kt-add span { color: var(--muted-2); font-size: 10px; font-weight: 500; letter-spacing: .06em; margin-left: 2px; }
+.kt-add:disabled { color: var(--muted-2); background: rgba(255,255,255,.5); box-shadow: 0 0 0 1px rgba(170,186,210,.3), inset 0 1px 0 #fff; cursor: default; transform: none; }
+@media (prefers-reduced-motion: reduce) { .kt-add { transition: none; } .kt-add:hover:not(:disabled) { transform: none; } }
