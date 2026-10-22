@@ -8,7 +8,6 @@ import { arrivingLines } from "../../features/kitchen/receiving";
 import KitchenReceiveItems from "./KitchenReceiveItems";
 import OrderTicket from "./OrderTicket";
 import { useConfirm } from "../ui/ConfirmDialog";
-import "./SupplyRequestsDeliveries.css";
 import "./KitchenOrders.css";
 
 const BASE = "/procurement/collaborative-purchase-orders";
@@ -16,7 +15,7 @@ const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFract
 const errorText = (error, fallback) => error?.response?.data?.message || fallback;
 const productName = (line) => line.stockItemId?.name || "Item";
 const unitOf = (line) => line.stockItemId?.unitId?.symbol || "";
-const LINE_STATE = { not_sent: { label: "Not sent yet", tone: "neutral" }, on_the_way: { label: "On the way", tone: "info" }, problem: { label: "Problem raised · waiting for central store", tone: "warning" }, received: { label: "Received", tone: "positive" } };
+const LINE_STATE = { not_sent: { label: "Not sent yet", pill: "kg-pill--routine" }, on_the_way: { label: "On the way", pill: "kg-pill--low" }, problem: { label: "Problem raised · waiting for central store", pill: "kg-pill--soon" }, received: { label: "Received", pill: "ko-pill--received" } };
 /** "Received · MKM-2610-0001", or what the central store decided after a problem. */
 const lineStateText = (line, share) => {
   const state = lineState(line, share);
@@ -51,44 +50,44 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
   const others = order.kitchenCount - 1;
   const arriving = hasArriving(order, godownId);
   const notSent = share.items.filter((line) => lineState(line, share) === "not_sent").length;
-  return <article className="srd-card ko-card">
-    <header className="srd-card__header">
-      <div><p className="srd-card__eyebrow">{order.emergency ? "Emergency order" : "Shared order"}</p><h2>{order.title || share.items.map(productName).join(", ")}</h2></div>
-      {order.emergency && <span className="srd-status srd-status--critical">Urgent</span>}
+  return <article className={`kg-glass kg-lift ko-card${order.emergency ? " ko-card--urgent" : ""}`}>
+    <header className="ko-card__head">
+      <div><p className="kg-label">{order.emergency ? "Emergency order" : "Shared order"}</p><h2>{order.title || share.items.map(productName).join(", ")}</h2></div>
+      {order.emergency && <span className="kg-pill kg-pill--expired">Urgent</span>}
     </header>
-    <div className="srd-card__meta">
+    <div className="ko-meta">
       <span><CalendarClock size={15} aria-hidden="true" /> Delivery by <em className="ko-date">{deliveryDateText(order.neededBy, { withTime: order.emergency })}</em></span>
       {order.status === "open" && <span><Clock size={15} aria-hidden="true" /> {closesInText(order.closesAt, now)}</span>}
       {others > 0 && <span><Users size={15} aria-hidden="true" /> {others} other {others === 1 ? "kitchen" : "kitchens"}</span>}
     </div>
-    {stage === "cancelled" ? <p className="srd-card__note">This order was cancelled by the central store.</p> : <Timeline order={order} godownId={godownId} />}
-    <ul className="srd-lines" aria-label="Your items">
+    {stage === "cancelled" ? <p className="ko-note">This order was cancelled by the central store.</p> : <Timeline order={order} godownId={godownId} />}
+    <ul className="ko-lines" aria-label="Your items">
       {share.items.map((line) => <li key={`${line.stockItemId?._id}:${line.packId || "base"}`} className="ko-line">
         <strong>{productName(line)}</strong><span>{lineAmount(line)}</span>
         {order.status === "ordered"
-          ? <span className={`srd-status srd-status--${LINE_STATE[lineState(line, share)].tone}`}>{lineStateText(line, share)}</span>
+          ? <span className={`kg-pill ${LINE_STATE[lineState(line, share)].pill}`}>{lineStateText(line, share)}</span>
           : line.approvedAt && <small className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved</small>}
       </li>)}
     </ul>
-    {order.supplier && stage === "delivered" && <p className="srd-card__note">From {order.supplier.name}{order.invoiceNo ? ` · Invoice ${order.invoiceNo}` : ""}</p>}
-    {canEditShare(order, godownId, now) && <footer className="srd-card__actions"><button type="button" onClick={() => onEdit(order)}>Edit my items</button></footer>}
-    {arriving && <footer className="ko-confirm"><p className="ko-hint"><Truck size={15} aria-hidden="true" /> {notSent ? "Some items are on the way; the rest will come later." : "On the way."} Something wrong with an item? You can mark it as a problem inside.</p><button type="button" className="srd-primary-button" onClick={() => onReceive(order, notSent)}>Receive items <ChevronRight size={17} aria-hidden="true" /></button></footer>}
+    {order.supplier && stage === "delivered" && <p className="ko-note">From {order.supplier.name}{order.invoiceNo ? ` · Invoice ${order.invoiceNo}` : ""}</p>}
+    {canEditShare(order, godownId, now) && <footer className="ko-actions"><button type="button" className="kg-chip" onClick={() => onEdit(order)}>Edit my items</button></footer>}
+    {arriving && <footer className="ko-confirm"><p className="ko-hint"><Truck size={15} aria-hidden="true" /> {notSent ? "Some items are on the way; the rest will come later." : "On the way."} Something wrong with an item? You can mark it as a problem inside.</p><button type="button" className="kg-btn" onClick={() => onReceive(order, notSent)}>Receive items <ChevronRight size={17} aria-hidden="true" /></button></footer>}
   </article>;
 }
 
 function JoinCard({ order, now, onJoin }) {
   const names = [...new Set(order.contributions.flatMap((share) => share.items.map(productName)))];
-  return <article className="srd-card ko-card ko-card--join">
-    <header className="srd-card__header">
-      <div><p className="srd-card__eyebrow">Started by {order.createdByGodown?.name || "a kitchen"}</p><h2>{order.title || names.join(", ")}</h2></div>
-      {order.emergency && <span className="srd-status srd-status--critical">Urgent</span>}
+  return <article className={`kg-glass kg-lift ko-card ${order.emergency ? "ko-card--urgent" : "ko-card--join"}`}>
+    <header className="ko-card__head">
+      <div><p className="kg-label">Started by {order.createdByGodown?.name || "a kitchen"}</p><h2>{order.title || names.join(", ")}</h2></div>
+      {order.emergency && <span className="kg-pill kg-pill--expired">Urgent</span>}
     </header>
-    <div className="srd-card__meta">
+    <div className="ko-meta">
       <span><CalendarClock size={15} aria-hidden="true" /> Delivery by <em className="ko-date">{deliveryDateText(order.neededBy, { withTime: order.emergency })}</em></span>
       <span><Clock size={15} aria-hidden="true" /> {closesInText(order.closesAt, now)}</span>
     </div>
-    <p className="ko-asked">Asked for: {names.join(", ")}</p>
-    <button type="button" className="srd-primary-button ko-wide" onClick={() => onJoin(order)}><Plus size={17} aria-hidden="true" /> Add my items</button>
+    <p className="ko-asked">Asked for: <b>{names.join(", ")}</b></p>
+    <button type="button" className="kg-btn ko-wide" onClick={() => onJoin(order)}><Plus size={17} aria-hidden="true" /> Add my items</button>
   </article>;
 }
 
@@ -127,17 +126,17 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
     document.getElementById("kitchen-ticket")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  return <main className="srd-shell ko-picker">
+  return <main className="ko-shell ko-picker">
     {confirmDialog}
-    <button type="button" className="ko-back" onClick={onBack}><ArrowLeft size={18} /> Back</button>
-    <header className="srd-page-header"><div><p>Ask for supplies</p><h1>{title}</h1>
+    <button type="button" className="kg-chip ko-back" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Back</button>
+    <header className="ko-heading"><div><p>Ask for supplies</p><h1>{title}</h1>
       <span>{mode.type === "new" ? "Choose what your kitchen needs and when." : `Delivery by ${deliveryDateText(mode.order.neededBy, { withTime: mode.order.emergency })}.`}</span></div></header>
 
     <div className="ko-picker__layout">
       <OrderTicket rows={rows} meta={[{ label: "Delivery", value: when }]} emptyText="Tap “Add” on a supply below and it will be listed here." open={ticketOpen} onToggle={() => setTicketOpen((value) => !value)} onChange={setAmount} onClear={clearTicket} />
 
       <div className="ko-picker__main">
-        {mode.type === "new" && <section className="ko-when" aria-label="When do you need it">
+        {mode.type === "new" && <section className="kg-glass ko-when" aria-label="When do you need it">
           <label className="ko-field"><span>Needed by</span>
             <select value={neededIn} disabled={emergency} onChange={(event) => setNeededIn(event.target.value)}>
               {(settings?.neededInOptions || []).map((candidate) => <option key={candidate.key} value={candidate.key}>{candidate.label}</option>)}
@@ -151,7 +150,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
         <label className="ko-search"><Search size={19} aria-hidden="true" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search supplies" aria-label="Search supplies" />{search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search"><X size={17} /></button>}</label>
 
         <section className="ko-products" aria-label="Supplies">
-          {shown.length === 0 && <div className="srd-empty"><h2>No supplies found</h2><p>Try another name.</p></div>}
+          {shown.length === 0 && <div className="kg-glass ko-empty"><h2>No supplies found</h2><p>Try another name.</p></div>}
           {shown.map((product) => {
             const id = String(product._id);
             const entry = cart[id] || { qty: "", packId: "base" };
@@ -159,7 +158,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
             const packs = productPacks(product);
             const isLocked = locked.has(id);
             const unit = packs.find((pack) => String(pack._id) === String(entry.packId))?.name || product.unit;
-            return <article key={id} className={`ko-product${amount > 0 ? " is-selected" : ""}`}>
+            return <article key={id} className={`kg-glass kg-lift ko-product${amount > 0 ? " is-selected" : ""}`}>
               <div className="ko-product__name"><strong>{product.name}</strong>{isLocked && <small className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved — can’t change</small>}</div>
               <div className="ko-entry">
                 {packs.length > 0 && <select aria-label={`Packaging for ${product.name}`} value={entry.packId} disabled={isLocked} onChange={(event) => setEntry(id, { packId: event.target.value })}>
@@ -182,7 +181,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
 
     <footer className="ko-submit">
       <button type="button" className="ko-submit__count" onClick={showTicket} aria-label={`${count} ${count === 1 ? "item" : "items"} on the ticket. Show the ticket.`}><strong>{count}</strong><span>{count === 1 ? "item" : "items"} · view ticket</span></button>
-      <button type="button" className="srd-primary-button" disabled={busy || count === 0} onClick={onSubmit}>{busy ? "Placing…" : mode.type === "edit" ? "Save changes" : "Place request"}</button></footer>
+      <button type="button" className="kg-btn" disabled={busy || count === 0} onClick={onSubmit}>{busy ? "Placing…" : mode.type === "edit" ? "Save changes" : "Place request"}</button></footer>
   </main>;
 }
 
@@ -258,31 +257,31 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
       emergency={emergency} setEmergency={setEmergency} busy={busy} onBack={() => setMode(null)} onSubmit={submit} now={now} />;
   }
 
-  return <main className="srd-shell">
-    <header className="srd-page-header">
+  return <main className="ko-shell">
+    <header className="ko-heading">
       <div><p>Kitchen supplies</p><h1>Ask for supplies</h1><span>Order from the central store, or add your items to another kitchen’s order.</span></div>
-      <button type="button" className="srd-refresh" onClick={load} disabled={loading} aria-label="Refresh orders"><RefreshCw size={19} className={loading ? "srd-spin" : ""} aria-hidden="true" /></button>
+      <button type="button" className="kg-chip ko-refresh" onClick={load} disabled={loading} aria-label="Refresh orders"><RefreshCw size={19} className={loading ? "ko-spin" : ""} aria-hidden="true" /></button>
     </header>
 
-    <button type="button" className="srd-create" onClick={() => start("new")} disabled={!settings}>
-      <Plus size={20} aria-hidden="true" /><span><strong>New order</strong><small>Choose items and when you need them</small></span><ChevronRight size={20} aria-hidden="true" />
+    <button type="button" className="kg-glass kg-lift ko-create" onClick={() => start("new")} disabled={!settings}>
+      <span className="kg-orb" aria-hidden="true"><Plus size={20} /></span><span><strong>New order</strong><small>Choose items and when you need them</small></span><ChevronRight size={20} aria-hidden="true" />
     </button>
 
-    {loading && orders.length === 0 ? <div className="srd-loading" role="status"><span className="srd-spinner" aria-hidden="true" /><p>Loading orders…</p></div>
-      : failed ? <div className="srd-empty"><h2>Could not load orders</h2><p>Check your connection and try again.</p><button type="button" className="srd-primary-button" onClick={load}>Try again</button></div>
+    {loading && orders.length === 0 ? <div className="ko-state" role="status"><span className="ko-spinner" aria-hidden="true" /><p>Loading orders…</p></div>
+      : failed ? <div className="kg-glass ko-empty"><h2>Could not load orders</h2><p>Check your connection and try again.</p><button type="button" className="kg-btn" onClick={load}>Try again</button></div>
       : <>
         {joinable.length > 0 && <section className="ko-section" aria-labelledby="ko-join-title">
           <h2 id="ko-join-title">Open orders — add your items</h2>
-          <div className="srd-list">{joinable.map((order) => <JoinCard key={order._id} order={order} now={now} onJoin={(picked) => start("join", picked)} />)}</div>
+          <div className="ko-list">{joinable.map((order) => <JoinCard key={order._id} order={order} now={now} onJoin={(picked) => start("join", picked)} />)}</div>
         </section>}
         <section className="ko-section" aria-labelledby="ko-mine-title">
           <h2 id="ko-mine-title">My orders</h2>
           {mine.length === 0
-            ? <div className="srd-empty"><span aria-hidden="true"><Truck size={30} /></span><h2>No orders yet</h2><p>Tap “New order” when your kitchen needs supplies.</p></div>
-            : <div className="srd-list">{mine.map((order) => <MyOrderCard key={order._id} order={order} godownId={godownId} now={now} onEdit={(picked) => start("edit", picked)} onReceive={receive} />)}</div>}
+            ? <div className="kg-glass ko-empty"><span className="kg-orb" aria-hidden="true"><Truck size={24} /></span><h2>No orders yet</h2><p>Tap “New order” when your kitchen needs supplies.</p></div>
+            : <div className="ko-list">{mine.map((order) => <MyOrderCard key={order._id} order={order} godownId={godownId} now={now} onEdit={(picked) => start("edit", picked)} onReceive={receive} />)}</div>}
         </section>
       </>}
 
-    {canShowPast && <button type="button" className="ko-past" onClick={onShowPast}><History size={17} aria-hidden="true" /> Past requests</button>}
+    {canShowPast && <button type="button" className="kg-chip ko-past" onClick={onShowPast}><History size={17} aria-hidden="true" /> Past requests</button>}
   </main>;
 }

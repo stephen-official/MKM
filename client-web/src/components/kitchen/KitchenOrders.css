@@ -1,77 +1,152 @@
-.ko-section { margin-top: 20px; }
-.ko-section > h2 { color: #33433a; font-size: .95rem; margin: 0 0 10px; }
-.ko-card .srd-card__meta { row-gap: 6px; }
-.ko-card--join { border-top: 3px solid #0f766e; }
-.ko-date { color: #7a857f; font-style: italic; font-weight: 500; }
-.ko-asked { color: #506158; font-size: .82rem; line-height: 1.45; margin: 12px 0; }
-.ko-wide { min-height: 46px; width: 100%; }
-.ko-secondary { background: #fff; border: 1px solid #cfd9d3; border-radius: 10px; color: #335543; font-size: .8rem; font-weight: 750; min-height: 44px; padding: 0 14px; }
+/* Requests ("Ask for supplies"): glass cards on the shell's wash. Primitives (.kg-*) and tokens come from kitchen-ui.css / index.css.
+   The old screen at #/past-requests still uses .ko-back from here. */
+.ko-shell { box-sizing: border-box; width: 100%; max-width: 1240px; margin: 0 auto; padding: var(--page-top-space) var(--page-gutter) var(--page-bottom-space); color: var(--ink-2); font-family: var(--font-kitchen); font-size: 14px; line-height: 1.45; }
+.ko-shell *, .ko-shell *::before, .ko-shell *::after { box-sizing: border-box; }
+.ko-shell button { font: inherit; cursor: pointer; }
+.ko-shell button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
-.ko-timeline { display: grid; gap: 2px; grid-template-columns: repeat(5, minmax(0, 1fr)); list-style: none; margin: 14px 0 0; padding: 0; }
-.ko-timeline li { align-items: center; color: #8a958f; display: flex; flex-direction: column; font-size: .66rem; gap: 3px; position: relative; text-align: center; }
-.ko-timeline li::before { background: #dfe7e2; content: ""; height: 2px; left: -50%; position: absolute; top: 10px; width: 100%; z-index: 0; }
+/* Heading */
+.ko-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 18px; padding-inline: 4px; }
+.ko-heading p { margin: 0 0 2px; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
+.ko-heading h1 { margin: 0 0 4px; font-size: 24px; font-weight: 300; line-height: 1.15; letter-spacing: -.01em; }
+.ko-heading > div > span { display: block; max-width: 560px; color: var(--muted-2); font-size: 13px; font-weight: 300; line-height: 1.5; }
+.ko-refresh { flex: none; width: 42px; height: 42px; padding: 0; }
+.ko-refresh:disabled { cursor: wait; opacity: .6; }
+.ko-spin { animation: ko-spin .9s linear infinite; }
+@keyframes ko-spin { to { transform: rotate(360deg); } }
+
+/* "New order": a glass tile with the orb and a chevron */
+.ko-create { display: flex; align-items: center; gap: 14px; width: 100%; margin-bottom: 22px; padding: 14px 18px; color: var(--ink-2); text-align: left; }
+.ko-create > span:not(.kg-orb) { display: grid; flex: 1; min-width: 0; gap: 2px; }
+.ko-create strong { font-size: 15px; font-weight: 500; }
+.ko-create small { color: var(--muted-2); font-size: 12.5px; font-weight: 300; }
+.ko-create > svg:last-child { flex: none; color: var(--muted-2); }
+.ko-create:disabled { cursor: default; opacity: .6; }
+
+/* Sections and cards */
+.ko-section { margin-top: 22px; }
+.ko-section > h2 { margin: 0 0 12px; padding-inline: 4px; font-size: 18px; font-weight: 300; letter-spacing: -.01em; }
+.ko-list { display: grid; gap: 18px; }
+.ko-card { padding: 16px; }
+.ko-card--join { background: var(--tint-cool); }
+.ko-card--urgent { background: var(--tint-rose); }
+.ko-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.ko-card__head > div { min-width: 0; }
+.ko-card__head h2 { margin: 2px 0 0; font-size: 16px; font-weight: 500; line-height: 1.25; overflow-wrap: anywhere; }
+.ko-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; color: var(--muted-2); font-size: 12.5px; font-weight: 300; }
+.ko-meta span { display: flex; align-items: center; gap: 5px; }
+.ko-date { color: var(--muted-2); font-style: italic; font-weight: 400; }
+.ko-note { margin: 12px 0 0; padding: 9px 12px; color: var(--muted-2); background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: 14px; box-shadow: 0 0 0 1px rgba(170,186,210,.28), inset 0 1px 0 #fff; font-size: 12.5px; font-weight: 300; line-height: 1.45; }
+.ko-asked { margin: 12px 0; color: var(--muted-2); font-size: 13px; font-weight: 300; line-height: 1.45; }
+.ko-asked b { color: var(--ink-2); font-weight: 400; }
+.ko-wide { width: 100%; }
+
+/* Progress: five dots joined by a line; only the current step shows its date, so five dates never crowd a phone-width card. */
+.ko-timeline { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; margin: 14px 0 0; padding: 0; list-style: none; }
+.ko-timeline li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted-2); font-size: 10.5px; text-align: center; }
+.ko-timeline li::before { content: ""; position: absolute; top: 10px; left: -50%; z-index: 0; width: 100%; height: 2px; background: rgba(200,212,228,.8); }
 .ko-timeline li:first-child::before { display: none; }
-.ko-timeline li.is-done::before { background: #0f766e; }
-.ko-timeline li > span { align-items: center; background: #fff; border: 2px solid #cfd9d3; border-radius: 50%; color: #fff; display: flex; height: 22px; justify-content: center; position: relative; width: 22px; z-index: 1; }
-.ko-timeline li.is-done > span { background: #0f766e; border-color: #0f766e; }
-.ko-timeline li.is-current > span { box-shadow: 0 0 0 4px #d0ece7; }
-.ko-timeline li b { font-size: .62rem; font-weight: 750; line-height: 1.2; }
-.ko-timeline li.is-done b { color: #17231c; }
-.ko-timeline li small { color: #7a857f; display: none; font-size: .6rem; line-height: 1.2; }
-/* Only the current step shows its date, so five dates never crowd a phone-width card. */
+.ko-timeline li.is-done::before { background: var(--blue); }
+.ko-timeline li > span { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; color: #fff; background: rgba(255,255,255,.85); border: 2px solid rgba(200,212,228,.9); border-radius: 50%; }
+.ko-timeline li.is-done > span { background: var(--blue); border-color: var(--blue); }
+.ko-timeline li.is-current > span { box-shadow: 0 0 0 4px var(--blue-soft); }
+.ko-timeline li b { font-size: 10.5px; font-weight: 500; line-height: 1.2; }
+.ko-timeline li.is-done b { color: var(--ink-2); }
+.ko-timeline li small { display: none; font-size: 10px; font-weight: 300; line-height: 1.2; }
 .ko-timeline li.is-current small { display: block; }
 
-.ko-line { align-items: center; border-bottom: 1px solid #eaf0ed; display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: space-between; padding: 10px 0; }
-.ko-line strong { font-size: .88rem; }
-.ko-line span { color: #33433a; font-size: .84rem; font-weight: 700; }
-.ko-locked { align-items: center; color: #0f766e; display: inline-flex; font-size: .72rem; font-weight: 750; gap: 4px; }
+/* Item rows */
+.ko-lines { margin: 14px 0 0; padding: 0; list-style: none; border-top: 1px solid rgba(170,186,210,.28); }
+.ko-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; padding: 10px 0; border-bottom: 1px solid rgba(170,186,210,.22); }
+.ko-line strong { font-size: 14px; font-weight: 500; }
+.ko-line > span:not(.kg-pill) { font-size: 14px; font-weight: 300; font-variant-numeric: tabular-nums; }
+.ko-line .kg-pill { flex: 1 1 100%; justify-content: flex-start; height: auto; min-height: 28px; padding: 4px 11px; line-height: 1.3; white-space: normal; }
+.ko-pill--received { color: var(--blue-deep); background: var(--blue-soft); border-color: rgba(120,152,198,.55); }
+.ko-locked { display: inline-flex; align-items: center; gap: 4px; color: var(--blue-deep); font-size: 11.5px; font-weight: 500; }
 
-.ko-confirm { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; padding-top: 12px; }
-.ko-confirm p { flex: 1 1 100%; font-size: .86rem; font-weight: 750; margin: 0; }
-.ko-confirm .srd-primary-button { min-height: 44px; }
-.ko-hint { align-items: flex-start; color: #5d7068; display: flex; font-weight: 500 !important; gap: 6px; line-height: 1.4; }
+/* Card actions */
+.ko-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; }
+.ko-confirm { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 12px; }
+.ko-hint { display: flex; flex: 1 1 100%; align-items: flex-start; gap: 6px; margin: 0; color: var(--muted-2); font-size: 12.5px; font-weight: 300; line-height: 1.45; }
+.ko-hint svg { flex: none; margin-top: 2px; }
+.ko-past { margin: 24px auto 0; }
 
-.ko-past { align-items: center; background: none; border: 0; color: #335543; display: flex; font-size: .84rem; font-weight: 750; gap: 6px; margin: 22px auto 0; min-height: 44px; padding: 0 12px; }
+/* Loading and empty */
+.ko-state { display: flex; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted-2); font-size: 13px; }
+.ko-spinner { width: 24px; height: 24px; border: 3px solid rgba(170,186,210,.35); border-top-color: var(--blue); border-radius: 50%; animation: ko-spin .7s linear infinite; }
+.ko-empty { display: flex; min-height: 220px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 32px 20px; color: var(--muted-2); text-align: center; }
+.ko-empty .kg-orb { width: 56px; height: 56px; margin-bottom: 4px; }
+.ko-empty h2 { margin: 4px 0 0; color: var(--ink-2); font-size: 16px; font-weight: 400; }
+.ko-empty p { max-width: 320px; margin: 0 0 8px; font-size: 13px; font-weight: 300; line-height: 1.5; }
 
+/* ---- Picker (new order / add my items / edit my items) ---- */
 .ko-picker { padding-bottom: 120px; }
-.ko-back { align-items: center; background: none; border: 0; color: #335543; display: inline-flex; font-size: .86rem; font-weight: 750; gap: 6px; margin-bottom: 10px; min-height: 44px; padding: 0; }
-.ko-when { background: #fff; border: 1px solid #dde6e0; border-radius: 16px; display: grid; gap: 12px; margin-bottom: 14px; padding: 14px; }
-.ko-field { display: grid; gap: 6px; }
-.ko-field > span { color: #5b6f62; font-size: .74rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-.ko-field select, .ko-entry select { background: #fff; border: 1px solid #cfd9d3; border-radius: 10px; color: #17231c; font-size: .95rem; min-height: 46px; padding: 0 10px; }
-.ko-field select:disabled { background: #f1f4f2; color: #8a958f; }
-.ko-emergency { align-items: center; background: #fdf1ef; border: 1px solid #f2c9c3; border-radius: 12px; color: #8f2a1f; display: flex; gap: 10px; min-height: 48px; padding: 8px 12px; }
-.ko-emergency input { height: 22px; width: 22px; }
-.ko-emergency span { align-items: center; display: flex; font-size: .86rem; font-weight: 750; gap: 6px; }
-
-.ko-search { align-items: center; background: #fff; border: 1px solid #cfd9d3; border-radius: 12px; display: flex; gap: 8px; margin-bottom: 12px; min-height: 48px; padding: 0 12px; }
-.ko-search input { border: 0; flex: 1; font-size: .95rem; min-width: 0; outline: none; }
-.ko-search button { background: none; border: 0; color: #5d7068; display: flex; }
-
-.ko-picker__layout { display: grid; gap: 14px; }
+.ko-back { margin-bottom: 14px; }
+.ko-picker__layout { display: grid; gap: 18px; }
 .ko-picker__main { min-width: 0; }
-.ko-submit__count { background: none; border: 0; color: #17231c; display: grid; padding: 0; text-align: left; }
-@media (min-width: 900px) {
-  .ko-picker__layout { align-items: start; grid-template-columns: minmax(0, 1fr) 320px; }
-  .ko-picker__layout .kt-ticket { order: 2; position: sticky; top: 16px; }
-}
-.ko-products { display: grid; gap: 10px; }
-.ko-product { background: #fff; border: 1px solid #dde6e0; border-radius: 14px; display: grid; gap: 10px; padding: 12px; }
-.ko-product.is-selected { border-color: #0f766e; box-shadow: 0 0 0 1px #0f766e; }
-.ko-product__name { display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: space-between; }
-.ko-product__name strong { font-size: .95rem; }
-.ko-entry { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
-.ko-stepper { align-items: center; display: flex; gap: 6px; }
-.ko-stepper button { align-items: center; background: #e3f4f1; border: 0; border-radius: 10px; color: #0b5f58; display: flex; height: 44px; justify-content: center; width: 44px; }
-.ko-stepper button:disabled { background: #eef2ef; color: #a5b0aa; }
-.ko-stepper input { border: 1px solid #cfd9d3; border-radius: 10px; font-size: 1rem; font-weight: 750; height: 44px; text-align: center; width: 64px; }
-.ko-stepper input:disabled { background: #f1f4f2; }
-.ko-stepper span { color: #5d7068; font-size: .78rem; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.ko-submit { align-items: center; background: #fff; border-top: 1px solid #dde6e0; bottom: 68px; box-shadow: 0 -6px 18px rgba(26, 47, 33, .06); display: flex; gap: 12px; justify-content: space-between; left: 0; padding: 12px var(--page-gutter); position: fixed; right: 0; z-index: 30; }
-.ko-submit > div { display: grid; }
-.ko-submit strong { font-size: 1.1rem; }
-.ko-submit span { color: #5d7068; font-size: .74rem; }
-.ko-submit .srd-primary-button { min-height: 48px; padding: 0 18px; }
-.ko-submit .srd-primary-button:disabled { opacity: .5; }
-@media (min-width: 1024px) { .ko-submit { left: 232px; padding: 14px 36px; } }
+/* When: the glass panel with the "needed by" pill and the emergency tick */
+.ko-when { display: grid; gap: 10px; margin-bottom: 18px; padding: 10px; }
+.ko-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-height: 44px; padding: 6px 6px 6px 14px; background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
+.ko-field > span { color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+.ko-field select { flex: 1; min-width: 120px; min-height: 32px; padding: 0 4px; color: var(--ink-2); background: transparent; border: 0; outline: 0; font: inherit; font-size: 13px; font-weight: 500; }
+.ko-field select:disabled { color: var(--muted-2); opacity: 1; }
+.ko-field .ko-date { margin-left: auto; padding-right: 10px; font-size: 12.5px; }
+.ko-emergency { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 14px; color: var(--st-expired-fg); background: var(--st-expired-bg); border: 1px solid var(--st-expired-line); border-radius: 999px; cursor: pointer; }
+.ko-emergency input { width: 20px; height: 20px; margin: 0; accent-color: var(--st-expired-fg); cursor: pointer; }
+.ko-emergency span { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; line-height: 1.3; }
+
+/* Search */
+.ko-search { display: flex; align-items: center; gap: 9px; min-height: 44px; margin-bottom: 18px; padding: 0 12px; color: var(--muted-2); background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px var(--glass-outline), inset 0 1px 0 #fff, 0 6px 16px rgba(30,52,92,.06); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
+.ko-search:focus-within { box-shadow: 0 0 0 1px var(--glass-outline), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
+.ko-search input { flex: 1; min-width: 0; min-height: 42px; color: var(--ink-2); background: transparent; border: 0; outline: 0; font: inherit; font-size: 14px; }
+.ko-search input::placeholder { color: var(--muted-2); font-weight: 300; }
+.ko-search button { display: grid; width: 32px; height: 32px; padding: 0; place-items: center; color: var(--muted-2); background: transparent; border: 0; border-radius: 50%; }
+
+/* Supply cards */
+.ko-products { display: grid; gap: 18px; }
+.ko-product { display: grid; gap: 12px; padding: 16px; }
+.ko-product.is-selected { background: var(--tint-cool); }
+.ko-product__name { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; }
+.ko-product__name strong { font-size: 14.5px; font-weight: 500; }
+.ko-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.ko-entry select { min-height: 36px; max-width: 150px; padding: 0 10px; color: var(--muted-2); background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.28), inset 0 1px 0 #fff; font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.ko-entry select:disabled { opacity: .6; }
+.ko-stepper { display: flex; align-items: center; overflow: hidden; background: rgba(255,255,255,.6); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
+.ko-stepper button { display: grid; width: 38px; height: 38px; padding: 0; place-items: center; color: var(--blue-deep); background: transparent; border: 0; }
+.ko-stepper button:hover:not(:disabled) { background: var(--blue-soft); }
+.ko-stepper button:focus-visible { outline: none; background: var(--blue-soft); }
+.ko-stepper button:first-child:not(:disabled) { color: var(--st-expired-fg); }
+.ko-stepper button:disabled { color: rgba(85,100,125,.4); cursor: default; }
+.ko-stepper input { width: 56px; border: 0; outline: 0; text-align: center; background: transparent; font: inherit; font-size: 15px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.ko-stepper input:disabled { color: var(--muted-2); }
+.ko-stepper span { max-width: 80px; padding-right: 6px; overflow: hidden; color: var(--muted-2); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Sticky footer: a glass bar with the count and the submit pill */
+.ko-submit { position: fixed; z-index: 30; right: 0; bottom: 68px; left: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px max(16px, calc((100vw - 720px) / 2)); background: var(--nav-glass-bg); border-top: 1px solid var(--glass-border); box-shadow: 0 0 0 1px var(--glass-outline), 0 -8px 24px rgba(30,52,92,.07); -webkit-backdrop-filter: var(--nav-glass-blur); backdrop-filter: var(--nav-glass-blur); font-family: var(--font-kitchen); }
+.ko-submit__count { display: flex; flex-direction: column; align-items: flex-start; padding: 0; color: var(--ink-2); background: none; border: 0; text-align: left; }
+.ko-submit__count strong { font-size: 20px; font-weight: 300; line-height: 1; }
+.ko-submit__count span { margin-top: 3px; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
+.ko-submit .kg-btn:disabled { color: var(--muted-2); background: rgba(255,255,255,.5); box-shadow: 0 0 0 1px rgba(170,186,210,.3), inset 0 1px 0 #fff; opacity: 1; }
+
+@media (max-width: 420px) { .ko-submit { gap: 8px; } .ko-submit .kg-btn { padding: 0 14px; } }
+@media (min-width: 700px) {
+  .ko-shell { padding-inline: 24px; }
+  .ko-list, .ko-products { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ko-create { max-width: 520px; }
+  .ko-submit { right: 50%; left: 50%; width: 760px; max-width: 100%; padding-right: 24px; padding-left: 24px; transform: translateX(-50%); }
+}
+@media (min-width: 900px) {
+  .ko-picker__layout { align-items: start; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; }
+  .ko-picker__layout .kt-ticket { order: 2; position: sticky; top: 16px; }
+  .ko-products { grid-template-columns: minmax(0, 1fr); }
+}
+@media (min-width: 1024px) {
+  .ko-shell { padding: 34px 28px 56px; }
+  .ko-picker { padding-bottom: 120px; }
+  .ko-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+  .ko-products { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+  .ko-card, .ko-product { padding: 18px; }
+  .ko-submit { right: 0; bottom: 0; left: 232px; width: auto; max-width: none; margin: 0 28px; padding: 12px max(28px, calc((100vw - 232px - 1240px) / 2 + 28px)); transform: none; border-top: 0; border-radius: var(--radius-glass) var(--radius-glass) 0 0; }
+}
+@media (prefers-reduced-motion: reduce) { .ko-spin, .ko-spinner { animation: none; } }
