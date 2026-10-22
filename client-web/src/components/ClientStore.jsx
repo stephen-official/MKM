@@ -395,8 +395,9 @@ if (isNaN(parsedQty)) return;
       const targetItem = items.find(i => i.stockRecordId === product.stockRecordId);
 
       // Inventory is server state. Keep it immutable while a usage draft is
-      // edited and derive the projected balance in the usage screen.
-      if (!targetItem || !canRecordUsage(targetItem.currentQty, parsedQty)) {
+      // edited and derive the projected balance in the usage screen. A count in bags is compared in kilograms.
+      const packSize = product.packId && Number(product.packSize) > 0 ? Number(product.packSize) : 1;
+      if (!targetItem || !canRecordUsage(targetItem.currentQty, parsedQty * packSize)) {
         return toast.error("Insufficient Kitchen Stock");
       }
     }
@@ -411,7 +412,9 @@ if (isNaN(parsedQty)) return;
       const exists = prev.find(i => i.stockRecordId === product.stockRecordId);
       if (exists) {
        
-        return prev.map(i => i.stockRecordId === product.stockRecordId ? { ...i, requestedQty: qty } : i);
+        // A product that arrives with a pack chosen (bags on the Use screen) brings that pack onto the existing entry.
+        const pack = product.packId ? { packId: product.packId, packName: product.packName, packSize: product.packSize } : {};
+        return prev.map(i => i.stockRecordId === product.stockRecordId ? { ...i, ...pack, requestedQty: qty } : i);
       }
       return [...prev, { ...product, requestedQty: qty, unit: product.unit }];
     });
@@ -762,6 +765,9 @@ setEditIndentId(indent._id);
             onDateChange={setSelectedDate}
             cart={cart}
             onQuantityChange={addToCart}
+            onPackagingChange={updateCartPackaging}
+            onClear={() => setCart([])}
+            onSubmit={handleSubmit}
             onReview={() => setIsCartOpen(true)}
           />
         </>
