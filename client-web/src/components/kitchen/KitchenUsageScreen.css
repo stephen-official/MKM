@@ -101,7 +101,10 @@
 .kus-layout { display: grid; gap: 18px; }
 .kus-main { min-width: 0; }
 .kus-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
-.kus-screen button:focus-visible, .kus-screen input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.kus-screen button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+/* No box around the number: the whole pill glows instead. */
+.kus-stepper input:focus, .kus-stepper input:focus-visible { outline: none; }
+.kus-stepper:focus-within { box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
 /* Room under the list for the ticket bar on top of the tabs. */
 @media (max-width: 899px) { .kus-screen { padding-bottom: calc(var(--page-bottom-space) + 64px); } }
 .kus-stepper button:focus-visible, .kus-unit button:focus-visible { outline: none; background: var(--blue-soft); }

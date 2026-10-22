@@ -1,7 +1,25 @@
 import { ChevronDown, Minus, Plus, X } from "lucide-react";
+import { useState } from "react";
 import "./OrderTicket.css";
 
 const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
+
+/** The row's count, typed straight into the ticket. The box keeps what is typed while it has focus (even empty or "2."),
+ *  commits every valid amount at once, and removes the row if it is left empty. */
+function TicketQty({ row, onChange }) {
+  const [draft, setDraft] = useState(null);
+  const edit = (value) => {
+    if (!/^\d*(\.\d{0,3})?$/.test(value)) return;
+    setDraft(value);
+    if (Number(value) > 0 && !value.endsWith(".")) onChange(row.id, Number(value));
+  };
+  const done = () => {
+    if (draft !== null && !(Number(draft) > 0)) onChange(row.id, 0);
+    setDraft(null);
+  };
+  return <input type="text" inputMode="decimal" value={draft ?? qty(row.amount)} disabled={row.locked} aria-label={`${row.name} quantity`}
+    onFocus={(event) => { setDraft(String(row.amount)); event.target.select(); }} onChange={(event) => edit(event.target.value)} onBlur={done} />;
+}
 
 /**
  * Receipt-style list of what the cook has added, with no prices: one row per item with its own stepper, so the whole
@@ -26,7 +44,7 @@ export default function OrderTicket({ title = "Order ticket", rows = [], meta = 
             <div className="kt-ticket__name"><strong>{row.name}</strong><small>{row.unit}{row.locked ? " · approved" : ""}</small></div>
             <div className="kt-ticket__stepper">
               <button type="button" disabled={row.locked} onClick={() => onChange(row.id, Math.max(0, row.amount - 1))} aria-label={row.amount <= 1 ? `Remove ${row.name}` : `Less ${row.name}`}>{row.amount <= 1 ? <X size={15} /> : <Minus size={15} />}</button>
-              <b>{qty(row.amount)}</b>
+              <TicketQty row={row} onChange={onChange} />
               <button type="button" disabled={row.locked} onClick={() => onChange(row.id, row.amount + 1)} aria-label={`More ${row.name}`}><Plus size={15} /></button>
             </div>
           </li>)}

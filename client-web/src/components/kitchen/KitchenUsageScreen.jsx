@@ -164,12 +164,15 @@ export default function KitchenUsageScreen({
   const clearTicket = async () => {
     if (await confirm({ title: "Remove all items from the ticket?", message: "Nothing has been recorded yet.", confirmLabel: "Remove all", danger: true })) onClear?.();
   };
-  // The sheet closes itself once the ticket is empty (after a successful "Record usage" the cart is cleared).
+  // The sheet closes itself once the ticket is empty. Started cards are forgotten only when the cart itself is cleared
+  // ("Record usage" or "Remove all items"), not when a cook backspaces a number to nothing: that entry stays in the cart as "".
   const rowCount = ticketRows.length;
-  const [seenCount, setSeenCount] = useState(rowCount);
-  if (seenCount !== rowCount) {
-    setSeenCount(rowCount);
-    if (rowCount === 0) { setSheetOpen(false); setStarted({}); }
+  const cartSize = Array.isArray(quantitySource) ? quantitySource.length : selectedItems.length;
+  const [seen, setSeen] = useState({ rowCount, cartSize });
+  if (seen.rowCount !== rowCount || seen.cartSize !== cartSize) {
+    setSeen({ rowCount, cartSize });
+    if (rowCount === 0 && seen.rowCount !== 0) setSheetOpen(false);
+    if (cartSize === 0 && seen.cartSize !== 0) setStarted({});
   }
   useEffect(() => {
     if (!sheetOpen) return undefined;
