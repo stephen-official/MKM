@@ -356,35 +356,52 @@
     transform: scale(0.94);
   }
 }
+/* Section tabs above a screen ("Stock levels / Transfers"): a glass segmented control. */
 .kitchen-section-nav {
   display: flex;
   gap: 4px;
-  margin: 14px auto 0;
+  margin: 16px auto 0;
   padding: 4px;
-  width: min(calc(100% - 28px), 720px);
+  width: min(calc(100% - 32px), 480px);
   overflow-x: auto;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  background: #f1f5f9;
+  background: var(--nav-glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--glass-outline), inset 0 1px 0 #fff, 0 6px 16px rgba(30, 52, 92, 0.06);
+  -webkit-backdrop-filter: var(--nav-glass-blur);
+  backdrop-filter: var(--nav-glass-blur);
+  font-family: var(--font-kitchen);
 }
 
 .kitchen-section-nav__item {
   flex: 1;
-  min-height: 40px;
-  padding: 8px 14px;
-  border: 0;
-  border-radius: 10px;
-  color: #64748b;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--muted-2);
   background: transparent;
-  font-size: 13px;
-  font-weight: 700;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
   white-space: nowrap;
+  cursor: pointer;
 }
 
+.kitchen-section-nav__item:hover { color: var(--blue-deep); }
+.kitchen-section-nav__item:focus-visible { outline: none; color: var(--blue-deep); }
+
 .kitchen-section-nav__item--active {
-  color: #0f172a;
-  background: #fff;
-  box-shadow: 0 1px 3px rgb(15 23 42 / 0.12);
+  color: var(--blue-deep);
+  background: rgba(228, 237, 249, 0.9);
+  border-color: var(--glass-border);
+  box-shadow: 0 0 0 1px rgba(170, 186, 210, 0.32), inset 0 1px 0 #fff;
+}
+
+@media (min-width: 1024px) {
+  .kitchen-section-nav { margin: 28px 28px 0; width: min(100%, 420px); }
 }
 
 /* ---- Glass primitives (shared by the restyled kitchen screens) ---- */

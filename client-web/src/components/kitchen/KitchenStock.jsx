@@ -70,12 +70,12 @@ export default function KitchenStock({
         </div>
         <div className="ks-heading__actions">
           {canRequestProduct && (
-            <button type="button" className="ks-refresh" onClick={() => setRequesting(true)} aria-label="Request a new product">
+            <button type="button" className="kg-chip ks-refresh" onClick={() => setRequesting(true)} aria-label="Request a new product">
               <PackagePlus size={20} aria-hidden="true" />
               <span>Request product</span>
             </button>
           )}
-          <button type="button" className="ks-refresh" onClick={onRefresh} disabled={loading} aria-label="Refresh kitchen stock">
+          <button type="button" className="kg-chip ks-refresh" onClick={onRefresh} disabled={loading} aria-label="Refresh kitchen stock">
             <RefreshCw size={20} className={loading ? "ks-spin" : ""} aria-hidden="true" />
             <span>Refresh</span>
           </button>
@@ -83,7 +83,7 @@ export default function KitchenStock({
       </header>
       {requesting && <ProductRequestSheet onClose={() => setRequesting(false)} />}
 
-      <section className="ks-controls" aria-label="Search and filter stock">
+      <section className="kg-glass ks-controls" aria-label="Search and filter stock">
         <label className="ks-search">
           <span className="ks-sr-only">Search stock items</span>
           <Search size={20} aria-hidden="true" />
@@ -122,17 +122,17 @@ export default function KitchenStock({
       </div>
 
       {loading && items.length === 0 ? (
-        <div className="ks-loading" role="status">
+        <div className="kg-glass ks-loading" role="status">
           <RefreshCw size={24} className="ks-spin" aria-hidden="true" />
           <span>Loading kitchen stock…</span>
         </div>
       ) : visibleItems.length === 0 ? (
-        <section className="ks-empty">
+        <section className="kg-glass ks-empty">
           {hasSearchOrFilter ? <Search size={30} aria-hidden="true" /> : <Boxes size={30} aria-hidden="true" />}
           <h2>{hasSearchOrFilter ? "No matching items" : "No stock items yet"}</h2>
           <p>{hasSearchOrFilter ? "Try another search or view all stock." : "Stock assigned to this kitchen will appear here."}</p>
           {hasSearchOrFilter && (
-            <button type="button" onClick={() => { onSearchChange?.(""); onFilterChange?.("all"); }}>View all stock</button>
+            <button type="button" className="kg-btn" onClick={() => { onSearchChange?.(""); onFilterChange?.("all"); }}>View all stock</button>
           )}
         </section>
       ) : (
@@ -144,7 +144,7 @@ export default function KitchenStock({
             const unavailable = item.available === false;
             const expiry = expiryStatus(item, today);
             return (
-              <li className={`ks-card ks-card--${unavailable ? "unavailable" : health.tone}`} key={stockKey(item, index)}>
+              <li className={`kg-glass kg-lift ks-card ks-card--${unavailable ? "unavailable" : health.tone}${!unavailable && expiry.key === "expired" ? " ks-card--expired" : !unavailable && expiry.key === "soon" ? " ks-card--soon" : ""}`} key={stockKey(item, index)}>
                 <div className="ks-card__icon" aria-hidden="true">
                   {unavailable ? <Ban size={23} /> : health.key === "out" ? <PackageX size={23} /> : health.key === "low" ? <AlertTriangle size={23} /> : <Boxes size={23} />}
                 </div>
@@ -172,7 +172,7 @@ export default function KitchenStock({
                         : "Can’t be used until an admin finishes setting up this product."
                       : health.threshold > 0 ? `Low-stock level: ${formatQuantity(health.threshold)} ${unit}` : "No low-stock level set"}</p>
                     {canRecordUsage && (
-                      <button type="button" onClick={() => onRecordUsage?.(item)} disabled={unavailable || health.key === "out"}>
+                      <button type="button" className="kg-btn" onClick={() => onRecordUsage?.(item)} disabled={unavailable || health.key === "out"}>
                         <Utensils size={17} aria-hidden="true" /> Record usage
                       </button>
                     )}
