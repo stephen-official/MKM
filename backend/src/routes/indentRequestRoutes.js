@@ -1,4 +1,5 @@
 import express from "express";
+import { notifyKitchen } from "../realtime.js";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { GodownStock, IndentRequest } from "../models/FlowModels.js";
@@ -99,6 +100,7 @@ router.patch("/:id/confirm", authorize(["admin"]), async (req, res) => {
     request.confirmedAt = new Date();
     request.confirmedBy = req.user.sub;
     await request.save();
+    notifyKitchen(request.godownId, "indents");
     return res.json({ success: true, request });
   } catch (error) {
     return res.status(500).json({ message: "Review failed", error: error.message });
@@ -114,6 +116,7 @@ router.patch("/:id/select-item", authorize(["admin"]), async (req, res) => {
     item.status = "approved";
     if (["received", "partially_received"].includes(request.status)) request.status = "confirmed";
     await request.save();
+    notifyKitchen(request.godownId, "indents");
     return res.json({ success: true, item });
   } catch (error) {
     return res.status(500).json({ message: "Item update failed", error: error.message });
@@ -179,6 +182,8 @@ router.post("/:id/receive", authorize(["user", "admin"]), async (req, res) => {
       request.status = fullyReceived ? "received" : "partially_received";
       updatedRequest = await request.save({ session });
     });
+    notifyKitchen(updatedRequest.godownId, "indents");
+    notifyKitchen(updatedRequest.godownId, "stock");
     return res.json({ success: true, request: updatedRequest });
   } catch (error) {
     return res.status(error.status || 500).json({ message: error.message });
@@ -215,6 +220,7 @@ router.patch("/:id/reject", authorize(["admin"]), async (req, res) => {
     request.items.forEach((item) => { item.status = "rejected"; item.receivedQty = 0; });
     request.status = "rejected";
     await request.save();
+    notifyKitchen(request.godownId, "indents");
     return res.json({ success: true, request });
   } catch (error) {
     return res.status(500).json({ message: "Rejection failed", error: error.message });
@@ -230,6 +236,7 @@ router.delete("/:id", authorize(["user", "admin"]), async (req, res) => {
       return res.status(409).json({ message: "Only pending requests can be deleted" });
     }
     await request.deleteOne();
+    notifyKitchen(request.godownId, "indents");
     return res.json({ success: true, message: "Supply request deleted" });
   } catch (error) {
     return res.status(500).json({ message: "Delete failed", error: error.message });

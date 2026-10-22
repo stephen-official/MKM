@@ -1,4 +1,5 @@
 import express from "express";
+import { notifyKitchens } from "../realtime.js";
 import mongoose from "mongoose";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
@@ -15,6 +16,11 @@ import { spellingHints } from "../catalog/spellcheck.js";
 import { createProductWorkbook, PRODUCT_COLUMNS, rowToProduct } from "../catalog/productWorkbook.js";
 
 export const productRoutes = express.Router();
+// Any successful catalogue write (create, edit, archive, restore, import, pack types, image) changes the kitchens' stock lists.
+productRoutes.use((req, res, next) => {
+  if (req.method !== "GET") res.on("finish", () => { if (res.statusCode < 300) notifyKitchens("stock"); });
+  next();
+});
 
 const adminOnly = authorize(["admin"]);
 const superAdminOnly = authorize(["super_admin"]);

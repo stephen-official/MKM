@@ -1,4 +1,5 @@
 import express from "express";
+import { notifyKitchen } from "../realtime.js";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { 
@@ -264,6 +265,7 @@ procurementRoutes.post("/distributions", adminOnly, async (req, res) => {
         );
       }
 
+      for (const id of new Set((allocations || []).map((item) => String(item.godownId)))) notifyKitchen(id, "stock");
       res.status(201).json(distribution[0]);
     });
   } catch (error) {
@@ -386,6 +388,7 @@ procurementRoutes.post("/opening-balances", superAdminOnly, async (req, res) => 
       }], { session });
       result = { openingBalance, stock: stockRecord, batch };
     });
+    notifyKitchen(godownId, "stock");
     return res.status(201).json(result);
   } catch (error) {
     if (error?.code === 11000) return res.status(409).json({ message: "An opening balance already exists for this kitchen and product" });
@@ -453,6 +456,7 @@ procurementRoutes.post("/godown-stocks/:id/threshold", adminOnly, async (req, re
       { thresholdBaseUnit: req.body.thresholdBaseUnit }, 
       { new: true }
     );
+    notifyKitchen(stock?.godownId, "stock");
     res.json(stock);
   } catch (error) {
     res.status(500).json({ message: "Threshold update failed", error: error.message });
@@ -478,6 +482,7 @@ procurementRoutes.delete("/godown-stocks/:id", adminOnly, async (req, res) => {
       return res.status(404).json({ message: "Stock item not found" });
     }
 
+    notifyKitchen(deletedStock.godownId, "stock");
     res.json({
       success: true,
       message: "Stock item removed"

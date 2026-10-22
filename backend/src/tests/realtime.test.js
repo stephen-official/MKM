@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { disconnectUser, io, revalidateSockets, roomsFor, setIo } from "../realtime.js";
+import { disconnectUser, io, notifyKitchen, notifyKitchens, revalidateSockets, roomsFor, setIo } from "../realtime.js";
 
 test("admin-tier users join the admins room and their personal room", () => {
   assert.deepEqual(roomsFor({ id: "u1", role: "admin", godownId: null }), ["admins", "user:u1"]);
@@ -9,7 +9,7 @@ test("admin-tier users join the admins room and their personal room", () => {
 });
 
 test("kitchen users join their kitchen room and personal room; without a kitchen only the personal room", () => {
-  assert.deepEqual(roomsFor({ id: "u3", role: "user", godownId: "g1" }), ["g1", "user:u3"]);
+  assert.deepEqual(roomsFor({ id: "u3", role: "user", godownId: "g1" }), ["g1", "kitchens", "user:u3"]);
   assert.deepEqual(roomsFor({ id: "u3", role: "user", godownId: null }), ["user:u3"]);
   assert.deepEqual(roomsFor(undefined), []);
 });
@@ -62,4 +62,21 @@ test("revalidateSockets drops sockets whose user changed role, kitchen or active
 
 test("revalidateSockets is a no-op before setIo", async () => {
   assert.deepEqual(await revalidateSockets({ findUsers: async () => [] }), { checked: 0, dropped: 0 });
+});
+
+test("notifyKitchen tells one kitchen's room what changed; notifyKitchens tells every kitchen; no kitchen id = nothing", () => {
+  const calls = [];
+  const fake = { to: (room) => { calls.push(["to", room]); return fake; }, emit: (event, payload) => { calls.push(["emit", event, payload]); return true; } };
+  setIo(fake);
+  try {
+    notifyKitchen("g1", "stock");
+    notifyKitchen(null, "stock");
+    notifyKitchens("orders");
+    assert.deepEqual(calls, [
+      ["to", "g1"], ["emit", "kitchen:changed", { topic: "stock" }],
+      ["to", "kitchens"], ["emit", "kitchen:changed", { topic: "orders" }],
+    ]);
+  } finally {
+    setIo(null);
+  }
 });

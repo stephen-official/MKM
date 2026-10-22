@@ -52,5 +52,16 @@ export const roomsFor = (user) => {
   if (!user) return [];
   const personal = user.id ? [`user:${user.id}`] : [];
   if (isAdminRole(user.role)) return ["admins", ...personal];
-  return user.godownId ? [String(user.godownId), ...personal] : personal;
+  return user.godownId ? [String(user.godownId), "kitchens", ...personal] : personal;
 };
+
+/**
+ * Tells kitchen phones that something they show has changed, so they re-fetch it (the kitchen app listens for
+ * "kitchen:changed"). topic: "stock" | "orders" | "requests" | "usage" | "indents" | "transfers" | "flags".
+ * One kitchen's room, or every kitchen ("kitchens" room) for shared things like the catalogue and shared orders.
+ */
+export const KITCHEN_CHANGED = "kitchen:changed";
+export const notifyKitchen = (godownId, topic) => {
+  if (godownId) io.to(String(godownId)).emit(KITCHEN_CHANGED, { topic });
+};
+export const notifyKitchens = (topic) => io.to("kitchens").emit(KITCHEN_CHANGED, { topic });

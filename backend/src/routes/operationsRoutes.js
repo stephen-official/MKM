@@ -2,7 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { Consumption, GodownStock, Notification, Request, Transfer } from "../models/FlowModels.js";
-import { io } from "../realtime.js";
+import { io, notifyKitchen } from "../realtime.js";
 import { bodyItemIds, requireAvailableProducts, stockRecordItemIds } from "../catalog/productService.js";
 import { isAvailable, missingFields } from "../catalog/completeness.js";
 // CRITICAL: Explicitly import these so Mongoose registers the models for population
@@ -228,6 +228,7 @@ const handleStockProcessing = async (req, res) => {
       .populate("godownId", "name") 
       .populate(deepPopulateItem);
 
+    notifyKitchen(result.godownId, "stock");
     res.status(201).json(populatedResult);
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -533,6 +534,8 @@ operationsRoutes.patch(
       // ------------------------------------------------------
       // Notify client applications
       // ------------------------------------------------------
+      notifyKitchen(updatedConsumption.godownId._id, "stock");
+      notifyKitchen(updatedConsumption.godownId._id, "usage");
       io.to(updatedConsumption.godownId._id.toString()).emit(
         "consumption_updated",
         stripPrices(updatedConsumption)
@@ -670,6 +673,8 @@ operationsRoutes.delete(
       // ------------------------------------------------------
       // Notify clients immediately
       // ------------------------------------------------------
+      notifyKitchen(deletedConsumption.godownId, "stock");
+      notifyKitchen(deletedConsumption.godownId, "usage");
       io.to(deletedConsumption.godownId.toString()).emit(
         "consumption_deleted",
         {
@@ -829,6 +834,8 @@ operationsRoutes.post("/requests/:id/approve", authorize(["admin"]), async (req,
       approvedRequest = await request.save({ session });
     });
     io.to(approvedRequest.godownId.toString()).emit("request_approved", { requestId: approvedRequest._id });
+    notifyKitchen(approvedRequest.godownId, "requests");
+    notifyKitchen(approvedRequest.godownId, "stock");
     res.json({ message: "Status updated and Godown stock synced" });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -845,6 +852,7 @@ operationsRoutes.post("/requests/:id/reject", authorize(["admin"]), async (req, 
     }, { new: true });
     
     io.to(request.godownId.toString()).emit("request_rejected", { requestId: request._id });
+    notifyKitchen(request.godownId, "requests");
     res.json(request);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -977,6 +985,7 @@ transfer.acceptedBy=req.user.sub;
 transfer.acceptedAt=new Date();
 
 await transfer.save({session});
+for (const id of [transfer.fromGodownId, transfer.toGodownId]) { notifyKitchen(id, "transfers"); notifyKitchen(id, "stock"); }
 io.to(transfer.fromGodownId.toString()).emit(
     "transfer_accepted",
     stripPrices(transfer)
@@ -1099,6 +1108,7 @@ operationsRoutes.post(
 
 });
 
+      for (const id of [transfer.fromGodownId, toGodownId]) { notifyKitchen(id, "transfers"); notifyKitchen(id, "stock"); }
       io.to(toGodownId.toString()).emit(
         "new_transfer",
         stripPrices(transfer)
@@ -1196,6 +1206,7 @@ transfer.rejectedAt = new Date();
 
 await transfer.save();
 
+for (const id of [transfer.fromGodownId, transfer.toGodownId]) { notifyKitchen(id, "transfers"); notifyKitchen(id, "stock"); }
 io.to(transfer.fromGodownId.toString()).emit(
     "transfer_rejected",
     stripPrices(transfer)

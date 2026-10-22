@@ -106,6 +106,7 @@ test("live transfer messages to kitchens carry no prices", async () => {
     setIo(null);
   }
   const toKitchens = sent.filter((message) => message.room !== "admins");
-  assert.deepEqual(toKitchens.map((message) => message.event).sort(), ["new_transfer", "transfer_accepted"]);
+  // "kitchen:changed" re-fetch pings ride along with every change; they carry only a topic.
+  assert.deepEqual(toKitchens.map((message) => message.event).filter((event) => event !== "kitchen:changed").sort(), ["new_transfer", "transfer_accepted"]);
   for (const message of toKitchens) assert.deepEqual(priceKeysIn(message.payload), [], `${message.event} sent prices`);
 });

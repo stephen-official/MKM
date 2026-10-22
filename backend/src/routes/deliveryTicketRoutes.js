@@ -1,4 +1,5 @@
 import express from "express";
+import { notifyKitchen, notifyKitchens } from "../realtime.js";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { DeliveryTicket } from "../models/DeliveryTicketModel.js";
@@ -116,7 +117,10 @@ deliveryTicketRoutes.post("/:id/settle", adminOnly, async (req, res) => {
       ticket.resolution = { acceptedQtyBaseUnit: accepted, reorderShortfall: Boolean(followUp), followUpOrderId: followUp?._id || null, note, settledBy: req.user.sub, settledAt: now };
       await ticket.save({ session });
     });
-    return res.json(await populate(DeliveryTicket.findById(req.params.id)).lean());
+    const settled = await populate(DeliveryTicket.findById(req.params.id)).lean();
+    notifyKitchen(settled?.godownId?._id || settled?.godownId, "stock");
+    notifyKitchens("orders");
+    return res.json(settled);
   } catch (error) {
     return sendError(res, error);
   } finally {

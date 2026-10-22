@@ -1,4 +1,5 @@
 import express from "express";
+import { notifyKitchens } from "../realtime.js";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { User } from "../models/User.js";
@@ -10,6 +11,11 @@ import {
 import { isAdminRole, isSuperAdmin } from "../utils/roles.js";
 
 export const featureRoutes = express.Router();
+// A successful flag change re-shapes the kitchen app, so every kitchen reloads its flags.
+featureRoutes.use((req, res, next) => {
+  if (req.method !== "GET") res.on("finish", () => { if (res.statusCode < 300) notifyKitchens("flags"); });
+  next();
+});
 const superAdminOnly = authorize(["super_admin"]);
 
 const sendError = (res, error) => {

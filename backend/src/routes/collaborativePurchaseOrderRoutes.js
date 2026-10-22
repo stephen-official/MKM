@@ -1,4 +1,5 @@
 import express from "express";
+import { notifyKitchen, notifyKitchens } from "../realtime.js";
 import mongoose from "mongoose";
 import multer from "multer";
 import { authorize } from "../middleware/auth.js";
@@ -209,6 +210,7 @@ collaborativePurchaseOrderRoutes.post("/", everyone, requireAvailableProducts(bo
       createdByGodown: godownId,
       contributions: [contribution],
     });
+    notifyKitchens("orders");
     return res.status(201).json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
@@ -238,6 +240,7 @@ collaborativePurchaseOrderRoutes.post("/:id/contributions", kitchenOnly, require
       if (existing.status !== "open") throw fail(409, "This order is no longer accepting additions", "ORDER_CLOSED");
       throw fail(409, "Your kitchen has already joined this order; edit its contribution instead", "ALREADY_JOINED");
     }
+    notifyKitchens("orders");
     return res.status(201).json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
@@ -257,6 +260,7 @@ collaborativePurchaseOrderRoutes.put("/:id/contributions/me", kitchenOnly, requi
     mine.items = keepApprovedLines(mine.items, contribution.items);
     Object.assign(mine, { note: contribution.note, userId: req.user.sub, updatedAt: contribution.updatedAt });
     await order.save();
+    notifyKitchens("orders");
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
@@ -283,6 +287,7 @@ collaborativePurchaseOrderRoutes.delete("/:id/contributions/me", kitchenOnly, as
       throw fail(409, "This order was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
     }
     if (!order) throw fail(404, "Your kitchen has not joined this order");
+    notifyKitchens("orders");
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
@@ -320,6 +325,7 @@ collaborativePurchaseOrderRoutes.post("/:id/approve", adminOnly, async (req, res
       }
     }
     await order.save();
+    notifyKitchens("orders");
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
@@ -356,6 +362,7 @@ collaborativePurchaseOrderRoutes.post("/:id/dispatch", adminOnly, async (req, re
     }
     if (sent === 0) throw fail(409, "These items have already been dispatched", "ALREADY_DISPATCHED");
     await order.save();
+    notifyKitchens("orders");
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
@@ -546,6 +553,8 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
       if (share.items.every((line) => isReceived(line, share))) Object.assign(share, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
       await order.save({ session });
     });
+    notifyKitchens("orders");
+    notifyKitchen(req.user.godownId, "stock");
     return res.json(responseOrder(await loadOrder(req.params.id), req.user));
   } catch (error) {
     return sendError(res, error);
@@ -618,6 +627,7 @@ collaborativePurchaseOrderRoutes.patch("/:id/purchase", adminOnly, async (req, r
     if (!["approved", "ordered"].includes(order.status)) throw fail(409, "Approve the order before adding supplier or invoice details", "NOT_APPROVED");
     if ((await applyPurchaseDetails(order, req.body || {})) === 0) throw fail(400, "Send a supplierId, an invoiceNo, supplierOverrides or expiryDates");
     await order.save();
+    notifyKitchens("orders");
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
@@ -638,6 +648,7 @@ collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res
     order.statusChangedAt = new Date();
     order.statusChangedBy = req.user.sub;
     await order.save();
+    notifyKitchens("orders");
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
