@@ -1,4 +1,4 @@
-import { AlertTriangle, Ban, Boxes, PackagePlus, PackageX, RefreshCw, Search, X } from "lucide-react";
+import { Boxes, PackagePlus, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import ProductRequestSheet from "./ProductRequestSheet";
 import { expiryStatus, formatStockQuantity, getStockHealth } from "../../features/kitchen";
@@ -19,6 +19,8 @@ const formatQuantity = (value) =>
   Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
 
 const stockKey = (item, index) => item?._id || item?.stockRecordId || item?.stockItemId?._id || `${itemName(item)}-${index}`;
+const itemImage = (item) => item?.image || item?.imageUrl || item?.stockItemId?.imageUrl || "";
+const initialOf = (name) => (String(name).trim().charAt(0) || "?").toUpperCase();
 
 /** "130 days left until it expires", "expires today", "expired 4 days ago": the quiet line under the expiry date. */
 const daysLeftText = (expiry) => {
@@ -149,8 +151,9 @@ export default function KitchenStock({
             const expiry = expiryStatus(item, today);
             return (
               <li className={`kg-glass kg-lift ks-card ks-card--${unavailable ? "unavailable" : health.tone}${!unavailable && expiry.key === "expired" ? " ks-card--expired" : !unavailable && expiry.key === "soon" ? " ks-card--soon" : ""}`} key={stockKey(item, index)}>
-                <div className="ks-card__icon" aria-hidden="true">
-                  {unavailable ? <Ban size={23} /> : health.key === "out" ? <PackageX size={23} /> : health.key === "low" ? <AlertTriangle size={23} /> : <Boxes size={23} />}
+                {/* The product's photo (set by the admin on the product), or its initial until one is added. */}
+                <div className={`ks-card__media${itemImage(item) ? " has-image" : ""}`} aria-hidden="true">
+                  {itemImage(item) ? <img src={itemImage(item)} alt="" loading="lazy" decoding="async" /> : <span>{initialOf(itemName(item))}</span>}
                 </div>
                 <div className="ks-card__body">
                   <div className="ks-card__top">
