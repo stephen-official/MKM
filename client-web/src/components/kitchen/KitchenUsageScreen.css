@@ -42,7 +42,8 @@
 .kus-item--expired .kus-item__media:not(.has-image) { color: var(--st-expired-fg); background: linear-gradient(160deg, rgba(255,255,255,.65), rgba(252,239,237,.7)); border-color: var(--st-expired-line); }
 .kus-item__body { display: flex; flex: 1; min-width: 0; flex-direction: column; padding: 14px 16px 16px; }
 .kus-item h3 { margin: 2px 0 0; font-size: 14.5px; font-weight: 500; line-height: 1.25; }
-.kus-facts { display: grid; gap: 7px; margin: 12px 0 0; padding: 12px 0 0; border-top: 1px solid rgba(170,186,210,.28); }
+/* margin-bottom: auto parks the entry at the foot of the card, so every "Add" in a row sits on the same line. */
+.kus-facts { display: grid; gap: 7px; margin: 12px 0 auto; padding: 12px 0 0; border-top: 1px solid rgba(170,186,210,.28); }
 .kus-facts > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: baseline; }
 .kus-facts dt { margin: 0; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
 .kus-facts dd { margin: 0; min-width: 0; font-size: 13px; font-weight: 400; line-height: 1.4; color: var(--ink-2); overflow-wrap: anywhere; }
