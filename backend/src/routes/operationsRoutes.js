@@ -72,12 +72,21 @@ const expiryLotsFor = async (godownId) => {
   return lots;
 };
 
+/** Supplier names behind the stock a kitchen still holds, per product: Map stockItemId → ["Name", …] (A–Z, no blanks). */
+const suppliersFor = async (godownId) => {
+  const rows = await StockBatch.aggregate([
+    { $match: { godownId: new mongoose.Types.ObjectId(String(godownId)), remainingQtyBaseUnit: { $gt: 0 }, supplierName: { $nin: [null, ""] } } },
+    { $group: { _id: "$stockItemId", names: { $addToSet: "$supplierName" } } },
+  ]);
+  return new Map(rows.map((row) => [String(row._id), [...row.names].sort((a, b) => a.localeCompare(b))]));
+};
+
 // --- 1. KITCHEN STOCK FETCH ---
 operationsRoutes.get("/my-kitchen-stock", authorize(["user", "admin"]), async (req, res) => {
   try {
     const godownId = req.user.godownId;
     if (!godownId) return res.status(400).json({ error: "User not assigned to a godown" });
-    const expiryLots = await expiryLotsFor(godownId);
+    const [expiryLots, suppliers] = await Promise.all([expiryLotsFor(godownId), suppliersFor(godownId)]);
 
     const stock = await GodownStock.find({ godownId })
       .populate({
@@ -107,6 +116,7 @@ select: "name stockGroupId unitId imageUrl itemType pricePerUnit soldInPacks pac
   soldInPacks: Boolean(s.stockItemId?.soldInPacks),
   packs: s.stockItemId?.packs || [],
   expiries: expiryLots.get(String(s.stockItemId?._id)) || [],
+  suppliers: suppliers.get(String(s.stockItemId?._id)) || [],
 
   itemType: s.stockItemId?.itemType || "stock"
 }));

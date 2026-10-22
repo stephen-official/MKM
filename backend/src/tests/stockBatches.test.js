@@ -203,18 +203,20 @@ test("an expired batch is deducted before everything else: using it is allowed, 
   assert.equal((await StockBatch.findById(fresh._id)).remainingQtyBaseUnit, 10);
 });
 
-test("my-kitchen-stock lists dated lots soonest first, grouped by date, with no batch ids or prices", async () => {
+test("my-kitchen-stock lists dated lots soonest first, grouped by date, with no batch ids or prices, plus the suppliers behind the stock", async () => {
   await StockBatch.deleteMany({});
   await StockBatch.create([
-    batch({ receivedAt: new Date("2026-09-01"), expiryDate: new Date("2027-03-01T00:00:00+05:30"), remainingQtyBaseUnit: 7 }),
-    batch({ receivedAt: new Date("2026-10-01"), expiryDate: new Date("2026-10-25T00:00:00+05:30"), remainingQtyBaseUnit: 3 }),
-    batch({ receivedAt: new Date("2026-10-02"), expiryDate: new Date("2026-10-25T00:00:00+05:30"), remainingQtyBaseUnit: 4 }),
+    batch({ receivedAt: new Date("2026-09-01"), expiryDate: new Date("2027-03-01T00:00:00+05:30"), remainingQtyBaseUnit: 7, supplierName: "Sri Traders" }),
+    batch({ receivedAt: new Date("2026-10-01"), expiryDate: new Date("2026-10-25T00:00:00+05:30"), remainingQtyBaseUnit: 3, supplierName: "Anand's Trade and Marketplace" }),
+    batch({ receivedAt: new Date("2026-10-02"), expiryDate: new Date("2026-10-25T00:00:00+05:30"), remainingQtyBaseUnit: 4, supplierName: "Sri Traders" }),
     batch({ sourceType: "opening_balance", receivedAt: new Date("2026-01-01"), expiryDate: null, remainingQtyBaseUnit: 6 }),
-    batch({ receivedAt: new Date("2026-10-03"), expiryDate: new Date("2026-11-01T00:00:00+05:30"), remainingQtyBaseUnit: 0 }),
+    batch({ receivedAt: new Date("2026-10-03"), expiryDate: new Date("2026-11-01T00:00:00+05:30"), remainingQtyBaseUnit: 0, supplierName: "Used Up Stores" }),
   ]);
   const response = await request(app).get("/api/my-kitchen-stock").set("Authorization", `Bearer ${cook.token}`);
   assert.equal(response.status, 200, JSON.stringify(response.body));
   const row = response.body.find((item) => String(item.stockItemId) === String(rice._id));
   assert.deepEqual(row.expiries, [{ date: "2026-10-25", qtyBaseUnit: 7 }, { date: "2027-03-01", qtyBaseUnit: 7 }]);
+  // Each supplier once, A–Z; a batch that is used up or has no supplier adds nothing.
+  assert.deepEqual(row.suppliers, ["Anand's Trade and Marketplace", "Sri Traders"]);
   assert.equal(JSON.stringify(row).includes("unitPrice"), false);
 });

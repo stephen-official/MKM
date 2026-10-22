@@ -1,8 +1,8 @@
-import { AlertTriangle, Ban, Boxes, PackagePlus, PackageX, RefreshCw, Search, Utensils, X } from "lucide-react";
+import { AlertTriangle, Ban, Boxes, PackagePlus, PackageX, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import ProductRequestSheet from "./ProductRequestSheet";
 import { expiryStatus, formatStockQuantity, getStockHealth } from "../../features/kitchen";
-import { toLocalDateKey } from "../../utils/date";
+import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import "./KitchenStock.css";
 
 const FILTERS = [
@@ -20,7 +20,14 @@ const formatQuantity = (value) =>
 
 const stockKey = (item, index) => item?._id || item?.stockRecordId || item?.stockItemId?._id || `${itemName(item)}-${index}`;
 
-const NO_HIDDEN = new Set();
+/** "130 days left until it expires", "expires today", "expired 4 days ago": the quiet line under the expiry date. */
+const daysLeftText = (expiry) => {
+  const days = expiry.daysLeft;
+  if (days === null || days === undefined) return "";
+  if (days < 0) return days === -1 ? "expired yesterday" : `expired ${-days} days ago`;
+  if (days === 0) return "expires today";
+  return `${days} ${days === 1 ? "day" : "days"} left until it expires`;
+};
 
 /** Mobile-first stock list for one kitchen. Search and health filter are controlled by the parent. */
 export default function KitchenStock({
@@ -30,12 +37,9 @@ export default function KitchenStock({
   onSearchChange,
   filter = "all",
   onFilterChange,
-  onRecordUsage,
   onRefresh,
-  hidden = NO_HIDDEN,
   canRequestProduct = false,
 }) {
-  const canRecordUsage = !hidden.has("usage");
   const [requesting, setRequesting] = useState(false);
   const today = toLocalDateKey();
   const counts = useMemo(() => {
@@ -158,25 +162,27 @@ export default function KitchenStock({
                     </div>
                     <p className="ks-quantity"><strong>{formatStockQuantity(health.quantity, unit, item)}</strong></p>
                   </div>
-                  {expiry.key !== "none" && (
-                    <p className={`ks-expiry ks-expiry--${expiry.tone}`}>
-                      {expiry.key === "expired" ? `${expiry.label} · ${formatQuantity(expiry.qtyBaseUnit)} ${unit} · check before using`
-                        : expiry.key === "soon" ? `${expiry.label} · ${formatQuantity(expiry.qtyBaseUnit)} ${unit} · use first`
-                        : expiry.label}
-                    </p>
-                  )}
-                  <div className="ks-card__footer">
-                    <p>{unavailable
-                      ? item.archived
-                        ? "This product has been discontinued and can’t be used."
-                        : "Can’t be used until an admin finishes setting up this product."
-                      : health.threshold > 0 ? `Low-stock level: ${formatQuantity(health.threshold)} ${unit}` : "No low-stock level set"}</p>
-                    {canRecordUsage && (
-                      <button type="button" className="kg-btn" onClick={() => onRecordUsage?.(item)} disabled={unavailable || health.key === "out"}>
-                        <Utensils size={17} aria-hidden="true" /> Record usage
-                      </button>
-                    )}
-                  </div>
+                  <dl className="ks-facts">
+                    <div>
+                      <dt>Supplier</dt>
+                      <dd>{Array.isArray(item.suppliers) && item.suppliers.length ? item.suppliers.join(", ") : <span className="ks-facts__none">Not recorded</span>}</dd>
+                    </div>
+                    <div>
+                      <dt>Expiry</dt>
+                      <dd>
+                        {expiry.key === "none" ? <span className="ks-facts__none">No date</span> : formatDateKey(expiry.date)}
+                        {expiry.key !== "none" && <em className={`ks-facts__days ks-facts__days--${expiry.tone}`}>
+                          {daysLeftText(expiry)}{expiry.key === "expired" ? ` · ${formatQuantity(expiry.qtyBaseUnit)} ${unit} to check` : expiry.key === "soon" ? ` · ${formatQuantity(expiry.qtyBaseUnit)} ${unit}` : ""}
+                        </em>}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>{unavailable ? "Status" : "Low-stock level"}</dt>
+                      <dd>{unavailable
+                        ? item.archived ? "Discontinued, cannot be used" : "Waiting for an admin to finish setting it up"
+                        : health.threshold > 0 ? `${formatQuantity(health.threshold)} ${unit}` : <span className="ks-facts__none">Not set</span>}</dd>
+                    </div>
+                  </dl>
                 </div>
               </li>
             );

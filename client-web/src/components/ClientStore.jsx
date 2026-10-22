@@ -189,7 +189,8 @@ setItems(formatted);
           soldInPacks: Boolean(item.soldInPacks),
           packs: item.packs || [],
           // Dated lots the kitchen holds, soonest first: [{ date, qtyBaseUnit }] (features/kitchen/expiry.js reads them).
-          expiries: Array.isArray(item.expiries) ? item.expiries : []
+          expiries: Array.isArray(item.expiries) ? item.expiries : [],
+          suppliers: Array.isArray(item.suppliers) ? item.suppliers : []
         })).sort((a, b) => a.name.localeCompare(b.name));
         setItems(formattedItems);
       }
@@ -744,9 +745,6 @@ setEditIndentId(indent._id);
             hidden={hidden}
             canRequestProduct={isFeatureOn(flags, "products")}
             onRefresh={() => fetchItems(false)}
-            onRecordUsage={async (item) => {
-              if (await openUsage()) addToCart(item, 1);
-            }}
           />
         </>
       ) : activeTab === "usage" ? (
