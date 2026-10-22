@@ -55,7 +55,7 @@ const daysLeftText = (expiry) => {
 };
 
 /** Filter chips over the list. An item can sit in two groups (expired and low), so each chip counts it. */
-const FILTERS = [{ key: "all", label: "All" }, { key: "expired", label: "Expired" }, { key: "soon", label: "Expiring soon" }, { key: "low", label: "Low stock" }, { key: "out", label: "Out of stock" }];
+const FILTERS = [{ key: "all", label: "All" }, { key: "expired", label: "Expired" }, { key: "soon", label: "Expiring" }, { key: "low", label: "Low" }, { key: "out", label: "Out" }];
 const filterKeysOf = (item, today) => {
   const keys = [];
   const expiry = expiryStatus(item, today).key;

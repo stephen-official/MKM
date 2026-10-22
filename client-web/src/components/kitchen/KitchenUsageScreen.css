@@ -23,13 +23,13 @@
 .kus-search input { width: 100%; min-height: 42px; border: 0; outline: 0; color: var(--ink-2); background: transparent; font: inherit; font-size: 14px; }
 .kus-search input::placeholder { color: var(--muted-2); font-weight: 300; }
 .kus-search button { border: 0; color: var(--blue-deep); background: transparent; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
-/* Filter chips (All · Expired · Expiring soon · Low stock · Out of stock), the same pills as "Count in" on a card. */
+/* Filter chips (All · Expired · Expiring · Low · Out), the same pills as "Count in" on a card; short words so all five fit a phone. */
 .kus-filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 4px; }
 .kus-filter { flex: none; }
-/* On a phone the chips are one row the cook swipes sideways (the row bleeds to the glass edge, so the last chip peeks in). */
-@media (max-width: 699px) { .kus-filters { flex-wrap: nowrap; overflow-x: auto; margin: 0 -10px; padding: 2px 14px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; } .kus-filters::-webkit-scrollbar { display: none; } }
 .kus-filter span { display: inline-grid; min-width: 20px; height: 20px; margin-left: 6px; padding: 0 6px; place-items: center; color: var(--muted-2); background: rgba(255,255,255,.8); border-radius: 999px; font-size: 11px; font-weight: 500; letter-spacing: 0; }
 .kus-filter.is-on span { color: var(--blue-deep); background: #fff; }
+/* Phone: slightly tighter chips so all five sit in two rows at 360px. */
+@media (max-width: 420px) { .kus-filters { gap: 5px; } .kus-filter { padding: 0 9px; letter-spacing: .04em; } .kus-filter span { min-width: 18px; margin-left: 4px; padding: 0 5px; } }
 
 /* List heading */
 .kus-section-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 12px; padding-inline: 4px; }
