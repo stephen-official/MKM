@@ -76,10 +76,11 @@
 /* Tick: the open field sinks away and the confirmed row rises in its place; tapping the row brings the field back. */
 .kus-stepper--open { animation: kus-pop var(--dur-glass) var(--ease-glass); }
 .kus-stepper--done { background: rgba(228,237,249,.9); animation: kus-sink var(--dur-glass) var(--ease-glass); }
+/* No hover highlight: the whole pill reads as one confirmed line; tapping it still reopens the field. */
+.kus-stepper .kus-stepper__value, .kus-stepper .kus-stepper__value:hover { background: transparent; }
 .kus-stepper .kus-stepper__value { display: flex; flex: 1; width: auto; min-width: 0; height: 36px; align-items: center; gap: 6px; padding: 0 12px 0 2px; border: 0; background: transparent; color: var(--blue-deep); font-size: 14px; font-weight: 500; text-align: left; white-space: nowrap; }
 .kus-stepper .kus-stepper__value small { overflow: hidden; color: var(--muted-2); font-size: 12px; font-weight: 300; text-overflow: ellipsis; }
 .kus-stepper .kus-stepper__value svg { flex: none; margin-left: auto; }
-.kus-stepper .kus-stepper__value:hover:not(:disabled) { background: rgba(255,255,255,.6); }
 @keyframes kus-sink { from { transform: scale(.96); opacity: 0; } }
 @keyframes kus-pop { from { transform: translateY(6px) scale(.98); opacity: 0; } }
 .kus-item__remaining { min-height: 18px; margin: 8px 0 0; color: var(--muted-2); font-size: 12px; font-weight: 300; text-align: right; }
