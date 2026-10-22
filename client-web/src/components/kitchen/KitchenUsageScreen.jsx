@@ -167,6 +167,8 @@ export default function KitchenUsageScreen({
     const current = previous[itemId(item)] || { unit: "base" };
     return { ...previous, [itemId(item)]: { ...current, done: false, round: (current.round || 0) + 1 } };
   });
+  // Out-of-stock cards are crossed off but still answer a tap, so the cook learns why nothing happens.
+  const warnOut = (item) => toast.error("Out of stock", { id: `out-${itemId(item)}` });
   const removeItem = (item) => {
     setAmount(item, 0);
     setStarted((previous) => { const next = { ...previous }; delete next[itemId(item)]; return next; });
@@ -286,18 +288,18 @@ export default function KitchenUsageScreen({
               const unitChosen = chosenUnit !== null;
               const confirmed = Boolean(started[id]?.done) && isSelected;
               const image = item?.image && item.image !== "null" ? item.image : "";
-              // Card tint, most pressing first: nothing left, expired, expiring soon, running low (same colours as Stock).
-              const tone = health.key === "out" ? " kus-item--out" : expiry.key === "expired" ? " kus-item--expired" : expiry.key === "soon" ? " kus-item--soon" : health.key === "low" ? " kus-item--low" : "";
+              const out = health.key === "out";
+              // Card tint, most pressing first: expired, expiring soon, running low (same colours as Stock); nothing left = crossed off.
+              const tone = (expiry.key === "expired" ? " kus-item--expired" : expiry.key === "soon" ? " kus-item--soon" : health.key === "low" ? " kus-item--low" : "") + (out ? " kus-item--out" : "");
 
               return (
-                <article className={`kg-glass kg-lift kus-item${isSelected ? " kus-item--selected" : ""}${tone}`} key={id}>
+                <article className={`kg-glass kg-lift kus-item${isSelected ? " kus-item--selected" : ""}${tone}`} key={id} onClick={out ? () => warnOut(item) : undefined}>
                   <div className={`kus-item__media${image ? " has-image" : ""}`} aria-hidden="true">
                     {image ? <img src={image} alt="" loading="lazy" decoding="async" /> : <span>{initialOf(item?.name || "?")}</span>}
                   </div>
                   <div className="kus-item__body">
                     <div className="kus-item__head">
                       <h3>{item?.name || "Unnamed supply"}</h3>
-                      {health.key === "out" && <span className="kg-pill kg-pill--expired">Out of stock</span>}
                       {health.key === "low" && <span className="kg-pill kg-pill--low">Low stock</span>}
                     </div>
                     <dl className="kus-facts">
@@ -319,7 +321,8 @@ export default function KitchenUsageScreen({
                     {!begun ? (
                       <div className="kus-item__entry">
                         <span className="kus-item__label">Quantity used</span>
-                        <button type="button" className="kt-add" onClick={() => addItem(item)} disabled={available === 0 || submitting} aria-label={`Add ${item?.name || "item"}`}><Plus size={17} aria-hidden="true" /> Add<span>{defaultPackFor(item)?.name || unit}</span></button>
+                        {/* Out of stock: the button only looks off; the tap bubbles to the card, which shows the warning. */}
+                        <button type="button" className="kt-add" onClick={out ? undefined : () => addItem(item)} disabled={submitting} aria-disabled={out} aria-label={`Add ${item?.name || "item"}`}><Plus size={17} aria-hidden="true" /> Add<span>{defaultPackFor(item)?.name || unit}</span></button>
                       </div>
                     ) : (
                       <>
