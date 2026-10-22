@@ -5,7 +5,8 @@ import { formatStockQuantity, withPackaging } from "./packaging.js";
 const rice = { soldInPacks: true, packs: [{ _id: "bag", name: "Bag", size: 25 }] };
 
 test("shows kitchen stock as packs plus base units", () => {
-  assert.equal(formatStockQuantity(79, "kg", rice), "3 Bags + 4 kg");
+  assert.equal(formatStockQuantity(79, "kg", rice), "3 × Bag + 4 kg");
+  assert.equal(formatStockQuantity(25, "kg", rice), "1 × Bag");
   assert.equal(formatStockQuantity(20, "kg", rice), "20 kg");
 });
 

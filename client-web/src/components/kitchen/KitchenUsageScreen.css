@@ -35,7 +35,13 @@
 .kus-stepper button { display:grid; place-items:center; width:36px; height:36px; border:0; color:var(--kus-green); background:white; }
 .kus-stepper button:disabled { color:#b7c0bc; background:#f4f6f5; }
 .kus-stepper input { width:48px; border:0; outline:0; text-align:right; background:transparent; font:inherit; font-size:.88rem; font-weight:800; }
-.kus-stepper>span { padding:0 6px 0 3px; color:var(--kus-muted); font-size:.7rem; }
+.kus-stepper>span { padding:0 6px 0 3px; color:var(--kus-muted); font-size:.7rem; white-space:nowrap; }
+.kus-item__available small { color:var(--kus-muted); font-weight:500; }
+/* Unit switch under the stepper: count in a bag/tin or in the base unit; the conversion sits beside it. */
+.kus-unit { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:10px; }
+.kus-unit button { min-height:30px; padding:0 11px; border:1px solid #c5d1ca; border-radius:999px; background:#fff; color:#52615c; font:inherit; font-size:.72rem; font-weight:700; cursor:pointer; }
+.kus-unit button.is-on { color:#0b5f58; background:#e3f4f1; border-color:#9ccfc5; }
+.kus-unit em { margin-left:auto; color:var(--kus-muted); font-size:.74rem; font-style:normal; font-weight:700; }
 .kus-item__remaining { min-height:18px; margin:8px 0 0; color:var(--kus-muted); font-size:.74rem; text-align:right; }
 .kus-state { display:flex; min-height:180px; flex-direction:column; align-items:center; justify-content:center; gap:7px; border:1px dashed #cfd9d3; border-radius:16px; color:var(--kus-muted); background:white; font-size:.84rem; }
 .kus-state strong { color:var(--kus-ink); }

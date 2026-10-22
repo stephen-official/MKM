@@ -119,6 +119,11 @@ const consumptionSchema = new mongoose.Schema(
         stockRecordId: { type: mongoose.Schema.Types.ObjectId, ref: "GodownStock", default: null },
         qtyBaseUnit: Number, 
         unitDisplay: String, 
+        // How the cook entered it when a pack was used ("25 kg bag" × 2); qtyBaseUnit above stays authoritative.
+        packId: { type: mongoose.Schema.Types.ObjectId, default: null },
+        packName: { type: String, default: "" },
+        packSize: { type: Number, default: null },
+        packQuantity: { type: Number, default: null },
         // Captured when the line is recorded (README Decision 5); null = no valid price then.
         unitPriceAtIssue: { type: Number, default: null },
         amountAtIssue: { type: Number, default: null },

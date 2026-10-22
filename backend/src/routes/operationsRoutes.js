@@ -197,10 +197,17 @@ const handleStockProcessing = async (req, res) => {
           io.to(godownId.toString()).to("admins").emit("low_stock_alert", alert);
         }
 
+        // The pack the cook counted in, kept as a snapshot when it agrees with the base quantity.
+        const packSize = Number(item.packSize);
+        const packQuantity = Number(item.packQuantity);
+        const pack = item.packId && packSize > 0 && packQuantity > 0 && Math.abs(packSize * packQuantity - qtyToDeduct) < 1e-6
+          ? { packId: item.packId, packName: String(item.packName || ""), packSize, packQuantity }
+          : {};
         orderItems.push({ 
           stockItemId: updatedStock.stockItemId._id, 
           qtyBaseUnit: qtyToDeduct,
           stockRecordId: updatedStock._id,
+          ...pack,
           batchAllocations,
           ...valuationFromAllocations(qtyToDeduct, batchAllocations),
         });

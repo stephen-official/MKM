@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import request from "supertest";
@@ -201,6 +202,25 @@ test("an expired batch is deducted before everything else: using it is allowed, 
   assert.equal(response.status, 201, JSON.stringify(response.body));
   assert.equal((await StockBatch.findById(expired._id)).remainingQtyBaseUnit, 6);
   assert.equal((await StockBatch.findById(fresh._id)).remainingQtyBaseUnit, 10);
+});
+
+test("usage entered in bags is stored in the base unit with the bag kept as a snapshot", async () => {
+  await StockBatch.deleteMany({});
+  await StockBatch.create([batch({ receivedAt: new Date("2026-10-01"), expiryDate: new Date("2027-01-01"), remainingQtyBaseUnit: 60 })]);
+  await mongoose.model("GodownStock").updateOne({ _id: stock._id }, { $set: { qtyBaseUnit: 60 } });
+  const response = await request(app).post("/api/consumptions")
+    .set("Authorization", `Bearer ${cook.token}`)
+    .send({ date: "2026-10-20", items: [{ stockRecordId: stock._id, qtyBaseUnit: 10, packId: "e1055b121c8277e1392329bc", packName: "5 kg bag", packSize: 5, packQuantity: 2 }] });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  const line = response.body.items[0];
+  assert.equal(line.qtyBaseUnit, 10);
+  assert.deepEqual([line.packName, line.packSize, line.packQuantity], ["5 kg bag", 5, 2]);
+  // A snapshot that does not add up to the base quantity is dropped, never trusted over the kilograms.
+  const odd = await request(app).post("/api/consumptions")
+    .set("Authorization", `Bearer ${cook.token}`)
+    .send({ date: "2026-10-20", items: [{ stockRecordId: stock._id, qtyBaseUnit: 3, packId: "e1055b121c8277e1392329bc", packName: "5 kg bag", packSize: 5, packQuantity: 2 }] });
+  assert.equal(odd.status, 201, JSON.stringify(odd.body));
+  assert.equal(odd.body.items[0].packName ?? "", "");
 });
 
 test("my-kitchen-stock lists dated lots soonest first, grouped by date, with no batch ids or prices, plus the suppliers behind the stock", async () => {

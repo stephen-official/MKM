@@ -2,7 +2,7 @@ import { AlertTriangle, Check, Minus, Plus, Search, Utensils, X } from "lucide-r
 import { useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
-import { expiryStatus, needsAttention, sortByExpiry } from "../../features/kitchen";
+import { expiryStatus, formatStockQuantity, needsAttention, productPacks, sortByExpiry, withPackaging } from "../../features/kitchen";
 import DateField from "../ui/DateField";
 import { useConfirm } from "../ui/ConfirmDialog";
 import OrderTicket from "./OrderTicket";
@@ -35,6 +35,16 @@ const numericQuantity = (value) => {
 const displayNumber = (value) =>
   Number(value).toLocaleString("en-IN", { maximumFractionDigits: 3 });
 
+/** The pack the cook is counting in for this item (from the cart entry), or null for the base unit. */
+const packFor = (quantities, item) => {
+  if (!Array.isArray(quantities)) return null;
+  const entry = quantities.find((candidate) => itemId(candidate) === itemId(item));
+  return entry?.packId && Number(entry.packSize) > 0 ? { packId: entry.packId, packName: entry.packName, packSize: Number(entry.packSize) } : null;
+};
+/** Cooks count rice in bags and oil in tins, so the biggest pack is the starting unit; the toggle switches to kg. */
+const defaultPackFor = (item) => [...productPacks(item)].sort((a, b) => Number(b.size) - Number(a.size))[0] || null;
+const packLabel = (pack, count) => (count === 1 ? pack.packName : `${pack.packName}s`);
+
 export default function KitchenUsageScreen({
   items = [],
   loading = false,
@@ -43,6 +53,7 @@ export default function KitchenUsageScreen({
   quantities = {},
   cart,
   onQuantityChange,
+  onPackagingChange,
   onClear,
   onSubmit,
   submitting = false,
@@ -73,26 +84,47 @@ export default function KitchenUsageScreen({
     return source.flatMap((entry) => {
       const item = items.find((candidate) => itemId(candidate) === itemId(entry));
       const amount = numericQuantity(quantityFor(quantitySource, entry));
-      return item && amount > 0 ? [{ id: itemId(item), name: item.name || "Unnamed supply", amount, unit: unitOf(item) }] : [];
+      const pack = packFor(quantitySource, entry);
+      return item && amount > 0 ? [{ id: itemId(item), name: item.name || "Unnamed supply", amount, unit: pack ? `${packLabel(pack, amount)} · ${displayNumber(amount * pack.packSize)} ${unitOf(item)}` : unitOf(item) }] : [];
     });
   }, [items, quantitySource, selectedItems]);
 
-  const updateQuantity = (item, nextValue) => {
+  // Quantities are entered in the unit the cook chose (bags or kg); the cap and the cart entry carry that pack.
+  const updateQuantity = (item, nextValue, pack = packFor(quantitySource, item)) => {
+    const product = pack ? withPackaging(item, pack.packId) : item;
     if (nextValue === "") {
-      onQuantityChange?.(item, "");
+      onQuantityChange?.(product, "");
       return;
     }
     if (!/^\d*(\.\d{0,3})?$/.test(String(nextValue))) return;
+    const size = pack ? pack.packSize : 1;
     const available = availableQuantity(item);
-    if (Number(nextValue) > available) {
+    const availableInUnit = Number((available / size).toFixed(3));
+    if (Number(nextValue) * size > available + 1e-9) {
       // The server refuses usage above the balance, so cap it, but say so: a real overrun means the stock is wrong.
-      toast.error(`Only ${displayNumber(available)} ${unitOf(item)} in stock. Used more? Tell the central store so your stock can be corrected.`,
+      toast.error(`Only ${formatStockQuantity(available, unitOf(item), item)} in stock. Used more? Tell the central store so your stock can be corrected.`,
         { id: `usage-cap-${item?.stockRecordId || item?._id}` });
     }
-    const next = Math.min(Number(nextValue) || 0, available);
-    onQuantityChange?.(item, nextValue.endsWith?.(".") ? nextValue : next);
+    const next = Math.min(Number(nextValue) || 0, availableInUnit);
+    onQuantityChange?.(product, nextValue.endsWith?.(".") ? nextValue : next);
   };
-  const setAmount = (item, amount) => updateQuantity(item, amount > 0 ? String(amount) : "");
+  const setAmount = (item, amount, pack) => updateQuantity(item, amount > 0 ? String(amount) : "", pack);
+  // First tap on "Add": start counting in the biggest pack when the product has one.
+  const addItem = (item) => {
+    const pack = defaultPackFor(item);
+    const chosen = pack ? { packId: pack._id, packName: pack.name, packSize: Number(pack.size) } : null;
+    setAmount(item, Math.min(1, availableQuantity(item) / (chosen ? chosen.packSize : 1)), chosen);
+  };
+  // Switching the unit keeps what was entered: 2 bags becomes 50 kg, 50 kg becomes 2 bags.
+  const switchUnit = (item, packId) => {
+    const current = packFor(quantitySource, item);
+    const base = numericQuantity(quantityFor(quantitySource, item)) * (current ? current.packSize : 1);
+    const target = packId === "base" ? null : productPacks(item).find((candidate) => String(candidate._id) === String(packId));
+    const next = target ? { packId: target._id, packName: target.name, packSize: Number(target.size) } : null;
+    onPackagingChange?.(item, packId);
+    const converted = Number((base / (next ? next.packSize : 1)).toFixed(3));
+    if (converted > 0) setAmount(item, converted, next);
+  };
   const changeRow = (id, amount) => {
     const item = items.find((candidate) => itemId(candidate) === id);
     if (item) setAmount(item, amount);
@@ -159,10 +191,14 @@ export default function KitchenUsageScreen({
               const available = availableQuantity(item);
               const rawQuantity = quantityFor(quantitySource, item);
               const used = numericQuantity(rawQuantity);
-              const remaining = Math.max(available - used, 0);
               const unit = unitOf(item);
+              const pack = packFor(quantitySource, item);
+              const packs = productPacks(item);
+              const usedBase = used * (pack ? pack.packSize : 1);
+              const remaining = Math.max(available - usedBase, 0);
               const isSelected = used > 0;
               const expiry = expiryStatus(item, today);
+              const entryUnit = pack ? packLabel(pack, used || 1) : unit;
 
               return (
                 <article className={`kus-item${isSelected ? " kus-item--selected" : ""}`} key={id}>
@@ -171,7 +207,7 @@ export default function KitchenUsageScreen({
                     <div className="kus-item__identity">
                       <h3>{item?.name || "Unnamed supply"}</h3>
                       <p className={available === 0 ? "kus-item__available kus-item__available--empty" : "kus-item__available"}>
-                        Available: <strong>{displayNumber(available)} {unit}</strong>
+                        Available: <strong>{formatStockQuantity(available, unit, item)}</strong>{packs.length > 0 && available > 0 && <small> · {displayNumber(available)} {unit}</small>}
                       </p>
                     </div>
                   </div>
@@ -186,7 +222,7 @@ export default function KitchenUsageScreen({
                   <div className="kus-item__entry">
                     <label htmlFor={`usage-${id}`}>Quantity used</label>
                     {!isSelected ? (
-                      <button type="button" className="kt-add" onClick={() => setAmount(item, Math.min(1, available))} disabled={available === 0 || submitting} aria-label={`Add ${item?.name || "item"}`}><Plus size={17} aria-hidden="true" /> Add<span>{unit}</span></button>
+                      <button type="button" className="kt-add" onClick={() => addItem(item)} disabled={available === 0 || submitting} aria-label={`Add ${item?.name || "item"}`}><Plus size={17} aria-hidden="true" /> Add<span>{defaultPackFor(item)?.name || unit}</span></button>
                     ) : (
                     <div className="kus-stepper">
                       <button type="button" onClick={() => setAmount(item, Math.max(used - 1, 0))} disabled={submitting} aria-label={used <= 1 ? `Remove ${item?.name || "item"}` : `Decrease ${item?.name || "item"} quantity`}>{used <= 1 ? <X size={17} /> : <Minus size={17} />}</button>
@@ -200,13 +236,20 @@ export default function KitchenUsageScreen({
                         onChange={(event) => updateQuantity(item, event.target.value)}
                         aria-describedby={`remaining-${id}`}
                       />
-                      <span>{unit}</span>
-                      <button type="button" onClick={() => updateQuantity(item, Math.min(used + 1, available))} disabled={used >= available || available === 0 || submitting} aria-label={`Increase ${item?.name || "item"} quantity`}><Plus size={17} /></button>
+                      <span>{entryUnit}</span>
+                      <button type="button" onClick={() => updateQuantity(item, Math.min(used + 1, available / (pack ? pack.packSize : 1)))} disabled={usedBase >= available || available === 0 || submitting} aria-label={`Increase ${item?.name || "item"} quantity`}><Plus size={17} /></button>
                     </div>
                     )}
                   </div>
+                  {isSelected && packs.length > 0 && (
+                    <div className="kus-unit" role="group" aria-label={`Count ${item?.name || "item"} in`}>
+                      {packs.map((candidate) => <button type="button" key={candidate._id} className={pack?.packId === candidate._id ? "is-on" : ""} aria-pressed={pack?.packId === candidate._id} disabled={submitting} onClick={() => switchUnit(item, candidate._id)}>{candidate.name}</button>)}
+                      <button type="button" className={pack ? "" : "is-on"} aria-pressed={!pack} disabled={submitting} onClick={() => switchUnit(item, "base")}>{unit}</button>
+                      {pack && used > 0 && <em>= {displayNumber(usedBase)} {unit}</em>}
+                    </div>
+                  )}
                   <p id={`remaining-${id}`} className="kus-item__remaining">
-                    {isSelected ? <>Remaining after usage: <strong>{displayNumber(remaining)} {unit}</strong></> : available === 0 ? "This item is out of stock" : "Tap Add if you used this today"}
+                    {isSelected ? <>Remaining after usage: <strong>{formatStockQuantity(remaining, unit, item)}</strong>{packs.length > 0 && <> ({displayNumber(remaining)} {unit})</>}</> : available === 0 ? "This item is out of stock" : "Tap Add if you used this today"}
                   </p>
                 </article>
               );

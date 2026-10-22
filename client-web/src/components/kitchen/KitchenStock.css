@@ -59,6 +59,7 @@
 .ks-status--unavailable { color: var(--muted-2); background: rgba(255,255,255,.5); border-color: rgba(170,186,210,.4); }
 .ks-quantity { display: flex; flex: none; margin: 0; align-items: flex-end; flex-direction: column; color: var(--ink-2); text-align: right; }
 .ks-quantity strong { font-size: 17px; font-weight: 300; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.ks-quantity span { margin-top: 2px; color: var(--muted-2); font-size: 11.5px; font-weight: 300; font-variant-numeric: tabular-nums; }
 /* Key facts under the name: label on the left, value on the right, the expiry's "days left" in quiet italics. */
 .ks-facts { display: grid; gap: 7px; margin: 12px 0 0; padding: 12px 0 0; border-top: 1px solid rgba(170,186,210,.28); }
 .ks-facts > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: baseline; }

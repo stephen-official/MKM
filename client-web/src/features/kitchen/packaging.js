@@ -13,8 +13,8 @@ export const formatStockQuantity = (quantity, unit, item = {}) => {
   const pack = packs[0];
   const count = Math.floor((total + 1e-9) / numeric(pack.size));
   const remainder = Number((total - count * numeric(pack.size)).toFixed(3));
-  const packLabel = count === 1 ? pack.name : `${pack.name}s`;
-  return `${count.toLocaleString("en-IN")} ${packLabel}${remainder > 0 ? ` + ${remainder.toLocaleString("en-IN", { maximumFractionDigits: 3 })} ${unit}` : ""}`;
+  // "5 × 25 kg bag + 9 kg": the pack name usually carries its own size, so a count with × reads better than a plural.
+  return `${count.toLocaleString("en-IN")} × ${pack.name}${remainder > 0 ? ` + ${remainder.toLocaleString("en-IN", { maximumFractionDigits: 3 })} ${unit}` : ""}`;
 };
 
 export const withPackaging = (item, packId) => {

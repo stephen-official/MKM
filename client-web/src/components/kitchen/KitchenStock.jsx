@@ -1,7 +1,7 @@
 import { Boxes, PackagePlus, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import ProductRequestSheet from "./ProductRequestSheet";
-import { expiryStatus, formatStockQuantity, getStockHealth } from "../../features/kitchen";
+import { expiryStatus, formatStockQuantity, getStockHealth, productPacks } from "../../features/kitchen";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import "./KitchenStock.css";
 
@@ -163,7 +163,7 @@ export default function KitchenStock({
                         ? <span className="ks-status ks-status--unavailable">{item.archived ? "Discontinued" : "Unavailable"}</span>
                         : <span className={`ks-status ks-status--${health.tone}`}>{health.label}</span>}
                     </div>
-                    <p className="ks-quantity"><strong>{formatStockQuantity(health.quantity, unit, item)}</strong></p>
+                    <p className="ks-quantity"><strong>{formatStockQuantity(health.quantity, unit, item)}</strong>{productPacks(item).length > 0 && health.quantity > 0 && <span>{formatQuantity(health.quantity)} {unit}</span>}</p>
                   </div>
                   <dl className="ks-facts">
                     <div>
