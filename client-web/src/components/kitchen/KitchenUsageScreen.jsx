@@ -1,5 +1,5 @@
-import { AlertTriangle, Check, Minus, Plus, Search, Utensils, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertTriangle, ChevronUp, Minus, Plus, Search, Utensils, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import { expiryStatus, formatStockQuantity, needsAttention, productPacks, sortByExpiry, withPackaging } from "../../features/kitchen";
@@ -45,6 +45,20 @@ const packFor = (quantities, item) => {
 const defaultPackFor = (item) => [...productPacks(item)].sort((a, b) => Number(b.size) - Number(a.size))[0] || null;
 const packLabel = (pack, count) => (count === 1 ? pack.packName : `${pack.packName}s`);
 
+/** From 900px the ticket is a column beside the list; below that it lives in a bottom sheet behind the ticket bar. */
+const WIDE = "(min-width: 900px)";
+const useWide = () => {
+  const [wide, setWide] = useState(() => Boolean(window.matchMedia?.(WIDE).matches));
+  useEffect(() => {
+    const query = window.matchMedia?.(WIDE);
+    if (!query) return undefined;
+    const update = () => setWide(query.matches);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return wide;
+};
+
 export default function KitchenUsageScreen({
   items = [],
   loading = false,
@@ -60,6 +74,8 @@ export default function KitchenUsageScreen({
 }) {
   const [search, setSearch] = useState("");
   const [ticketOpen, setTicketOpen] = useState(true);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const wide = useWide();
   const [confirm, confirmDialog] = useConfirm();
   const quantitySource = cart ?? quantities;
   const today = toLocalDateKey();
@@ -132,10 +148,26 @@ export default function KitchenUsageScreen({
   const clearTicket = async () => {
     if (await confirm({ title: "Remove all items from the ticket?", message: "Nothing has been recorded yet.", confirmLabel: "Remove all", danger: true })) onClear?.();
   };
-  const showTicket = () => {
-    setTicketOpen(true);
-    document.getElementById("kitchen-ticket")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  // The sheet closes itself once the ticket is empty (after a successful "Record usage" the cart is cleared).
+  const rowCount = ticketRows.length;
+  const [seenCount, setSeenCount] = useState(rowCount);
+  if (seenCount !== rowCount) {
+    setSeenCount(rowCount);
+    if (rowCount === 0) setSheetOpen(false);
+  }
+  useEffect(() => {
+    if (!sheetOpen) return undefined;
+    const onKey = (event) => { if (event.key === "Escape") setSheetOpen(false); };
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKey);
+    return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", onKey); };
+  }, [sheetOpen]);
+
+  const ticket = <OrderTicket title="Usage ticket" rows={ticketRows} meta={[{ label: "Usage date", value: formatDateKey(selectedDate) }]}
+    emptyText="Tap “Add” on a supply below and it will be listed here." open={wide ? ticketOpen : true} onToggle={wide ? () => setTicketOpen((value) => !value) : undefined}
+    onChange={changeRow} onClear={onClear ? clearTicket : undefined}
+    onSubmit={onSubmit} submitLabel="Record usage" submitting={submitting} submitDisabled={!selectedDate} />;
 
   return (
     <main className="kus-screen">
@@ -150,9 +182,7 @@ export default function KitchenUsageScreen({
       </header>
 
       <div className="kus-layout">
-      <OrderTicket title="Usage ticket" rows={ticketRows} meta={[{ label: "Usage date", value: formatDateKey(selectedDate) }]}
-        emptyText="Tap “Add” on a supply below and it will be listed here." open={ticketOpen} onToggle={() => setTicketOpen((value) => !value)}
-        onChange={changeRow} onClear={onClear ? clearTicket : undefined} />
+      {wide && ticket}
       <div className="kus-main">
       <section className="kg-glass kus-controls" aria-label="Usage details">
         <label className="kus-date">
@@ -260,12 +290,26 @@ export default function KitchenUsageScreen({
       </div>
       </div>
 
-      <footer className="kus-review">
-        <button type="button" className="kus-review__count" onClick={showTicket} aria-label={`${ticketRows.length} ${ticketRows.length === 1 ? "item" : "items"} on the ticket. Show the ticket.`}><strong>{ticketRows.length}</strong><span>{ticketRows.length === 1 ? "item" : "items"} · view ticket</span></button>
-        <button type="button" onClick={onSubmit} disabled={!selectedDate || !ticketRows.length || submitting}>
-          {submitting ? "Saving…" : "Record usage"}<Check size={19} aria-hidden="true" />
+      {!wide && (
+        <button type="button" className="kus-bar" onClick={() => setSheetOpen(true)} aria-haspopup="dialog" aria-expanded={sheetOpen}
+          aria-label={`${rowCount} ${rowCount === 1 ? "item" : "items"} on the usage ticket. Open the ticket.`}>
+          <span className="kus-bar__count" aria-hidden="true">{rowCount}</span>
+          <span className="kus-bar__text" aria-hidden="true"><strong>Usage ticket</strong> · Review</span>
+          <ChevronUp size={20} aria-hidden="true" />
         </button>
-      </footer>
+      )}
+      {!wide && sheetOpen && (
+        <div className="kus-sheet" role="presentation">
+          <button type="button" className="kus-sheet__backdrop" onClick={() => setSheetOpen(false)} aria-label="Close the ticket" />
+          <section className="kus-sheet__panel" role="dialog" aria-modal="true" aria-label="Usage ticket">
+            <header className="kus-sheet__head">
+              <p className="kg-label">Record usage</p>
+              <button type="button" className="kg-chip kus-sheet__close" onClick={() => setSheetOpen(false)} aria-label="Close the ticket"><X size={18} /></button>
+            </header>
+            <div className="kus-sheet__body">{ticket}</div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }

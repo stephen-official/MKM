@@ -8,13 +8,14 @@ const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFract
  * request or usage entry is visible at once. Folds away on a phone; wide screens show it beside the list.
  * rows: [{ id, name, amount, unit, locked? }] in the order they were added. meta: [{ label, value }] shown under the title.
  */
-export default function OrderTicket({ title = "Order ticket", rows = [], meta = [], emptyText = "Tap “Add” on an item below and it will be listed here.", open = true, onToggle, onChange, onClear, clearLabel = "Remove all items" }) {
+export default function OrderTicket({ title = "Order ticket", rows = [], meta = [], emptyText = "Tap “Add” on an item below and it will be listed here.", open = true, onToggle, onChange, onClear, clearLabel = "Remove all items",
+  onSubmit, submitLabel = "Done", submittingLabel = "Saving…", submitting = false, submitDisabled = false }) {
   const count = rows.length;
+  const heading = <span><p>{title}</p><h2 id="kt-ticket-title">{count === 0 ? "Nothing added yet" : `${count} ${count === 1 ? "item" : "items"}`}</h2></span>;
   return <section className="kg-glass kt-ticket" id="kitchen-ticket" aria-labelledby="kt-ticket-title">
-    <button type="button" className="kt-ticket__head" onClick={onToggle} aria-expanded={open} aria-controls="kt-ticket-body">
-      <span><p>{title}</p><h2 id="kt-ticket-title">{count === 0 ? "Nothing added yet" : `${count} ${count === 1 ? "item" : "items"}`}</h2></span>
-      <ChevronDown size={20} className={open ? "is-open" : ""} aria-hidden="true" />
-    </button>
+    {onToggle
+      ? <button type="button" className="kt-ticket__head" onClick={onToggle} aria-expanded={open} aria-controls="kt-ticket-body">{heading}<ChevronDown size={20} className={open ? "is-open" : ""} aria-hidden="true" /></button>
+      : <div className="kt-ticket__head">{heading}</div>}
     {open && <div id="kt-ticket-body">
       {meta.filter((entry) => entry.value).map((entry) => <dl key={entry.label} className="kt-ticket__meta"><dt>{entry.label}</dt><dd>{entry.value}</dd></dl>)}
       {count === 0
@@ -30,6 +31,7 @@ export default function OrderTicket({ title = "Order ticket", rows = [], meta = 
             </div>
           </li>)}
         </ul>}
+      {onSubmit && <button type="button" className="kg-btn kt-ticket__submit" disabled={count === 0 || submitting || submitDisabled} onClick={onSubmit}>{submitting ? submittingLabel : submitLabel}</button>}
       {onClear && rows.some((row) => !row.locked) && <button type="button" className="kt-ticket__clear" onClick={onClear}>{clearLabel}</button>}
     </div>}
   </section>;

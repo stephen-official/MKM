@@ -339,7 +339,7 @@
   .kitchen-bottom-nav__item .kitchen-bottom-nav__icon-wrap:has(.kitchen-bottom-nav__badge) { flex: 1 1 auto; display: flex; justify-content: flex-start; gap: 12px; }
   .kitchen-bottom-nav__label { font-size: 14px; }
   .kitchen-bottom-nav__item--active::after { top: 50%; right: 14px; bottom: auto; left: auto; margin: -3px 0 0; }
-  .kitchen-builder-review, .ktb-submit, .kus-review, .kss-submit { left: 232px; bottom: 0; }
+  .kitchen-builder-review, .ktb-submit, .kss-submit { left: 232px; bottom: 0; }
   .kitchen-more { max-width: 900px !important; padding: 32px !important; }
   .kitchen-builder-review > div { width: min(100%, 1208px); max-width: 1208px !important; }
 }

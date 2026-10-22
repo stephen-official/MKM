@@ -14,7 +14,10 @@
 .kus-controls { display: grid; gap: 10px; margin-bottom: 18px; padding: 10px; }
 .kus-date { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 6px 0 14px; background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
 .kus-date > span:first-child { font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--muted-2); white-space: nowrap; }
-.kus-date input { max-width: 170px; border: 0; color: var(--ink-2); background: transparent; font: inherit; font-size: 13px; font-weight: 500; }
+.kus-date .df { width: auto; flex: 1; min-height: 32px; padding: 0 8px; color: var(--ink-2); background: transparent; border: 0; box-shadow: none; }
+.kus-date .df > svg { color: var(--blue); }
+.kus-date .df__text { font-size: 13px; font-weight: 500; white-space: nowrap; }
+.kus-date .df--disabled { color: var(--muted-2); }
 .kus-search { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 0 12px; color: var(--muted-2); background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
 .kus-search:focus-within { box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
 .kus-search input { width: 100%; min-height: 42px; border: 0; outline: 0; color: var(--ink-2); background: transparent; font: inherit; font-size: 14px; }
@@ -68,24 +71,33 @@
 .kus-state strong { color: var(--ink-2); font-weight: 500; }
 .kus-spinner { width: 24px; height: 24px; border: 3px solid rgba(170,186,210,.35); border-top-color: var(--blue); border-radius: 50%; animation: kus-spin .7s linear infinite; }
 
-/* Sticky footer: a glass bar with the count and the submit pill */
-.kus-review { position: fixed; z-index: 20; right: 0; bottom: 68px; left: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px max(16px, calc((100vw - 720px) / 2)); background: var(--nav-glass-bg); border-top: 1px solid var(--glass-border); box-shadow: 0 0 0 1px var(--glass-outline), 0 -8px 24px rgba(30,52,92,.07); -webkit-backdrop-filter: var(--nav-glass-blur); backdrop-filter: var(--nav-glass-blur); font-family: var(--font-kitchen); }
-.kus-review__count { display: flex; flex-direction: column; align-items: flex-start; border: 0; background: none; padding: 0; font: inherit; color: var(--ink-2); text-align: left; }
-.kus-review__count strong { font-size: 20px; font-weight: 300; line-height: 1; }
-.kus-review__count span { color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; margin-top: 3px; }
-.kus-review > button:last-child { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 42px; padding: 0 20px; border-radius: 999px; border: 1px solid var(--glass-border); background: var(--btn-glass-primary-bg); color: var(--blue-deep); font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; box-shadow: 0 0 0 1px var(--btn-glass-primary-line), inset 0 1px 0 #fff, 0 6px 16px rgba(63,108,176,.14); transition: transform var(--dur-glass) var(--ease-glass), box-shadow var(--dur-glass) var(--ease-glass); }
-.kus-review > button:last-child:hover:not(:disabled), .kus-review > button:last-child:focus-visible { transform: scale(.97); box-shadow: 0 0 0 1px var(--btn-glass-primary-line), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
-.kus-review > button:last-child:disabled { color: var(--muted-2); background: rgba(255,255,255,.5); box-shadow: 0 0 0 1px rgba(170,186,210,.3), inset 0 1px 0 #fff; cursor: default; }
+/* Phone: the ticket bar floats above the tabs (count badge · "Usage ticket · Review"); tapping it lifts the ticket in a sheet.
+   From 900px (see .kus-layout) the ticket is a column beside the list and carries the Record usage button itself. */
+.kus-bar { position: fixed; z-index: 20; right: 16px; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); left: 16px; display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 8px 16px 8px 9px; color: var(--ink-2); background: var(--nav-glass-bg); border: 1px solid var(--glass-border); border-radius: 22px; box-shadow: 0 0 0 1px var(--glass-outline), inset 0 1px 0 #fff, 0 12px 30px rgba(30,52,92,.16); -webkit-backdrop-filter: var(--nav-glass-blur); backdrop-filter: var(--nav-glass-blur); font-family: var(--font-kitchen); text-align: left; transition: transform var(--dur-glass) var(--ease-glass); }
+.kus-bar:active { transform: scale(.98); }
+.kus-bar__count { display: grid; flex: none; width: 40px; height: 40px; place-items: center; color: #fff; background: var(--blue); border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,255,255,.85); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.kus-bar__text { flex: 1; min-width: 0; overflow: hidden; color: var(--muted-2); font-size: 12px; font-weight: 500; letter-spacing: .08em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.kus-bar__text strong { color: var(--ink-2); font-weight: 600; }
+.kus-bar > svg { flex: none; color: var(--blue-deep); }
+.kus-sheet { position: fixed; z-index: 110; inset: 0; font-family: var(--font-kitchen); }
+.kus-sheet__backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(28,42,67,.35); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.kus-sheet__panel { position: absolute; right: 0; bottom: 0; left: 0; display: flex; max-height: 92dvh; flex-direction: column; padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); background: linear-gradient(160deg, rgba(255,255,255,.97), rgba(241,244,248,.97)); border-top: 1px solid var(--glass-border); border-radius: var(--radius-glass) var(--radius-glass) 0 0; box-shadow: inset 0 1px 0 #fff, 0 -20px 50px rgba(30,52,92,.18); animation: kus-rise var(--dur-glass) var(--ease-glass); }
+.kus-sheet__head { display: flex; flex: none; align-items: center; justify-content: space-between; padding: 14px 18px 8px; }
+.kus-sheet__close { width: 40px; height: 40px; padding: 0; border-radius: 50%; }
+.kus-sheet__body { overflow-y: auto; overscroll-behavior: contain; padding: 4px 12px 8px; }
+@keyframes kus-rise { from { transform: translateY(24px); opacity: 0; } }
 
 .kus-layout { display: grid; gap: 18px; }
 .kus-main { min-width: 0; }
 .kus-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 .kus-screen button:focus-visible, .kus-screen input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+/* Room under the list for the ticket bar on top of the tabs. */
+@media (max-width: 899px) { .kus-screen { padding-bottom: calc(var(--page-bottom-space) + 64px); } }
 .kus-stepper button:focus-visible, .kus-unit button:focus-visible { outline: none; background: var(--blue-soft); }
 @keyframes kus-spin { to { transform: rotate(360deg); } }
 
-@media (min-width: 700px) { .kus-screen { max-width: 760px; margin: auto; padding-right: 24px; padding-left: 24px; } .kus-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kus-review { right: 50%; left: 50%; width: 760px; max-width: 100%; padding-right: 24px; padding-left: 24px; transform: translateX(-50%); } }
+@media (min-width: 700px) { .kus-screen { max-width: 760px; margin: auto; padding-right: 24px; padding-left: 24px; } .kus-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kus-bar { right: 50%; left: 50%; width: 712px; max-width: calc(100% - 48px); transform: translateX(-50%); } .kus-bar:active { transform: translateX(-50%) scale(.98); } }
 @media (min-width: 900px) { .kus-layout { align-items: start; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; } .kus-layout .kt-ticket { order: 2; position: sticky; top: 16px; } }
-@media (prefers-reduced-motion: reduce) { .kus-spinner { animation: none; } .kus-review > button:last-child { transition: none; } }
-@media (max-width: 420px) { .kus-item__entry { align-items: flex-start; flex-direction: column; } .kus-stepper { width: 100%; } .kus-stepper input { flex: 1; } .kus-item__remaining { text-align: left; } .kus-review { gap: 8px; } .kus-review > button:last-child { padding: 0 14px; } }
-@media (min-width: 1024px) { .kus-screen { max-width: 1240px; padding: 34px 28px 96px; } .kus-controls { grid-template-columns: minmax(240px, .7fr) minmax(320px, 1.3fr); } .kus-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; } .kus-item { padding: 18px; } .kus-review { right: 0; left: 232px; width: auto; max-width: none; padding: 12px max(28px, calc((100vw - 232px - 1240px) / 2 + 28px)); transform: none; border-top: 0; border-radius: var(--radius-glass) var(--radius-glass) 0 0; margin-left: 28px; margin-right: 28px; right: 0; left: 232px; } }
+@media (prefers-reduced-motion: reduce) { .kus-spinner { animation: none; } .kus-bar { transition: none; } .kus-sheet__panel { animation: none; } }
+@media (max-width: 420px) { .kus-item__entry { align-items: flex-start; flex-direction: column; } .kus-stepper { width: 100%; } .kus-stepper input { flex: 1; } .kus-item__remaining { text-align: left; } }
+@media (min-width: 1024px) { .kus-screen { max-width: 1240px; padding: 34px 28px 56px; } .kus-controls { grid-template-columns: auto minmax(320px, 1fr); } .kus-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; } .kus-item { padding: 18px; } }

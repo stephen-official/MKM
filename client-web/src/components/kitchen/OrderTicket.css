@@ -5,6 +5,7 @@
 .kt-ticket__head p { color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; margin: 0 0 2px; text-transform: uppercase; }
 .kt-ticket__head h2 { font-size: 18px; font-weight: 300; letter-spacing: -.01em; margin: 0; }
 .kt-ticket__head svg { color: var(--muted-2); flex: none; transition: transform .15s; }
+div.kt-ticket__head { cursor: default; }
 .kt-ticket__head svg.is-open { transform: rotate(180deg); }
 .kt-ticket__meta { border-bottom: 1px solid rgba(170,186,210,.28); display: flex; font-size: 12.5px; justify-content: space-between; margin: 0; padding: 10px 0; }
 .kt-ticket__meta dt { color: var(--muted-2); font-weight: 300; }
@@ -23,6 +24,9 @@
 .kt-ticket__stepper button:first-child:not(:disabled) { color: var(--st-expired-fg); }
 .kt-ticket__stepper button:disabled { color: rgba(85,100,125,.4); cursor: default; }
 .kt-ticket__stepper b { font-size: 15px; font-weight: 400; min-width: 34px; text-align: center; font-variant-numeric: tabular-nums; }
+/* The screen's main action can sit inside the ticket (full-width pill), like "Place order" on a kiosk receipt. */
+.kt-ticket__submit { width: 100%; height: 46px; margin-top: 14px; }
+.kt-ticket__submit:disabled { color: var(--muted-2); background: rgba(255,255,255,.5); box-shadow: 0 0 0 1px rgba(170,186,210,.3), inset 0 1px 0 #fff; opacity: 1; }
 .kt-ticket__clear { background: none; border: 0; color: var(--st-expired-fg); display: block; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; margin: 8px auto 0; min-height: 40px; padding: 0 10px; cursor: pointer; }
 .kt-ticket__clear:focus-visible, .kt-ticket__head:focus-visible, .kt-ticket__stepper button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 /* "Add" on an item card, before it has a quantity: the glass primary pill. */
