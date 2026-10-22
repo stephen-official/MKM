@@ -2,7 +2,7 @@ import { AlertTriangle, Check, ChevronUp, Plus, Search, Utensils, X } from "luci
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
-import { expiryStatus, formatStockQuantity, productPacks, sortByExpiry, withPackaging } from "../../features/kitchen";
+import { expiryStatus, formatStockQuantity, getStockHealth, productPacks, sortByExpiry, withPackaging } from "../../features/kitchen";
 import DateField from "../ui/DateField";
 import { useConfirm } from "../ui/ConfirmDialog";
 import OrderTicket from "./OrderTicket";
@@ -256,13 +256,15 @@ export default function KitchenUsageScreen({
               const remaining = Math.max(available - usedBase, 0);
               const isSelected = used > 0;
               const expiry = expiryStatus(item, today);
+              const health = getStockHealth(item);
               const entryUnit = pack ? packLabel(pack, used || 1) : unit;
               const begun = isSelected || Boolean(started[id]);
               const chosenUnit = isSelected ? (pack ? pack.packId : "base") : started[id]?.unit ?? null;
               const unitChosen = chosenUnit !== null;
               const confirmed = Boolean(started[id]?.done) && isSelected;
               const image = item?.image && item.image !== "null" ? item.image : "";
-              const tone = expiry.key === "expired" ? " kus-item--expired" : expiry.key === "soon" ? " kus-item--soon" : "";
+              // Card tint, most pressing first: nothing left, expired, expiring soon, running low (same colours as Stock).
+              const tone = health.key === "out" ? " kus-item--out" : expiry.key === "expired" ? " kus-item--expired" : expiry.key === "soon" ? " kus-item--soon" : health.key === "low" ? " kus-item--low" : "";
 
               return (
                 <article className={`kg-glass kg-lift kus-item${isSelected ? " kus-item--selected" : ""}${tone}`} key={id}>
@@ -270,7 +272,11 @@ export default function KitchenUsageScreen({
                     {image ? <img src={image} alt="" loading="lazy" decoding="async" /> : <span>{initialOf(item?.name || "?")}</span>}
                   </div>
                   <div className="kus-item__body">
-                    <h3>{item?.name || "Unnamed supply"}</h3>
+                    <div className="kus-item__head">
+                      <h3>{item?.name || "Unnamed supply"}</h3>
+                      {health.key === "out" && <span className="kg-pill kg-pill--expired">Out of stock</span>}
+                      {health.key === "low" && <span className="kg-pill kg-pill--low">Low stock</span>}
+                    </div>
                     <dl className="kus-facts">
                       <div>
                         <dt>Available</dt>

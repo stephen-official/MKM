@@ -35,13 +35,18 @@
 .kus-item--selected { background: var(--tint-cool); }
 .kus-item--soon { background: var(--tint-warm); }
 .kus-item--expired { background: var(--tint-rose); }
+/* Stock level, same colours as Stock: nothing left = rose, running low = warm. */
+.kus-item--out { background: var(--tint-rose); }
+.kus-item--low { background: var(--tint-warm); }
 .kus-item__media { display: grid; flex: none; width: 100%; height: 150px; place-items: center; overflow: hidden; color: #4a5c7a; background: linear-gradient(160deg, rgba(255,255,255,.7), rgba(228,237,249,.55)); border-bottom: 1px solid rgba(170,186,210,.28); font-size: 44px; font-weight: 300; }
 .kus-item__media.has-image { background: #fff; }
 .kus-item__media img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.kus-item--soon .kus-item__media:not(.has-image) { color: var(--st-soon-fg); background: linear-gradient(160deg, rgba(255,255,255,.65), rgba(253,245,230,.7)); border-color: var(--st-soon-line); }
-.kus-item--expired .kus-item__media:not(.has-image) { color: var(--st-expired-fg); background: linear-gradient(160deg, rgba(255,255,255,.65), rgba(252,239,237,.7)); border-color: var(--st-expired-line); }
+.kus-item--soon .kus-item__media:not(.has-image), .kus-item--low .kus-item__media:not(.has-image) { color: var(--st-soon-fg); background: linear-gradient(160deg, rgba(255,255,255,.65), rgba(253,245,230,.7)); border-color: var(--st-soon-line); }
+.kus-item--expired .kus-item__media:not(.has-image), .kus-item--out .kus-item__media:not(.has-image) { color: var(--st-expired-fg); background: linear-gradient(160deg, rgba(255,255,255,.65), rgba(252,239,237,.7)); border-color: var(--st-expired-line); }
 .kus-item__body { display: flex; flex: 1; min-width: 0; flex-direction: column; padding: 14px 16px 16px; }
-.kus-item h3 { margin: 2px 0 0; font-size: 14.5px; font-weight: 500; line-height: 1.25; }
+.kus-item__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kus-item__head .kg-pill { flex: none; height: 24px; padding: 0 9px; font-size: 11px; }
+.kus-item h3 { min-width: 0; margin: 2px 0 0; font-size: 14.5px; font-weight: 500; line-height: 1.25; }
 /* margin-bottom: auto parks the entry at the foot of the card, so every "Add" in a row sits on the same line. */
 .kus-facts { display: grid; gap: 7px; margin: 12px 0 auto; padding: 12px 0 0; border-top: 1px solid rgba(170,186,210,.28); }
 .kus-facts > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: baseline; }
