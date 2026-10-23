@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, ArrowRight, ArrowUpRight, CalendarDays, CalendarOff, CheckCircle2, ChevronDown, Truck } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowRight, ArrowUpRight, CalendarDays, CalendarOff, CheckCircle2, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { toLocalDateKey, localDateFromKey } from "../../utils/date";
 import { expiryStatus, itemsToUseFirst } from "../../features/kitchen";
@@ -45,7 +45,20 @@ const LONG_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
 const LONG_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const longDate = (dateKey) => {
   const date = localDateFromKey(dateKey);
-  return date ? `${LONG_DAYS[date.getDay()]}, ${date.getDate()} ${LONG_MONTHS[date.getMonth()]}` : "";
+  return date ? `${LONG_DAYS[date.getDay()]} ${date.getDate()} ${LONG_MONTHS[date.getMonth()]}` : "";
+};
+/** "Today", "Yesterday", "2 days ago", "3 days ago" for recent dates; nothing for older ones. */
+const relativeDay = (dateKey, today) => {
+  const date = localDateFromKey(dateKey);
+  const now = localDateFromKey(today);
+  if (!date || !now) return "";
+  const days = Math.round((now - date) / 86_400_000);
+  return days === 0 ? "Today" : days === 1 ? "Yesterday" : days === 2 || days === 3 ? `${days} days ago` : "";
+};
+/** The date line: the relative word in quieter text, then the full date ("Today, Saturday 24 October"). */
+const DayLine = ({ dateKey, today, suffix = "" }) => {
+  const when = relativeDay(dateKey, today);
+  return <>{when && <em className="kh-when">{when}, </em>}{longDate(dateKey)}{suffix}</>;
 };
 
 const REASONS = [["closed", "Closed"], ["holiday", "Holiday"], ["other", "Other"]];
@@ -155,12 +168,11 @@ export default function KitchenHome({
         {canRecordUsage && <div className={`kg-glass kg-lift kh-day${usageComplete || todayNone ? "" : " kg-glass--warm"}`}>
           <span className="kg-orb kh-day__icon" aria-hidden="true">{usageComplete ? <CheckCircle2 size={20} strokeWidth={1.6} /> : todayNone ? <CalendarOff size={20} strokeWidth={1.6} /> : <CalendarDays size={20} strokeWidth={1.6} />}</span>
           <div className="kh-day__text">
-            <p className="kg-label">{longDate(today)}{usageComplete ? ` · ${entryCount} ${entryCount === 1 ? "entry" : "entries"}` : todayNone ? ` · ${REASON_LABEL[todayRow.reason] || "No usage"}` : ""}</p>
-            <h2>{usageComplete ? "Today’s usage is recorded" : todayNone ? "No usage today" : "Today’s usage is not recorded yet"}</h2>
+            <p className="kh-day__date"><DayLine dateKey={today} today={today} suffix={usageComplete ? ` · ${entryCount} ${entryCount === 1 ? "entry" : "entries"} recorded` : todayNone ? ` · No usage (${REASON_LABEL[todayRow.reason] || "other"})` : ""} /></p>
           </div>
           <div className="kh-day__actions">
             <button type="button" className="kg-btn" onClick={onRecordUsage}>
-              {usageComplete ? "Add more" : todayNone ? "Record anyway" : "Record usage"}<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" />
+              {usageComplete ? "Add more" : todayNone ? "Record anyway" : "Record"}<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" />
             </button>
             {todayNone && onUndoNoUsage && <button type="button" className="kg-chip" onClick={() => onUndoNoUsage(today)}>Undo</button>}
           </div>
@@ -174,7 +186,7 @@ export default function KitchenHome({
             {missedOpen && <ul id="kh-missed-list" className="kh-missed__list">
               {missedDays.map((day) => <li key={day.date}>
                 <div className="kh-missed__row">
-                  <span className="kh-missed__date">{longDate(day.date)}</span>
+                  <span className="kh-missed__date"><DayLine dateKey={day.date} today={today} /></span>
                   <button type="button" className="kg-btn" onClick={() => onRecordUsageOn?.(day.date)}>Record</button>
                 </div>
               </li>)}
@@ -201,7 +213,7 @@ export default function KitchenHome({
                     hint={expired ? "Check before using" : "Use within the week"} tone={expired ? "expired" : "soon"} status={expiry.label}
                     qty={qtyText(expiry.qtyBaseUnit, item)} onClick={onRecordUsage} />;
                 })}
-                <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onRecordUsage}>Record usage</button></div>
+                <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onRecordUsage}>Record</button></div>
               </Group>}
 
               <Group id="running-low" title="Running low" attention={attentionItems.length > 0}
@@ -225,16 +237,7 @@ export default function KitchenHome({
           <Section id="incoming" label="Requests" title="Incoming orders" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0}
             summary={toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} arriving</span> : <span className="kh-count">{inProgressOrders.length}</span>}
             open={isOpen("incoming")} onToggle={() => toggle("incoming")}>
-            {toReceive > 0 && <button type="button" className="kg-row kh-delivery" onClick={onRequestSupplies}>
-              <div className="kh-delivery__who">
-                <span className="kg-orb" aria-hidden="true"><Truck size={19} strokeWidth={1.6} /></span>
-                <span className="kh-row__text">
-                  <strong>From the central store</strong>
-                  <small>{`${toReceive} ${toReceive === 1 ? "delivery has" : "deliveries have"} arrived · check the items and confirm`}</small>
-                </span>
-              </div>
-            </button>}
-            {inProgressOrders.length === 0 && toReceive === 0 && <Row name="No open requests" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
+            {inProgressOrders.length === 0 && <Row name="No open requests" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
             {inProgressOrders.slice(0, 3).map((order) => (
               <button type="button" key={order._id} className="kg-row kh-order" onClick={onRequestSupplies}>
                 <span className="kh-order__head">
