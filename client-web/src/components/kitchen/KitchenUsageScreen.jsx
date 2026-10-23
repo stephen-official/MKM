@@ -6,6 +6,7 @@ import { expiryStatus, formatStockQuantity, getStockHealth, productPacks, sortBy
 import DateField from "../ui/DateField";
 import { useConfirm } from "../ui/ConfirmDialog";
 import OrderTicket from "./OrderTicket";
+import { useWide } from "./useWide";
 import "./KitchenUsageScreen.css";
 
 const itemId = (item) => item?.stockRecordId || item?._id || item?.stockItemId?._id || item?.stockItemId;
@@ -69,19 +70,6 @@ const filterKeysOf = (item, today) => {
   return keys;
 };
 
-/** From 900px the ticket is a column beside the list; below that it lives in a bottom sheet behind the ticket bar. */
-const WIDE = "(min-width: 900px)";
-const useWide = () => {
-  const [wide, setWide] = useState(() => Boolean(window.matchMedia?.(WIDE).matches));
-  useEffect(() => {
-    const query = window.matchMedia?.(WIDE);
-    if (!query) return undefined;
-    const update = () => setWide(query.matches);
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return wide;
-};
 
 export default function KitchenUsageScreen({
   items = [],

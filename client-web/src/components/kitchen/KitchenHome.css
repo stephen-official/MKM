@@ -45,6 +45,11 @@
 .kh-card__body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 10px; }
 .kh-card__foot { display: flex; justify-content: flex-end; padding-top: 4px; }
 .kh-card__head--static { min-height: 54px; cursor: default; }
+/* Desktop tiles: the whole card opens its page (hover rim from kg-lift, arrow in the corner). */
+.kh-card--link, .kh-card--link .kh-card__head--static { cursor: pointer; }
+.kh-card--link:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.kh-card--link .kh-card__head > svg:last-child { flex: none; color: var(--blue-deep); }
+.kh-group--static .kh-group__head { cursor: inherit; }
 /* Dropdown rows inside a section (Stock: Use first, Running low). */
 .kh-group { background: rgba(255,255,255,.5); border: 1px solid var(--glass-border); border-radius: var(--radius-row); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
 .kh-group__head { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 54px; padding: 8px 14px; border: 0; background: none; text-align: left; }
