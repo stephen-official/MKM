@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, CalendarDays, CalendarOff, CheckCircle2, ChevronDown, Truck } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowRight, CalendarDays, CalendarOff, CheckCircle2, ChevronDown, Truck } from "lucide-react";
 import { useState } from "react";
 import { toLocalDateKey, localDateFromKey } from "../../utils/date";
 import { expiryStatus, itemsToUseFirst } from "../../features/kitchen";
@@ -97,6 +97,22 @@ const Row = ({ name, hint, tone, status, qty, onClick }) => (
 );
 
 /**
+ * A collapsible section: the header (one tap target) carries the name, a count or pill, an exclamation mark when it
+ * needs attention, and the chevron. Everything starts closed so the page stays short; the header says what is inside.
+ */
+const Section = ({ id, label, title, summary, attention = false, tint = "", open, onToggle, children }) => (
+  <section className={`kg-glass kh-card${tint}${open ? " is-open" : ""}`} aria-labelledby={`${id}-title`}>
+    <button type="button" className="kh-card__head" onClick={onToggle} aria-expanded={open} aria-controls={`${id}-body`}>
+      <span className="kh-card__text"><span className="kg-label">{label}</span><span className="kh-card__title" id={`${id}-title`}>{title}</span></span>
+      {summary && <span className="kh-card__summary">{summary}</span>}
+      {attention && <span className="kh-card__alert" role="img" aria-label="Needs attention"><AlertCircle size={20} strokeWidth={1.9} /></span>}
+      <ChevronDown size={20} className={open ? "is-open" : ""} aria-hidden="true" />
+    </button>
+    {open && <div id={`${id}-body`} className="kh-card__body">{children}</div>}
+  </section>
+);
+
+/**
  * Landing screen for a school kitchen: what to use first, what is running low, what is on its way.
  * All collections are optional, allowing the parent to render while data loads.
  */
@@ -124,6 +140,9 @@ export default function KitchenHome({
   const today = toLocalDateKey();
   const [picking, setPicking] = useState(null); // the date whose "no usage" reason is being chosen
   const [missedOpen, setMissedOpen] = useState(false);
+  const [openSections, setOpenSections] = useState({});
+  const isOpen = (key) => Boolean(openSections[key]);
+  const toggle = (key) => setOpenSections((previous) => ({ ...previous, [key]: !previous[key] }));
   const godownId = userInfo?.godown?._id;
 
   const outOfStock = items.filter((item) => asNumber(item.currentQty ?? item.quantity ?? item.kitchenQty) <= 0);
@@ -183,10 +202,6 @@ export default function KitchenHome({
           </div>
           {picking === today && <NoUsagePicker date={today} onConfirm={confirmNoUsage} onCancel={() => setPicking(null)} />}
         </div>}
-        {canRecordUsage && expiredCount > 0 && <button type="button" className="kg-glass kg-glass--rose kg-lift kh-tile" onClick={onRecordUsage} aria-label={`${expiredCount} expired ${expiredCount === 1 ? "item" : "items"}. Check before using.`}>
-          <span className="kg-orb kh-tile__icon" aria-hidden="true"><AlertTriangle size={20} strokeWidth={1.7} /></span>
-          <span><span className="kg-label">Check before using</span><strong>{expiredCount} expired</strong></span>
-        </button>}
       </section>
 
       {/* Days in the last month with neither usage nor a "no usage" mark: loud on purpose, so a forgotten day gets fixed. */}
@@ -210,11 +225,9 @@ export default function KitchenHome({
 
       <div className="kh-cols">
         <div className="kh-col">
-          {canRecordUsage && <section className={`kg-glass kg-lift kh-card${useFirstTint}`} aria-labelledby="use-first-title">
-            <header className="kh-card__head">
-              <div><p className="kg-label">Today’s work</p><h2 id="use-first-title">Use first</h2></div>
-              <button type="button" className="kg-chip" onClick={onRecordUsage}>Record usage</button>
-            </header>
+          {canRecordUsage && <Section id="use-first" label="Today’s work" title="Use first" tint={useFirstTint} attention={useFirst.length > 0}
+            summary={expiredCount > 0 ? <span className="kg-pill kg-pill--expired">{expiredCount} expired</span> : `${useFirst.length} ${useFirst.length === 1 ? "item" : "items"}`}
+            open={isOpen("use-first")} onToggle={() => toggle("use-first")}>
             {useFirst.length === 0 && <Row name="Nothing expiring this week" hint="Every dated item has more than 7 days left" tone="routine" status="In date" onClick={onViewStock} />}
             {useFirst.slice(0, 3).map((item, index) => {
               const expiry = expiryStatus(item, today);
@@ -223,13 +236,12 @@ export default function KitchenHome({
                 hint={expired ? "Check before using" : "Use within the week"} tone={expired ? "expired" : "soon"} status={expiry.label}
                 qty={qtyText(expiry.qtyBaseUnit, item)} onClick={onRecordUsage} />;
             })}
-          </section>}
+            <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onRecordUsage}>Record usage</button></div>
+          </Section>}
 
-          <section className={`kg-glass kg-lift kh-card${lowTint}`} aria-labelledby="running-low-title">
-            <header className="kh-card__head">
-              <div><p className="kg-label">Stock</p><h2 id="running-low-title">Running low</h2></div>
-              <button type="button" className="kg-chip" onClick={onViewStock}>View all</button>
-            </header>
+          <Section id="running-low" label="Stock" title="Running low" tint={lowTint} attention={attentionItems.length > 0}
+            summary={outOfStock.length > 0 ? <span className="kg-pill kg-pill--expired">{outOfStock.length} out of stock</span> : lowStock.length > 0 ? <span className="kg-pill kg-pill--low">{lowStock.length} low</span> : "All fine"}
+            open={isOpen("running-low")} onToggle={() => toggle("running-low")}>
             {attentionItems.length === 0 && <Row name="All stock above its low level" hint={`${items.filter((item) => item.available !== false).length} items you can use`} tone="routine" status="Fine" onClick={onViewStock} />}
             {attentionItems.slice(0, 3).map((item, index) => {
               const quantity = asNumber(item.currentQty ?? item.quantity ?? item.kitchenQty);
@@ -238,15 +250,13 @@ export default function KitchenHome({
                 hint={out ? "Ask for supplies now" : "Ask for supplies soon"} tone={out ? "expired" : "low"} status={out ? "Out of stock" : "Low stock"}
                 qty={qtyText(quantity, item)} onClick={onViewStock} />;
             })}
-          </section>
+            <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onViewStock}>View all</button></div>
+          </Section>
         </div>
 
         {canUseRequests && <div className="kh-col kh-col--side">
-          <section className={`kg-glass kg-lift kh-card${toReceive > 0 ? " kg-glass--cool" : ""}`} aria-labelledby="deliveries-title">
-            <header className="kh-card__head kh-card__head--count">
-              <div><p className="kg-label">On its way</p><h2 id="deliveries-title">Deliveries to receive</h2></div>
-              <span className="kh-count" aria-hidden="true">{toReceive}</span>
-            </header>
+          <Section id="deliveries" label="On its way" title="Deliveries to receive" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0}
+            summary={<span className="kh-count">{toReceive}</span>} open={isOpen("deliveries")} onToggle={() => toggle("deliveries")}>
             <div className="kg-row kh-delivery">
               <div className="kh-delivery__who">
                 <span className="kg-orb" aria-hidden="true"><Truck size={19} strokeWidth={1.6} /></span>
@@ -257,13 +267,10 @@ export default function KitchenHome({
               </div>
               {toReceive > 0 && <button type="button" className="kg-btn kh-delivery__go" onClick={onReceiveDelivery}>Receive items</button>}
             </div>
-          </section>
+          </Section>
 
-          <section className="kg-glass kg-lift kh-card" aria-labelledby="in-progress-title">
-            <header className="kh-card__head">
-              <div><p className="kg-label">Requests</p><h2 id="in-progress-title">In progress</h2></div>
-              <button type="button" className="kg-chip" onClick={onRequestSupplies}>Ask for supplies</button>
-            </header>
+          <Section id="in-progress" label="Requests" title="In progress" summary={<span className="kh-count">{inProgressCount}</span>}
+            open={isOpen("in-progress")} onToggle={() => toggle("in-progress")}>
             {inProgressCount === 0 && <Row name="No open requests" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
             {inProgressOrders.slice(0, 2).map((order) => (
               <button type="button" key={order._id} className="kg-row kh-order" onClick={onRequestSupplies}>
@@ -280,7 +287,8 @@ export default function KitchenHome({
               </button>
             ))}
             {pendingRequests.length > 0 && <Row name={`${pendingRequests.length} older ${pendingRequests.length === 1 ? "request" : "requests"}`} hint="Sent before shared orders" tone="routine" status="Open" onClick={onRequestSupplies} />}
-          </section>
+            <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onRequestSupplies}>Ask for supplies</button></div>
+          </Section>
         </div>}
       </div>
     </main>

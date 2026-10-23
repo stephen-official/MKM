@@ -6,8 +6,8 @@
 
 /* Today row */
 /* Both rows share one column template (--kh-cols), so the day card lines up with the left column and the tile with the right. */
-.kh-top, .kh-cols { display: grid; grid-template-columns: var(--kh-cols); gap: 22px; align-items: start; }
-.kh-top { align-items: stretch; }
+.kh-cols { display: grid; grid-template-columns: var(--kh-cols); gap: 22px; align-items: start; }
+.kh-top { display: grid; }
 .kh-day { padding: 16px 18px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
 .kh-day:only-child, .kh-col:only-child { grid-column: 1 / -1; }
 .kh-day__icon { width: 42px; height: 42px; }
@@ -38,17 +38,20 @@
 .kh-missed__date { flex: 1 1 160px; font-size: 14.5px; font-weight: 500; }
 .kh-missed__row .kg-btn { height: 38px; padding: 0 16px; }
 .kh-missed .kh-nouse { padding-top: 10px; }
-.kh-tile { padding: 14px 18px; min-height: 74px; display: flex; align-items: center; gap: 14px; text-align: left; }
-.kh-tile__icon { color: var(--st-expired-fg); border-color: var(--st-expired-line); }
-.kh-tile > span:last-child { display: grid; gap: 2px; }
-.kh-tile .kg-label { color: var(--st-expired-fg); opacity: .85; }
-.kh-tile strong { font-size: 20px; font-weight: 300; color: var(--st-expired-fg); line-height: 1.15; }
 
 /* Two columns */
 .kh-col { min-width: 0; display: flex; flex-direction: column; gap: 22px; }
-.kh-card { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
-.kh-card__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 12px; padding: 0 4px 6px; min-height: 52px; }
-.kh-card__head > div { flex: 1 1 150px; min-width: 0; }
+/* Collapsible sections: the whole header is the tap target; the body appears under it. */
+.kh-card { padding: 6px 8px; display: flex; flex-direction: column; }
+.kh-card__head { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 62px; padding: 8px 10px; background: none; border: 0; text-align: left; }
+.kh-card__text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.kh-card__title { font-size: 18px; font-weight: 300; letter-spacing: -.01em; line-height: 1.2; }
+.kh-card__summary { flex: none; color: var(--muted-2); font-size: 12.5px; }
+.kh-card__alert { flex: none; display: grid; place-items: center; color: var(--st-expired-fg); }
+.kh-card__head > svg:last-child { flex: none; color: var(--muted-2); transition: transform .15s; }
+.kh-card__head > svg.is-open { transform: rotate(180deg); }
+.kh-card__body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 10px; }
+.kh-card__foot { display: flex; justify-content: flex-end; padding-top: 4px; }
 .kh-count { font-size: 22px; font-weight: 300; color: var(--blue); line-height: 1; font-variant-numeric: tabular-nums; padding-right: 2px; }
 
 /* Rows: text | pill (fixed column so every pill starts at the same edge) | quantity */
@@ -89,5 +92,5 @@
 @media (min-width: 1024px) {
   .kh-shell { padding: 34px 28px 56px; gap: 28px; }
   .kh-top, .kh-cols, .kh-col { gap: 28px; }
-  .kh-card { padding: 18px; }
+  .kh-card { padding: 8px 10px; }
 }
