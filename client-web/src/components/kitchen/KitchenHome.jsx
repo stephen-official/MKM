@@ -55,10 +55,10 @@ const relativeDay = (dateKey, today) => {
   const days = Math.round((now - date) / 86_400_000);
   return days === 0 ? "Today" : days === 1 ? "Yesterday" : days === 2 || days === 3 ? `${days} days ago` : "";
 };
-/** The date line: the relative word in quieter text, then the full date ("Today, Saturday 24 October"). */
+/** The date line: the relative word in bold, then the full date in light italics ("Today, Saturday 24 October"). */
 const DayLine = ({ dateKey, today, suffix = "" }) => {
   const when = relativeDay(dateKey, today);
-  return <>{when && <em className="kh-when">{when}, </em>}{longDate(dateKey)}{suffix}</>;
+  return <>{when && <strong className="kh-when">{when}, </strong>}<em className="kh-date">{longDate(dateKey)}</em>{suffix}</>;
 };
 
 const REASONS = [["closed", "Closed"], ["holiday", "Holiday"], ["other", "Other"]];

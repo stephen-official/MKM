@@ -260,7 +260,7 @@ export default function KitchenUsageScreen({
   const ticket = <OrderTicket title="Usage ticket" rows={ticketRows} meta={[{ label: "Usage date", value: formatDateKey(selectedDate) }]}
     emptyText="Tap “Add” on a supply below and it will be listed here." open={wide ? ticketOpen : true} onToggle={wide ? () => setTicketOpen((value) => !value) : undefined}
     onChange={changeRow} onClear={onClear ? clearTicket : undefined}
-    onSubmit={onSubmit} submitLabel="Record usage" submitting={submitting} submitDisabled={!selectedDate} />;
+    onSubmit={onSubmit} submitLabel="Record" submitting={submitting} submitDisabled={!selectedDate} />;
 
   const ticketPanel = noUsage ? noUsageTicket : ticket;
 
@@ -271,7 +271,7 @@ export default function KitchenUsageScreen({
         <span className="kus-intro__icon" aria-hidden="true"><Utensils size={23} /></span>
         <div>
           <p>Daily stock update</p>
-          <h1>Record usage</h1>
+          <h1>Record</h1>
           <span>Enter the supplies used by your kitchen.</span>
         </div>
       </header>
@@ -461,7 +461,7 @@ export default function KitchenUsageScreen({
           <button type="button" className="kus-sheet__backdrop" onClick={closeSheet} aria-label="Close the ticket" />
           <section className="kus-sheet__panel" role="dialog" aria-modal="true" aria-label="Usage ticket">
             <header className="kus-sheet__head">
-              <p className="kg-label">Record usage</p>
+              <p className="kg-label">Record</p>
               <button type="button" className="kg-chip kus-sheet__close" onClick={closeSheet} aria-label="Close the ticket"><X size={18} /></button>
             </header>
             <div className="kus-sheet__body">{ticketPanel}</div>

@@ -797,7 +797,7 @@ setEditIndentId(indent._id);
           <KitchenSectionNav
             label="Usage sections"
             value="usage"
-            items={[{ value: "usage", label: "Record usage" }, { value: "activity", label: "History" }]}
+            items={[{ value: "usage", label: "Record" }, { value: "activity", label: "History" }]}
             onChange={(view) => setActiveTab(view)}
           />
           <KitchenUsageScreen
@@ -839,7 +839,7 @@ setEditIndentId(indent._id);
           <KitchenSectionNav
             label="Usage sections"
             value="activity"
-            items={[{ value: "usage", label: "Record usage" }, { value: "activity", label: "History" }]}
+            items={[{ value: "usage", label: "Record" }, { value: "activity", label: "History" }]}
             onChange={(view) => setActiveTab(view)}
           />
           <KitchenActivity entries={usageHistory} />
