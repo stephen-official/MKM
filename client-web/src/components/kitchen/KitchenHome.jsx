@@ -179,7 +179,7 @@ export default function KitchenHome({
               {usageComplete ? "Add more" : todayNone ? "Record anyway" : "Record usage"}<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" />
             </button>
             {todayNone && onUndoNoUsage && <button type="button" className="kg-chip" onClick={() => onUndoNoUsage(today)}>Undo</button>}
-            {!usageComplete && !todayNone && onNoUsage && picking !== today && <button type="button" className="kg-chip" onClick={() => setPicking(today)}>No usage today</button>}
+            {!usageComplete && !todayNone && onNoUsage && picking !== today && <button type="button" className="kh-link" onClick={() => setPicking(today)}>Tap if no usage is recorded</button>}
           </div>
           {picking === today && <NoUsagePicker date={today} onConfirm={confirmNoUsage} onCancel={() => setPicking(null)} />}
         </div>}
@@ -201,7 +201,7 @@ export default function KitchenHome({
             <div className="kh-missed__row">
               <span className="kh-missed__date">{longDate(day.date)}</span>
               <button type="button" className="kg-btn" onClick={() => onRecordUsageOn?.(day.date)}>Record</button>
-              {onNoUsage && picking !== day.date && <button type="button" className="kg-chip" onClick={() => setPicking(day.date)}>No usage</button>}
+              {onNoUsage && picking !== day.date && <button type="button" className="kh-link" onClick={() => setPicking(day.date)}>Tap if no usage is recorded</button>}
             </div>
             {picking === day.date && <NoUsagePicker date={day.date} onConfirm={confirmNoUsage} onCancel={() => setPicking(null)} />}
           </li>)}

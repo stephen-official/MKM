@@ -14,7 +14,10 @@
 .kh-day__text { flex: 1 1 220px; min-width: 0; display: flex; align-items: center; gap: 14px; }
 .kh-day__text h2 { font-size: 16px; }
 .kh-day .kg-btn { flex: none; }
-.kh-day__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.kh-day__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+/* "Tap if no usage is recorded": a quiet underlined link next to the main button, not a second button. */
+.kh-link { padding: 6px 2px; border: 0; background: none; color: var(--blue-deep); font-size: 13px; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(35,74,126,.45); }
+.kh-link:hover { text-decoration-color: currentColor; }
 /* "No usage" reason picker, inline under the card or the missed-day row. */
 .kh-nouse { flex: 1 1 100%; display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid rgba(170,186,210,.28); }
 .kh-nouse__chips, .kh-nouse__actions { display: flex; flex-wrap: wrap; gap: 6px; }
