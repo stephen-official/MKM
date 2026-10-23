@@ -28,10 +28,6 @@ export default function KitchenHeader({
             <h1 className="kitchen-header__kitchen">
               {kitchenName || "Kitchen"}
             </h1>
-            <span className="kitchen-header__separator" aria-hidden="true">
-              •
-            </span>
-            <span className="kitchen-header__city">Kurnool</span>
           </div>
         </div>
       </div>

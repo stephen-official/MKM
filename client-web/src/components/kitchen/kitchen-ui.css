@@ -104,13 +104,6 @@
   white-space: nowrap;
 }
 
-.kitchen-header__separator,
-.kitchen-header__city {
-  flex: none;
-  color: var(--muted-2);
-  font-size: 13px;
-  font-weight: 300;
-}
 
 .kitchen-header__actions {
   display: flex;
@@ -297,10 +290,6 @@
     display: none;
   }
 
-  .kitchen-header__city,
-  .kitchen-header__separator {
-    display: none;
-  }
 
   .kitchen-header__actions {
     gap: 0;
