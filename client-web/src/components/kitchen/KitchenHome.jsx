@@ -186,27 +186,26 @@ export default function KitchenHome({
             {!usageComplete && !todayNone && onNoUsage && picking !== today && <button type="button" className="kh-link" onClick={() => setPicking(today)}>Tap if no usage is recorded</button>}
           </div>
           {picking === today && <NoUsagePicker date={today} onConfirm={confirmNoUsage} onCancel={() => setPicking(null)} />}
+          {/* Days in the last month with neither usage nor a "no usage" mark: a red row that drops the list open in place. */}
+          {missedDays.length > 0 && <>
+            <button type="button" className="kh-day__missed" onClick={() => setMissedOpen((value) => !value)} aria-expanded={missedOpen} aria-controls="kh-missed-list">
+              <AlertTriangle size={16} strokeWidth={1.9} aria-hidden="true" />
+              <span>{missedDays.length} missed {missedDays.length === 1 ? "day" : "days"} · usage not recorded</span>
+              <ChevronDown size={18} className={missedOpen ? "is-open" : ""} aria-hidden="true" />
+            </button>
+            {missedOpen && <ul id="kh-missed-list" className="kh-missed__list">
+              {missedDays.map((day) => <li key={day.date}>
+                <div className="kh-missed__row">
+                  <span className="kh-missed__date">{longDate(day.date)}</span>
+                  <button type="button" className="kg-btn" onClick={() => onRecordUsageOn?.(day.date)}>Record</button>
+                  {onNoUsage && picking !== day.date && <button type="button" className="kh-link" onClick={() => setPicking(day.date)}>Tap if no usage is recorded</button>}
+                </div>
+                {picking === day.date && <NoUsagePicker date={day.date} onConfirm={confirmNoUsage} onCancel={() => setPicking(null)} />}
+              </li>)}
+            </ul>}
+          </>}
         </div>}
       </section>
-
-      {/* Days in the last month with neither usage nor a "no usage" mark: loud on purpose, so a forgotten day gets fixed. */}
-      {canRecordUsage && missedDays.length > 0 && <section className="kg-glass kh-missed" aria-labelledby="kh-missed-title">
-        <button type="button" className="kh-missed__head" onClick={() => setMissedOpen((value) => !value)} aria-expanded={missedOpen} aria-controls="kh-missed-list">
-          <span className="kg-orb kh-missed__icon" aria-hidden="true"><AlertTriangle size={20} strokeWidth={1.7} /></span>
-          <span className="kh-missed__text"><span className="kg-label">Usage not recorded</span><strong id="kh-missed-title">{missedDays.length} missed {missedDays.length === 1 ? "day" : "days"}</strong></span>
-          <ChevronDown size={20} className={missedOpen ? "is-open" : ""} aria-hidden="true" />
-        </button>
-        {missedOpen && <ul id="kh-missed-list" className="kh-missed__list">
-          {missedDays.map((day) => <li key={day.date}>
-            <div className="kh-missed__row">
-              <span className="kh-missed__date">{longDate(day.date)}</span>
-              <button type="button" className="kg-btn" onClick={() => onRecordUsageOn?.(day.date)}>Record</button>
-              {onNoUsage && picking !== day.date && <button type="button" className="kh-link" onClick={() => setPicking(day.date)}>Tap if no usage is recorded</button>}
-            </div>
-            {picking === day.date && <NoUsagePicker date={day.date} onConfirm={confirmNoUsage} onCancel={() => setPicking(null)} />}
-          </li>)}
-        </ul>}
-      </section>}
 
       <div className="kh-cols">
         <div className="kh-col">
