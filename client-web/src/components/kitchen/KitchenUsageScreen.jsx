@@ -213,7 +213,7 @@ export default function KitchenUsageScreen({
   }
   useEffect(() => {
     if (!sheetOpen) return undefined;
-    const onKey = (event) => { if (event.key === "Escape") setSheetOpen(false); };
+    const onKey = (event) => { if (event.key === "Escape") { setSheetOpen(false); setNoUsage(false); setReason("closed"); setNote(""); } };
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     document.addEventListener("keydown", onKey);
@@ -227,6 +227,17 @@ export default function KitchenUsageScreen({
     if (checked && !wide) setSheetOpen(true);
     if (!checked) { setReason("closed"); setNote(""); }
   };
+  // Leaving the ticket (sheet closed, or a click outside the panel on a wide screen) unticks the box and brings the list back.
+  const closeSheet = () => { setSheetOpen(false); toggleNoUsage(false); };
+  useEffect(() => {
+    if (!noUsage || !wide) return undefined;
+    const onPointerDown = (event) => {
+      if (event.target.closest(".kus-none-ticket, .kus-none")) return;
+      setNoUsage(false); setReason("closed"); setNote("");
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [noUsage, wide]);
   const recordNoUsage = async () => {
     setSavingNoUsage(true);
     const ok = await onNoUsage?.(selectedDate, reason, note.trim());
@@ -243,7 +254,7 @@ export default function KitchenUsageScreen({
       </div>
       {reason === "other" && <input className="kus-none-ticket__note" type="text" value={note} maxLength={200} placeholder="What happened?" aria-label="What happened?" disabled={savingNoUsage} onChange={(event) => setNote(event.target.value)} />}
       <button type="button" className="kg-btn kt-ticket__submit" disabled={savingNoUsage || !selectedDate || (reason === "other" && !note.trim())} onClick={recordNoUsage}>{savingNoUsage ? "Saving…" : "Record"}</button>
-      <button type="button" className="kt-ticket__clear" disabled={savingNoUsage} onClick={() => { toggleNoUsage(false); setSheetOpen(false); }}>Cancel</button>
+      <button type="button" className="kt-ticket__clear" disabled={savingNoUsage} onClick={closeSheet}>Cancel</button>
     </section>
   );
   const ticket = <OrderTicket title="Usage ticket" rows={ticketRows} meta={[{ label: "Usage date", value: formatDateKey(selectedDate) }]}
@@ -305,7 +316,8 @@ export default function KitchenUsageScreen({
         </label>
       )}
 
-      <section className="kus-stock" aria-labelledby="kus-stock-title" aria-busy={loading}>
+      {/* While "no usage" is ticked the list is out of the way: nothing is being counted. */}
+      {!noUsage && <section className="kus-stock" aria-labelledby="kus-stock-title" aria-busy={loading}>
         <div className="kus-section-heading">
           <div><p>Kitchen stock</p><h2 id="kus-stock-title">What did you use?</h2></div>
           {!loading && <span>{visibleItems.length} {visibleItems.length === 1 ? "item" : "items"}</span>}
@@ -432,7 +444,7 @@ export default function KitchenUsageScreen({
             })}
           </div>
         )}
-      </section>
+      </section>}
       </div>
       </div>
 
@@ -446,11 +458,11 @@ export default function KitchenUsageScreen({
       )}
       {!wide && sheetOpen && (
         <div className="kus-sheet" role="presentation">
-          <button type="button" className="kus-sheet__backdrop" onClick={() => setSheetOpen(false)} aria-label="Close the ticket" />
+          <button type="button" className="kus-sheet__backdrop" onClick={closeSheet} aria-label="Close the ticket" />
           <section className="kus-sheet__panel" role="dialog" aria-modal="true" aria-label="Usage ticket">
             <header className="kus-sheet__head">
               <p className="kg-label">Record usage</p>
-              <button type="button" className="kg-chip kus-sheet__close" onClick={() => setSheetOpen(false)} aria-label="Close the ticket"><X size={18} /></button>
+              <button type="button" className="kg-chip kus-sheet__close" onClick={closeSheet} aria-label="Close the ticket"><X size={18} /></button>
             </header>
             <div className="kus-sheet__body">{ticketPanel}</div>
           </section>

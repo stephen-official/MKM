@@ -33,8 +33,12 @@
 
 /* "No usage is recorded today": a glass checkbox row above the list; ticking it turns the ticket into a reason picker. */
 .kus-none { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; padding: 12px 16px; cursor: pointer; }
-.kus-none input { width: 22px; height: 22px; flex: none; margin: 0; accent-color: var(--blue); cursor: pointer; }
-.kus-none input:disabled { cursor: default; }
+/* A round check, like a radio: empty ring, filled blue with a white dot when ticked. */
+.kus-none input { appearance: none; -webkit-appearance: none; display: grid; place-items: center; width: 24px; height: 24px; flex: none; margin: 0; border: 2px solid rgba(120,152,198,.7); border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: inset 0 1px 0 #fff; cursor: pointer; transition: background var(--dur-glass) var(--ease-glass), border-color var(--dur-glass) var(--ease-glass); }
+.kus-none input:checked { border-color: var(--blue); background: var(--blue); }
+.kus-none input:checked::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #fff; }
+.kus-none input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.kus-none input:disabled { cursor: default; opacity: .5; }
 .kus-none > span { display: grid; gap: 2px; min-width: 0; }
 .kus-none strong { font-size: 14.5px; font-weight: 500; }
 .kus-none small { color: var(--muted-2); font-size: 12.5px; font-weight: 300; }
