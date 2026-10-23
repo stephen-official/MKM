@@ -82,7 +82,7 @@ const Row = ({ name, hint, tone, status, qty, onClick }) => (
 const Section = ({ id, label, title, summary, attention = false, tint = "", open, onToggle, children }) => (
   <section className={`kg-glass kh-card${tint}${open ? " is-open" : ""}`} aria-labelledby={`${id}-title`}>
     <button type="button" className="kh-card__head" onClick={onToggle} aria-expanded={open} aria-controls={`${id}-body`}>
-      <span className="kh-card__text"><span className="kg-label">{label}</span><span className="kh-card__title" id={`${id}-title`}>{title}</span></span>
+      <span className="kh-card__text">{label && <span className="kg-label">{label}</span>}<span className="kh-card__title" id={`${id}-title`}>{title}</span></span>
       {summary && <span className="kh-card__summary">{summary}</span>}
       {attention && <span className="kh-card__alert" role="img" aria-label="Needs attention"><AlertCircle size={20} strokeWidth={1.9} /></span>}
       <ChevronDown size={20} className={open ? "is-open" : ""} aria-hidden="true" />
@@ -199,7 +199,7 @@ export default function KitchenHome({
         <div className="kh-col">
           <section className={`kg-glass kh-card${expiredCount > 0 || outOfStock.length > 0 ? " kg-glass--rose" : useFirst.length > 0 || lowStock.length > 0 ? " kg-glass--warm" : ""}`} aria-labelledby="stock-title">
             <div className="kh-card__head kh-card__head--static">
-              <span className="kh-card__text"><span className="kg-label">Kitchen inventory</span><span className="kh-card__title" id="stock-title">Stock</span></span>
+              <span className="kh-card__text"><span className="kh-card__title" id="stock-title">Kitchen inventory</span></span>
             </div>
             <div className="kh-card__body">
               {canRecordUsage && <Group id="use-first" title="Use first" attention={useFirst.length > 0}
@@ -234,7 +234,7 @@ export default function KitchenHome({
         </div>
 
         {canUseRequests && <div className="kh-col kh-col--side">
-          <Section id="incoming" label="Requests" title="Incoming orders" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0}
+          <Section id="incoming" title="Requests" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0}
             summary={toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} arriving</span> : <span className="kh-count">{inProgressOrders.length}</span>}
             open={isOpen("incoming")} onToggle={() => toggle("incoming")}>
             {inProgressOrders.length === 0 && <Row name="No open requests" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
