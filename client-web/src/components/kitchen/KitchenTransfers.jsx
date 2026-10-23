@@ -27,7 +27,7 @@ export default function KitchenTransfers({ onCreate }) {
   };
 
   return <main className="kss-shell">
-    <header className="kss-page-heading"><div><p>Between kitchens</p><h1>Stock transfers</h1><span>Send stock or respond to incoming transfers.</span></div><button type="button" onClick={fetchTransfers} disabled={loading} aria-label="Refresh transfers"><RefreshCw size={19} className={loading ? "kss-spin" : ""} /></button></header>
+    <header className="kss-page-heading"><div><p>Between kitchens</p><h1>Stock transfers</h1><span>Send stock or respond to incoming transfers.</span></div></header>
     <button type="button" className="kss-create" onClick={onCreate}><Plus size={20} /><span><strong>New stock transfer</strong><small>Choose a destination and the items to send</small></span><ArrowRight size={19} /></button>
     {loading ? <div className="kss-empty"><RefreshCw className="kss-spin" /><p>Loading transfers…</p></div> : transfers.length === 0 ? <div className="kss-empty"><Inbox size={30} /><h2>No transfers yet</h2><p>Incoming and outgoing transfers will appear here.</p></div> : <section className="kss-list">
       {transfers.map((transfer) => <article className="kss-card" key={transfer._id}>

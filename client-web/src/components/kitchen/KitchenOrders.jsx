@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, Clock, History, Lock, Minus, Plus, RefreshCw, Search, Truck, Users, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, Clock, History, Lock, Minus, Plus, Search, Truck, Users, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
@@ -262,7 +262,6 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
   return <main className="ko-shell">
     <header className="ko-heading">
       <div><p>Kitchen supplies</p><h1>Ask for supplies</h1><span>Order from the central store, or add your items to another kitchen’s order.</span></div>
-      <button type="button" className="kg-chip ko-refresh" onClick={load} disabled={loading} aria-label="Refresh orders"><RefreshCw size={19} className={loading ? "ko-spin" : ""} aria-hidden="true" /></button>
     </header>
 
     <button type="button" className="kg-glass kg-lift ko-create" onClick={() => start("new")} disabled={!settings}>

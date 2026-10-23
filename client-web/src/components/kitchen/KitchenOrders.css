@@ -10,9 +10,6 @@
 .ko-heading p { margin: 0 0 2px; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
 .ko-heading h1 { margin: 0 0 4px; font-size: 24px; font-weight: 300; line-height: 1.15; letter-spacing: -.01em; }
 .ko-heading > div > span { display: block; max-width: 560px; color: var(--muted-2); font-size: 13px; font-weight: 300; line-height: 1.5; }
-.ko-refresh { flex: none; width: 42px; height: 42px; padding: 0; }
-.ko-refresh:disabled { cursor: wait; opacity: .6; }
-.ko-spin { animation: ko-spin .9s linear infinite; }
 @keyframes ko-spin { to { transform: rotate(360deg); } }
 
 /* "New order": a glass tile with the orb and a chevron */
@@ -149,4 +146,4 @@
   .ko-card, .ko-product { padding: 18px; }
   .ko-submit { right: 0; bottom: 0; left: 232px; width: auto; max-width: none; margin: 0 28px; padding: 12px max(28px, calc((100vw - 232px - 1240px) / 2 + 28px)); transform: none; border-top: 0; border-radius: var(--radius-glass) var(--radius-glass) 0 0; }
 }
-@media (prefers-reduced-motion: reduce) { .ko-spin, .ko-spinner { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ko-spinner { animation: none; } }
