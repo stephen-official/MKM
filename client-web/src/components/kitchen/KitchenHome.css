@@ -42,6 +42,14 @@
 .kh-card__head > svg.is-open { transform: rotate(180deg); }
 .kh-card__body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 10px; }
 .kh-card__foot { display: flex; justify-content: flex-end; padding-top: 4px; }
+.kh-card__head--static { min-height: 54px; cursor: default; }
+/* Dropdown rows inside a section (Stock: Use first, Running low). */
+.kh-group { background: rgba(255,255,255,.5); border: 1px solid var(--glass-border); border-radius: var(--radius-row); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
+.kh-group__head { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 54px; padding: 8px 14px; border: 0; background: none; text-align: left; }
+.kh-group__title { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; }
+.kh-group__head > svg:last-child { flex: none; color: var(--muted-2); transition: transform .15s; }
+.kh-group__head > svg.is-open { transform: rotate(180deg); }
+.kh-group__body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; }
 .kh-count { font-size: 22px; font-weight: 300; color: var(--blue); line-height: 1; font-variant-numeric: tabular-nums; padding-right: 2px; }
 
 /* Rows: text | pill (fixed column so every pill starts at the same edge) | quantity */

@@ -78,6 +78,19 @@ const Section = ({ id, label, title, summary, attention = false, tint = "", open
   </section>
 );
 
+/** A dropdown row inside a section (Stock has two: Use first and Running low). Same header grammar as a section, smaller. */
+const Group = ({ id, title, summary, attention = false, open, onToggle, children }) => (
+  <div className={`kh-group${open ? " is-open" : ""}`}>
+    <button type="button" className="kh-group__head" onClick={onToggle} aria-expanded={open} aria-controls={`${id}-body`}>
+      <span className="kh-group__title">{title}</span>
+      {summary && <span className="kh-card__summary">{summary}</span>}
+      {attention && <span className="kh-card__alert" role="img" aria-label="Needs attention"><AlertCircle size={18} strokeWidth={1.9} /></span>}
+      <ChevronDown size={18} className={open ? "is-open" : ""} aria-hidden="true" />
+    </button>
+    {open && <div id={`${id}-body`} className="kh-group__body">{children}</div>}
+  </div>
+);
+
 /**
  * Landing screen for a school kitchen: what to use first, what is running low, what is on its way.
  * All collections are optional, allowing the parent to render while data loads.
@@ -135,9 +148,6 @@ export default function KitchenHome({
   const todayNone = todayRow?.status === "none";
   const entryCount = todayRow ? todayRow.entries : todaysEntries.length;
   const missedDays = (usageDays?.days || []).filter((day) => day.status === "missed" && day.date !== today);
-  // A hint of colour on the cards whose state asks for attention; plain glass otherwise.
-  const useFirstTint = expiredCount > 0 ? " kg-glass--rose" : useFirst.length > 0 ? " kg-glass--warm" : "";
-  const lowTint = outOfStock.length > 0 ? " kg-glass--rose" : lowStock.length > 0 ? " kg-glass--cool" : "";
 
   return (
     <main className="kh-shell">
@@ -175,33 +185,40 @@ export default function KitchenHome({
 
       <div className="kh-cols">
         <div className="kh-col">
-          {canRecordUsage && <Section id="use-first" label="Today’s work" title="Use first" tint={useFirstTint} attention={useFirst.length > 0}
-            summary={expiredCount > 0 ? <span className="kg-pill kg-pill--expired">{expiredCount} expired</span> : `${useFirst.length} ${useFirst.length === 1 ? "item" : "items"}`}
-            open={isOpen("use-first")} onToggle={() => toggle("use-first")}>
-            {useFirst.length === 0 && <Row name="Nothing expiring this week" hint="Every dated item has more than 7 days left" tone="routine" status="In date" onClick={onViewStock} />}
-            {useFirst.slice(0, 3).map((item, index) => {
-              const expiry = expiryStatus(item, today);
-              const expired = expiry.key === "expired";
-              return <Row key={item._id || item.stockRecordId || `${item.name}-${index}`} name={item.name || "Unnamed item"}
-                hint={expired ? "Check before using" : "Use within the week"} tone={expired ? "expired" : "soon"} status={expiry.label}
-                qty={qtyText(expiry.qtyBaseUnit, item)} onClick={onRecordUsage} />;
-            })}
-            <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onRecordUsage}>Record usage</button></div>
-          </Section>}
+          <section className={`kg-glass kh-card${expiredCount > 0 || outOfStock.length > 0 ? " kg-glass--rose" : useFirst.length > 0 || lowStock.length > 0 ? " kg-glass--warm" : ""}`} aria-labelledby="stock-title">
+            <div className="kh-card__head kh-card__head--static">
+              <span className="kh-card__text"><span className="kg-label">Kitchen inventory</span><span className="kh-card__title" id="stock-title">Stock</span></span>
+            </div>
+            <div className="kh-card__body">
+              {canRecordUsage && <Group id="use-first" title="Use first" attention={useFirst.length > 0}
+                summary={expiredCount > 0 ? <span className="kg-pill kg-pill--expired">{expiredCount} expired</span> : `${useFirst.length} ${useFirst.length === 1 ? "item" : "items"}`}
+                open={isOpen("use-first")} onToggle={() => toggle("use-first")}>
+                {useFirst.length === 0 && <Row name="Nothing expiring this week" hint="Every dated item has more than 7 days left" tone="routine" status="In date" onClick={onViewStock} />}
+                {useFirst.slice(0, 3).map((item, index) => {
+                  const expiry = expiryStatus(item, today);
+                  const expired = expiry.key === "expired";
+                  return <Row key={item._id || item.stockRecordId || `${item.name}-${index}`} name={item.name || "Unnamed item"}
+                    hint={expired ? "Check before using" : "Use within the week"} tone={expired ? "expired" : "soon"} status={expiry.label}
+                    qty={qtyText(expiry.qtyBaseUnit, item)} onClick={onRecordUsage} />;
+                })}
+                <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onRecordUsage}>Record usage</button></div>
+              </Group>}
 
-          <Section id="running-low" label="Stock" title="Running low" tint={lowTint} attention={attentionItems.length > 0}
-            summary={outOfStock.length > 0 ? <span className="kg-pill kg-pill--expired">{outOfStock.length} out of stock</span> : lowStock.length > 0 ? <span className="kg-pill kg-pill--low">{lowStock.length} low</span> : "All fine"}
-            open={isOpen("running-low")} onToggle={() => toggle("running-low")}>
-            {attentionItems.length === 0 && <Row name="All stock above its low level" hint={`${items.filter((item) => item.available !== false).length} items you can use`} tone="routine" status="Fine" onClick={onViewStock} />}
-            {attentionItems.slice(0, 3).map((item, index) => {
-              const quantity = asNumber(item.currentQty ?? item.quantity ?? item.kitchenQty);
-              const out = quantity <= 0;
-              return <Row key={item._id || item.stockRecordId || `${item.name}-${index}`} name={item.name || "Unnamed item"}
-                hint={out ? "Ask for supplies now" : "Ask for supplies soon"} tone={out ? "expired" : "low"} status={out ? "Out of stock" : "Low stock"}
-                qty={qtyText(quantity, item)} onClick={onViewStock} />;
-            })}
-            <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onViewStock}>View all</button></div>
-          </Section>
+              <Group id="running-low" title="Running low" attention={attentionItems.length > 0}
+                summary={outOfStock.length > 0 ? <span className="kg-pill kg-pill--expired">{outOfStock.length} out of stock</span> : lowStock.length > 0 ? <span className="kg-pill kg-pill--low">{lowStock.length} low</span> : "All fine"}
+                open={isOpen("running-low")} onToggle={() => toggle("running-low")}>
+                {attentionItems.length === 0 && <Row name="All stock above its low level" hint={`${items.filter((item) => item.available !== false).length} items you can use`} tone="routine" status="Fine" onClick={onViewStock} />}
+                {attentionItems.slice(0, 3).map((item, index) => {
+                  const quantity = asNumber(item.currentQty ?? item.quantity ?? item.kitchenQty);
+                  const out = quantity <= 0;
+                  return <Row key={item._id || item.stockRecordId || `${item.name}-${index}`} name={item.name || "Unnamed item"}
+                    hint={out ? "Ask for supplies now" : "Ask for supplies soon"} tone={out ? "expired" : "low"} status={out ? "Out of stock" : "Low stock"}
+                    qty={qtyText(quantity, item)} onClick={onViewStock} />;
+                })}
+                <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onViewStock}>View all</button></div>
+              </Group>
+            </div>
+          </section>
         </div>
 
         {canUseRequests && <div className="kh-col kh-col--side">
