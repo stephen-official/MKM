@@ -255,24 +255,21 @@ export default function KitchenHome({
         </div>
 
         {canUseRequests && <div className="kh-col kh-col--side">
-          <Section id="deliveries" label="On its way" title="Deliveries to receive" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0}
-            summary={<span className="kh-count">{toReceive}</span>} open={isOpen("deliveries")} onToggle={() => toggle("deliveries")}>
-            <div className="kg-row kh-delivery">
+          <Section id="incoming" label="Requests" title="Incoming orders" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0}
+            summary={toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} to receive</span> : <span className="kh-count">{inProgressCount}</span>}
+            open={isOpen("incoming")} onToggle={() => toggle("incoming")}>
+            {toReceive > 0 && <div className="kg-row kh-delivery">
               <div className="kh-delivery__who">
                 <span className="kg-orb" aria-hidden="true"><Truck size={19} strokeWidth={1.6} /></span>
                 <span className="kh-row__text">
                   <strong>From the central store</strong>
-                  <small>{toReceive ? `${toReceive} ${toReceive === 1 ? "delivery has" : "deliveries have"} arrived · check the items and confirm` : "Nothing on the way right now"}</small>
+                  <small>{`${toReceive} ${toReceive === 1 ? "delivery has" : "deliveries have"} arrived · check the items and confirm`}</small>
                 </span>
               </div>
-              {toReceive > 0 && <button type="button" className="kg-btn kh-delivery__go" onClick={onReceiveDelivery}>Receive items</button>}
-            </div>
-          </Section>
-
-          <Section id="in-progress" label="Requests" title="In progress" summary={<span className="kh-count">{inProgressCount}</span>}
-            open={isOpen("in-progress")} onToggle={() => toggle("in-progress")}>
-            {inProgressCount === 0 && <Row name="No open requests" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
-            {inProgressOrders.slice(0, 2).map((order) => (
+              <button type="button" className="kg-btn kh-delivery__go" onClick={onReceiveDelivery}>Receive items</button>
+            </div>}
+            {inProgressCount === 0 && toReceive === 0 && <Row name="No open requests" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
+            {inProgressOrders.slice(0, 3).map((order) => (
               <button type="button" key={order._id} className="kg-row kh-order" onClick={onRequestSupplies}>
                 <span className="kh-row__text">
                   <strong>{order.title || "Supply request"}</strong>
@@ -287,7 +284,7 @@ export default function KitchenHome({
               </button>
             ))}
             {pendingRequests.length > 0 && <Row name={`${pendingRequests.length} older ${pendingRequests.length === 1 ? "request" : "requests"}`} hint="Sent before shared orders" tone="routine" status="Open" onClick={onRequestSupplies} />}
-            <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onRequestSupplies}>Ask for supplies</button></div>
+            <div className="kh-card__foot"><button type="button" className="kg-btn" onClick={onRequestSupplies}>Go to Requests<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" /></button></div>
           </Section>
         </div>}
       </div>
