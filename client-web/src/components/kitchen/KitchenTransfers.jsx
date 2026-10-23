@@ -1,10 +1,13 @@
-import { ArrowRight, Inbox, Plus, RefreshCw, Send } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, Inbox, Plus, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { useKitchenChanges } from "../../liveUpdates";
-import "./KitchenSecondaryScreens.css";
+import "./KitchenLists.css";
 
+const STATUS_TONE = { accepted: "low", rejected: "expired", pending: "soon" };
+
+/** Transfers between kitchens: start one, and accept or reject the ones sent to this kitchen. */
 export default function KitchenTransfers({ onCreate }) {
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,15 +29,33 @@ export default function KitchenTransfers({ onCreate }) {
     catch (error) { toast.error(error.response?.data?.error || `Could not ${action} transfer`); }
   };
 
-  return <main className="kss-shell">
-    <header className="kss-page-heading"><div><p>Between kitchens</p><h1>Stock transfers</h1><span>Send stock or respond to incoming transfers.</span></div></header>
-    <button type="button" className="kss-create" onClick={onCreate}><Plus size={20} /><span><strong>New stock transfer</strong><small>Choose a destination and the items to send</small></span><ArrowRight size={19} /></button>
-    {loading ? <div className="kss-empty"><RefreshCw className="kss-spin" /><p>Loading transfers…</p></div> : transfers.length === 0 ? <div className="kss-empty"><Inbox size={30} /><h2>No transfers yet</h2><p>Incoming and outgoing transfers will appear here.</p></div> : <section className="kss-list">
-      {transfers.map((transfer) => <article className="kss-card" key={transfer._id}>
-        <header><div><p>{transfer.isIncoming ? "Incoming" : "Outgoing"}</p><h2>{transfer.fromGodownId?.name || "Kitchen"} <ArrowRight size={14} /> {transfer.toGodownId?.name || "Kitchen"}</h2></div><span className={`kss-chip kss-chip--${transfer.status === "accepted" ? "positive" : transfer.status === "rejected" ? "critical" : "warning"}`}>{transfer.status || "pending"}</span></header>
-        <ul>{(transfer.items || []).map((item, index) => <li key={item.stockItemId?._id || index}><span>{item.stockItemId?.name || "Unknown item"}</span><strong>{item.qtyBaseUnit} {item.stockItemId?.unitId?.symbol || item.unit || "units"}</strong></li>)}</ul>
-        {transfer.isIncoming && transfer.status === "pending" && <footer><button type="button" className="kss-accept" onClick={() => respond(transfer, "accept")}><Send size={16} /> Accept transfer</button><button type="button" className="kss-reject" onClick={() => respond(transfer, "reject")}>Reject</button></footer>}
-      </article>)}
-    </section>}
+  return <main className="kl-shell">
+    <header className="kl-intro">
+      <span className="kg-orb kl-intro__icon" aria-hidden="true"><ArrowLeftRight size={22} strokeWidth={1.7} /></span>
+      <div><p>Between kitchens</p><h1>Transfers</h1><span>Send stock to another kitchen, or respond to what was sent to you.</span></div>
+    </header>
+    <button type="button" className="kg-glass kg-lift kl-create" onClick={onCreate}>
+      <span className="kg-orb" aria-hidden="true"><Plus size={20} strokeWidth={1.8} /></span>
+      <span><strong>New stock transfer</strong><small>Choose a destination and the items to send</small></span>
+      <ArrowRight size={19} aria-hidden="true" />
+    </button>
+    {loading ? <div className="kg-glass kl-state" role="status"><span className="kl-spinner" aria-hidden="true" /><p>Loading transfers…</p></div>
+      : transfers.length === 0 ? <div className="kg-glass kl-state"><Inbox size={28} strokeWidth={1.6} aria-hidden="true" /><h2>No transfers yet</h2><p>Incoming and outgoing transfers will appear here.</p></div>
+      : <section className="kl-list" aria-label="Transfers">
+        {transfers.map((transfer) => {
+          const status = transfer.status || "pending";
+          return <article className={`kg-glass kl-card${transfer.isIncoming && status === "pending" ? " kg-glass--cool" : ""}`} key={transfer._id}>
+            <header className="kl-card__head">
+              <div><p>{transfer.isIncoming ? "Incoming" : "Outgoing"}</p><h2>{transfer.fromGodownId?.name || "Kitchen"} <ArrowRight size={14} aria-hidden="true" /> {transfer.toGodownId?.name || "Kitchen"}</h2></div>
+              <span className={`kg-pill kg-pill--${STATUS_TONE[status] || "routine"}`}>{status}</span>
+            </header>
+            <ul>{(transfer.items || []).map((item, index) => <li key={item.stockItemId?._id || index}><span>{item.stockItemId?.name || "Unknown item"}</span><strong>{item.qtyBaseUnit} {item.stockItemId?.unitId?.symbol || item.unit || "units"}</strong></li>)}</ul>
+            {transfer.isIncoming && status === "pending" && <footer className="kl-card__foot">
+              <button type="button" className="kg-btn" onClick={() => respond(transfer, "accept")}><Send size={16} aria-hidden="true" /> Accept transfer</button>
+              <button type="button" className="kg-chip kl-reject" onClick={() => respond(transfer, "reject")}>Reject</button>
+            </footer>}
+          </article>;
+        })}
+      </section>}
   </main>;
 }

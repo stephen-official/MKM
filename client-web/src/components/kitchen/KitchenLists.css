@@ -1,0 +1,58 @@
+/* History ("Usage activity") and Transfers: glass record cards on the shell's wash. Tokens from index.css, primitives (.kg-*)
+   from kitchen-ui.css. The old teal KitchenSecondaryScreens.css still serves the unrestyled receive-delivery screen only. */
+.kl-shell { width: 100%; max-width: 760px; margin: 0 auto; padding: var(--page-top-space) var(--page-gutter) var(--page-bottom-space); color: var(--ink-2); font-family: var(--font-kitchen); font-size: 14px; line-height: 1.45; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px; }
+.kl-shell *, .kl-shell *::before, .kl-shell *::after { box-sizing: border-box; }
+.kl-shell button { font: inherit; cursor: pointer; }
+.kl-shell button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* Heading, like Use */
+.kl-intro { display: flex; gap: 14px; align-items: center; padding-inline: 4px; }
+.kl-intro__icon { width: 46px; height: 46px; }
+.kl-intro p { margin: 0 0 2px; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
+.kl-intro h1 { margin: 0; font-size: 24px; font-weight: 300; line-height: 1.15; letter-spacing: -.01em; }
+.kl-intro div > span { color: var(--muted-2); font-size: 13px; font-weight: 300; }
+
+/* Date filter: a glass pill with the date field sitting transparent inside it */
+.kl-filter { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 8px 0 14px; color: var(--muted-2); }
+.kl-filter > svg { flex: none; color: var(--blue); }
+.kl-filter > span { font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+.kl-filter .df { width: auto; flex: 1; min-height: 32px; padding: 0 8px; color: var(--ink-2); background: transparent; border: 0; box-shadow: none; }
+.kl-filter .df > svg { color: var(--blue); }
+.kl-filter .df__text { font-size: 13px; font-weight: 500; white-space: nowrap; }
+.kl-filter button { border: 0; color: var(--blue-deep); background: transparent; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+
+/* "New stock transfer": a full-width glass row that opens the picker */
+.kl-create { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 16px; text-align: left; color: var(--ink-2); }
+.kl-create .kg-orb { color: var(--blue-deep); }
+.kl-create > span { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.kl-create strong { font-size: 14.5px; font-weight: 500; }
+.kl-create small { color: var(--muted-2); font-size: 12.5px; font-weight: 300; }
+.kl-create > svg:last-child { flex: none; color: var(--blue-deep); }
+
+/* Record cards */
+.kl-list { display: grid; gap: 14px; }
+.kl-card { padding: 14px 16px 16px; }
+.kl-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.kl-card__head p { margin: 0 0 2px; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
+.kl-card__head h2 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 15px; font-weight: 500; line-height: 1.25; }
+.kl-card__head h2 svg { color: var(--muted-2); }
+.kl-card__head .kg-pill { flex: none; text-transform: capitalize; }
+.kl-card ul { list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid rgba(170,186,210,.28); }
+.kl-card li { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; font-size: 13.5px; }
+.kl-card li + li { border-top: 1px solid rgba(170,186,210,.18); }
+.kl-card li strong { font-weight: 500; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kl-card__foot { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(170,186,210,.28); }
+.kl-card__foot .kg-btn { flex: 1; }
+.kl-reject { color: var(--st-expired-fg); }
+
+/* Empty and loading */
+.kl-state { display: flex; min-height: 200px; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 24px; color: var(--muted-2); font-size: 13px; text-align: center; }
+.kl-state h2 { margin: 0; color: var(--ink-2); font-size: 16px; font-weight: 500; }
+.kl-state p { margin: 0; }
+.kl-spinner { width: 24px; height: 24px; border: 3px solid rgba(170,186,210,.35); border-top-color: var(--blue); border-radius: 50%; animation: kl-spin .7s linear infinite; }
+@keyframes kl-spin { to { transform: rotate(360deg); } }
+
+@media (min-width: 700px) { .kl-shell { padding-right: 24px; padding-left: 24px; } .kl-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .kl-shell { max-width: 1240px; padding: 34px 28px 56px; } .kl-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; } }
+@media (max-width: 420px) { .kl-card__foot { flex-direction: column; } .kl-filter { flex-wrap: wrap; min-height: 0; padding: 10px 8px 10px 14px; } .kl-filter .df { flex: 1 1 100%; margin-left: 26px; } }
+@media (prefers-reduced-motion: reduce) { .kl-spinner { animation: none; } }
