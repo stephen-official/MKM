@@ -779,7 +779,6 @@ setEditIndentId(indent._id);
           onUndoNoUsage={undoNoUsage}
           onViewStock={openStock}
           onRequestSupplies={openOrders}
-          onReceiveDelivery={openWaitingDeliveries}
           sharedToReceive={sharedToReceive}
           hidden={hidden}
         />

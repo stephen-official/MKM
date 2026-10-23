@@ -63,9 +63,8 @@
 .kh-row__qty { font-size: 17px; font-weight: 300; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Delivery and order rows */
-.kh-delivery { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+.kh-delivery { width: 100%; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
 .kh-delivery__who { display: flex; align-items: center; gap: 12px; }
-.kh-delivery__go { align-self: stretch; }
 .kh-order { width: 100%; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
 .kh-steps { display: grid; gap: 7px; }
 .kh-steps ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
