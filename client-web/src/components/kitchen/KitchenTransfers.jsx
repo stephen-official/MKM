@@ -2,13 +2,15 @@ import { ArrowRight, Inbox, Plus, RefreshCw, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
+import { useKitchenChanges } from "../../liveUpdates";
 import "./KitchenSecondaryScreens.css";
 
 export default function KitchenTransfers({ onCreate }) {
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const fetchTransfers = useCallback(async () => {
-    setLoading(true);
+  // quiet: a live update refreshes the list in place instead of showing "Loading transfers…" again.
+  const fetchTransfers = useCallback(async (quiet = false) => {
+    if (quiet !== true) setLoading(true);
     try {
       const [history, incoming] = await Promise.all([api.get("/user-transfers/history"), api.get("/user-transfers/incoming")]);
       const merged = new Map((history.data || []).map((item) => [item._id, { ...item, isIncoming: false }]));
@@ -17,6 +19,7 @@ export default function KitchenTransfers({ onCreate }) {
     } catch { toast.error("Failed to load transfers"); } finally { setLoading(false); }
   }, []);
   useEffect(() => { void fetchTransfers(); }, [fetchTransfers]);
+  useKitchenChanges(["transfers"], () => fetchTransfers(true));
 
   const respond = async (transfer, action) => {
     try { await api.post(`/user-transfers/${transfer._id}/${action}`); toast.success(`Transfer ${action === "accept" ? "accepted" : "rejected"}`); await fetchTransfers(); }

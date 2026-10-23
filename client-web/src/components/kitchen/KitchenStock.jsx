@@ -39,7 +39,6 @@ export default function KitchenStock({
   onSearchChange,
   filter = "all",
   onFilterChange,
-  onRefresh,
   canRequestProduct = false,
 }) {
   const [requesting, setRequesting] = useState(false);
@@ -81,10 +80,6 @@ export default function KitchenStock({
               <span>Request product</span>
             </button>
           )}
-          <button type="button" className="kg-chip ks-refresh" onClick={onRefresh} disabled={loading} aria-label="Refresh kitchen stock">
-            <RefreshCw size={20} className={loading ? "ks-spin" : ""} aria-hidden="true" />
-            <span>Refresh</span>
-          </button>
         </div>
       </header>
       {requesting && <ProductRequestSheet onClose={() => setRequesting(false)} />}

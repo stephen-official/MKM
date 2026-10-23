@@ -2,6 +2,7 @@ import { AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, Clock, Hi
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
+import { useKitchenChanges } from "../../liveUpdates";
 import { productPacks } from "../../features/kitchen";
 import { canEditShare, closesInText, deliveryDateText, hasArriving, kitchenStage, lineState, myOrders, myShare, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
 import { arrivingLines } from "../../features/kitchen/receiving";
@@ -214,6 +215,7 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
   }, [onOrdersLoaded]);
 
   useEffect(() => { load(); }, [load]);
+  useKitchenChanges(["orders"], load);
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
 
   const joinable = useMemo(() => otherOpenOrders(orders, godownId, now), [orders, godownId, now]);

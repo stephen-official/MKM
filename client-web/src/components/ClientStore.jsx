@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from "../api";
 import { toast } from 'react-hot-toast';
 import { socket } from "../socket"; 
+import { useKitchenChanges, useRefetchOnReturn } from "../liveUpdates";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { UserTransferPage } from "./UserTransferPage";
@@ -245,6 +246,25 @@ setItems(formatted);
     if (newlyOn.length) fetchFeatureData(nextFlags, newlyOn);
   };
 
+  // Live updates: the server names what changed and only that list is re-fetched (a burst settles into one fetch).
+  // Lists of disabled features are never requested. Everything at once after a reconnect, on coming back to the app,
+  // and from the header's Refresh button.
+  const liveFetchers = {
+    stock: () => fetchItems(false),
+    orders: () => isFeatureOn(flagsRef.current, "purchase-orders") && fetchSharedOrders(),
+    requests: () => isFeatureOn(flagsRef.current, "requests") && fetchMyRequests(),
+    usage: () => isFeatureOn(flagsRef.current, "consumption") && fetchMyOrders(),
+    indents: () => isFeatureOn(flagsRef.current, "indent") && fetchIndents(),
+    flags: () => fetchKitchenFlags().then(applyFlags).catch(() => {}),
+  };
+  useKitchenChanges(Object.keys(liveFetchers), (topic) => liveFetchers[topic]?.());
+  const [refreshing, setRefreshing] = useState(false);
+  const refetchAll = async () => {
+    setRefreshing(true);
+    try { await Promise.all([fetchItems(false), fetchFeatureData(flagsRef.current), liveFetchers.flags()]); } finally { setRefreshing(false); }
+  };
+  useRefetchOnReturn(refetchAll);
+
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -266,8 +286,8 @@ setItems(formatted);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Pick up admin changes to this kitchen's features on focus, when the app becomes visible again
-  // (Android resume) and whenever the server reports a disabled feature.
+  // Pick up admin changes to this kitchen's features on focus and whenever the server reports a disabled feature
+  // (coming back to the app re-fetches everything, flags included: see useRefetchOnReturn above).
   useEffect(() => {
     let inFlight = false;
     const refreshFlags = () => {
@@ -275,14 +295,11 @@ setItems(formatted);
       inFlight = true;
       fetchKitchenFlags().then(applyFlags).catch(() => {}).finally(() => { inFlight = false; });
     };
-    const onVisibility = () => { if (document.visibilityState === "visible") refreshFlags(); };
     window.addEventListener("focus", refreshFlags);
     window.addEventListener(FEATURE_DISABLED_EVENT, refreshFlags);
-    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       window.removeEventListener("focus", refreshFlags);
       window.removeEventListener(FEATURE_DISABLED_EVENT, refreshFlags);
-      document.removeEventListener("visibilitychange", onVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- applyFlags only touches refs and state setters
   }, []);
@@ -710,6 +727,8 @@ setEditIndentId(indent._id);
         attentionCount={attentionCount}
         onNotificationsClick={openWaitingDeliveries}
         onLogout={handleLogout}
+        onRefresh={refetchAll}
+        refreshing={refreshing}
       />
 
       {activeTab === "home" ? (
@@ -747,7 +766,6 @@ setEditIndentId(indent._id);
             onFilterChange={setStockFilter}
             hidden={hidden}
             canRequestProduct={isFeatureOn(flags, "products")}
-            onRefresh={() => fetchItems(false)}
           />
         </>
       ) : activeTab === "usage" ? (
