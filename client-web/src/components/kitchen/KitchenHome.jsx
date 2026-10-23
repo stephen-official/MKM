@@ -1,4 +1,5 @@
-import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, Truck } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarDays, CalendarOff, CheckCircle2, ChevronDown, Truck } from "lucide-react";
+import { useState } from "react";
 import { toLocalDateKey, localDateFromKey } from "../../utils/date";
 import { expiryStatus, itemsToUseFirst } from "../../features/kitchen";
 import { deliveryDateText, kitchenStage, myOrders, orderTimeline } from "../../features/kitchen/orders";
@@ -58,6 +59,32 @@ const longDate = (dateKey) => {
   return date ? `${LONG_DAYS[date.getDay()]}, ${date.getDate()} ${LONG_MONTHS[date.getMonth()]}` : "";
 };
 
+const REASONS = [["closed", "Closed"], ["holiday", "Holiday"], ["other", "Other"]];
+const REASON_LABEL = Object.fromEntries(REASONS);
+
+/** "No usage" needs a reason: three chips and a confirm, shown right where the cook tapped. */
+function NoUsagePicker({ date, onConfirm, onCancel }) {
+  const [reason, setReason] = useState("closed");
+  const [busy, setBusy] = useState(false);
+  const confirm = async () => {
+    setBusy(true);
+    const ok = await onConfirm(date, reason);
+    if (!ok) setBusy(false);
+  };
+  return (
+    <div className="kh-nouse" role="group" aria-label="Why was nothing used?">
+      <span className="kg-label">Why was nothing used?</span>
+      <div className="kh-nouse__chips">
+        {REASONS.map(([key, label]) => <button type="button" key={key} className={`kh-chip${reason === key ? " is-on" : ""}`} aria-pressed={reason === key} disabled={busy} onClick={() => setReason(key)}>{label}</button>)}
+      </div>
+      <div className="kh-nouse__actions">
+        <button type="button" className="kg-btn" disabled={busy} onClick={confirm}>{busy ? "Saving…" : "Mark no usage"}</button>
+        <button type="button" className="kg-chip" disabled={busy} onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 const qtyText = (value, item) => `${asNumber(value).toLocaleString("en-IN", { maximumFractionDigits: 3 })} ${item.unit || item.unitId?.symbol || "units"}`;
 
 /** One item line: name and hint on the left, a status pill, the quantity on the right. */
@@ -81,6 +108,10 @@ export default function KitchenHome({
   orders = [],
   sharedOrders = NO_ORDERS,
   onRecordUsage,
+  onRecordUsageOn,
+  usageDays = null,
+  onNoUsage,
+  onUndoNoUsage,
   onViewStock,
   onRequestSupplies,
   onReceiveDelivery,
@@ -91,6 +122,8 @@ export default function KitchenHome({
   const canRecordUsage = !hidden.has("usage");
   const canUseRequests = !hidden.has("requests");
   const today = toLocalDateKey();
+  const [picking, setPicking] = useState(null); // the date whose "no usage" reason is being chosen
+  const [missedOpen, setMissedOpen] = useState(false);
   const godownId = userInfo?.godown?._id;
 
   const outOfStock = items.filter((item) => asNumber(item.currentQty ?? item.quantity ?? item.kitchenQty) <= 0);
@@ -117,7 +150,17 @@ export default function KitchenHome({
   const todaysEntries = orders.filter(
     (entry) => toLocalDateKey(entry?.date || entry?.usageDate || entry?.createdAt) === today,
   );
-  const usageComplete = todaysEntries.length > 0;
+  // The server's day-by-day account (per kitchen) wins; the per-login entries are the fallback while it loads.
+  const todayRow = usageDays?.days?.find((day) => day.date === today) || null;
+  const usageComplete = todayRow ? todayRow.status === "recorded" : todaysEntries.length > 0;
+  const todayNone = todayRow?.status === "none";
+  const entryCount = todayRow ? todayRow.entries : todaysEntries.length;
+  const missedDays = (usageDays?.days || []).filter((day) => day.status === "missed" && day.date !== today);
+  const confirmNoUsage = async (date, reason) => {
+    const ok = await onNoUsage?.(date, reason);
+    if (ok) setPicking(null);
+    return ok;
+  };
   // A hint of colour on the cards whose state asks for attention; plain glass otherwise.
   const useFirstTint = expiredCount > 0 ? " kg-glass--rose" : useFirst.length > 0 ? " kg-glass--warm" : "";
   const lowTint = outOfStock.length > 0 ? " kg-glass--rose" : lowStock.length > 0 ? " kg-glass--cool" : "";
@@ -125,21 +168,45 @@ export default function KitchenHome({
   return (
     <main className="kh-shell">
       <section className="kh-top" aria-label="Today">
-        {canRecordUsage && <div className={`kg-glass kg-lift kh-day${usageComplete ? "" : " kg-glass--warm"}`}>
-          <span className="kg-orb kh-day__icon" aria-hidden="true">{usageComplete ? <CheckCircle2 size={20} strokeWidth={1.6} /> : <CalendarDays size={20} strokeWidth={1.6} />}</span>
+        {canRecordUsage && <div className={`kg-glass kg-lift kh-day${usageComplete || todayNone ? "" : " kg-glass--warm"}`}>
+          <span className="kg-orb kh-day__icon" aria-hidden="true">{usageComplete ? <CheckCircle2 size={20} strokeWidth={1.6} /> : todayNone ? <CalendarOff size={20} strokeWidth={1.6} /> : <CalendarDays size={20} strokeWidth={1.6} />}</span>
           <div className="kh-day__text">
-            <p className="kg-label">{longDate(today)}{usageComplete ? ` · ${todaysEntries.length} ${todaysEntries.length === 1 ? "entry" : "entries"}` : ""}</p>
-            <h2>{usageComplete ? "Today’s usage is recorded" : "Today’s usage is not recorded yet"}</h2>
+            <p className="kg-label">{longDate(today)}{usageComplete ? ` · ${entryCount} ${entryCount === 1 ? "entry" : "entries"}` : todayNone ? ` · ${REASON_LABEL[todayRow.reason] || "No usage"}` : ""}</p>
+            <h2>{usageComplete ? "Today’s usage is recorded" : todayNone ? "No usage today" : "Today’s usage is not recorded yet"}</h2>
           </div>
-          <button type="button" className="kg-btn" onClick={onRecordUsage}>
-            {usageComplete ? "Add more" : "Record usage"}<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" />
-          </button>
+          <div className="kh-day__actions">
+            <button type="button" className="kg-btn" onClick={onRecordUsage}>
+              {usageComplete ? "Add more" : todayNone ? "Record anyway" : "Record usage"}<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+            {todayNone && onUndoNoUsage && <button type="button" className="kg-chip" onClick={() => onUndoNoUsage(today)}>Undo</button>}
+            {!usageComplete && !todayNone && onNoUsage && picking !== today && <button type="button" className="kg-chip" onClick={() => setPicking(today)}>No usage today</button>}
+          </div>
+          {picking === today && <NoUsagePicker date={today} onConfirm={confirmNoUsage} onCancel={() => setPicking(null)} />}
         </div>}
         {canRecordUsage && expiredCount > 0 && <button type="button" className="kg-glass kg-glass--rose kg-lift kh-tile" onClick={onRecordUsage} aria-label={`${expiredCount} expired ${expiredCount === 1 ? "item" : "items"}. Check before using.`}>
           <span className="kg-orb kh-tile__icon" aria-hidden="true"><AlertTriangle size={20} strokeWidth={1.7} /></span>
           <span><span className="kg-label">Check before using</span><strong>{expiredCount} expired</strong></span>
         </button>}
       </section>
+
+      {/* Days in the last month with neither usage nor a "no usage" mark: loud on purpose, so a forgotten day gets fixed. */}
+      {canRecordUsage && missedDays.length > 0 && <section className="kg-glass kh-missed" aria-labelledby="kh-missed-title">
+        <button type="button" className="kh-missed__head" onClick={() => setMissedOpen((value) => !value)} aria-expanded={missedOpen} aria-controls="kh-missed-list">
+          <span className="kg-orb kh-missed__icon" aria-hidden="true"><AlertTriangle size={20} strokeWidth={1.7} /></span>
+          <span className="kh-missed__text"><span className="kg-label">Usage not recorded</span><strong id="kh-missed-title">{missedDays.length} missed {missedDays.length === 1 ? "day" : "days"}</strong></span>
+          <ChevronDown size={20} className={missedOpen ? "is-open" : ""} aria-hidden="true" />
+        </button>
+        {missedOpen && <ul id="kh-missed-list" className="kh-missed__list">
+          {missedDays.map((day) => <li key={day.date}>
+            <div className="kh-missed__row">
+              <span className="kh-missed__date">{longDate(day.date)}</span>
+              <button type="button" className="kg-btn" onClick={() => onRecordUsageOn?.(day.date)}>Record</button>
+              {onNoUsage && picking !== day.date && <button type="button" className="kg-chip" onClick={() => setPicking(day.date)}>No usage</button>}
+            </div>
+            {picking === day.date && <NoUsagePicker date={day.date} onConfirm={confirmNoUsage} onCancel={() => setPicking(null)} />}
+          </li>)}
+        </ul>}
+      </section>}
 
       <div className="kh-cols">
         <div className="kh-col">

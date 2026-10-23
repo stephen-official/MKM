@@ -74,6 +74,8 @@ const ClientStore = () => {
   const [items, setItems] = useState([]);
   const [cart, setCart] = useState([]);
   const [orders, setOrders] = useState([]); 
+  // Day-by-day usage account from GET /usage-days (today, missed, days); null while loading or when usage is off.
+  const [usageDays, setUsageDays] = useState(null);
   const [requests, setRequests] = useState([]); 
   const [indents, setIndents] = useState([]);
   // Shared orders, kept here only to count deliveries waiting on the header bell and the home screen.
@@ -207,6 +209,12 @@ setItems(formatted);
       setOrders(res.data.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
     } catch { console.error("Failed to fetch orders"); }
   };
+  const fetchUsageDays = async () => {
+    try {
+      const res = await api.get("/usage-days");
+      setUsageDays(res.data);
+    } catch { setUsageDays(null); }
+  };
   const fetchSharedOrders = async () => {
     try {
       const res = await api.get("/procurement/collaborative-purchase-orders", { params: { limit: 100 } });
@@ -225,6 +233,7 @@ setItems(formatted);
     const wants = (key) => isFeatureOn(nextFlags, key) && (!only || only.includes(key));
     return Promise.all([
       wants("consumption") && fetchMyOrders(),
+      wants("consumption") && fetchUsageDays(),
       wants("requests") && fetchMyRequests(),
       wants("indent") && fetchIndents(),
       wants("purchase-orders") && fetchSharedOrders()
@@ -239,7 +248,7 @@ setItems(formatted);
     setFlags(nextFlags);
     const newlyOff = (key) => isFeatureOn(previous, key) && !isFeatureOn(nextFlags, key);
     const newlyOn = ["consumption", "requests", "indent", "purchase-orders"].filter((key) => !isFeatureOn(previous, key) && isFeatureOn(nextFlags, key));
-    if (newlyOff("consumption")) setOrders([]);
+    if (newlyOff("consumption")) { setOrders([]); setUsageDays(null); }
     if (newlyOff("requests")) setRequests([]);
     if (newlyOff("indent")) setIndents([]);
     if (newlyOff("purchase-orders")) setSharedOrders([]);
@@ -253,7 +262,7 @@ setItems(formatted);
     stock: () => fetchItems(false),
     orders: () => isFeatureOn(flagsRef.current, "purchase-orders") && fetchSharedOrders(),
     requests: () => isFeatureOn(flagsRef.current, "requests") && fetchMyRequests(),
-    usage: () => isFeatureOn(flagsRef.current, "consumption") && fetchMyOrders(),
+    usage: () => isFeatureOn(flagsRef.current, "consumption") && Promise.all([fetchMyOrders(), fetchUsageDays()]),
     indents: () => isFeatureOn(flagsRef.current, "indent") && fetchIndents(),
     flags: () => fetchKitchenFlags().then(applyFlags).catch(() => {}),
   };
@@ -643,17 +652,41 @@ setEditIndentId(indent._id);
     return skipDraftCheck === true ? go() : leaveDraft(go);
   };
 
-  const openUsage = (skipDraftCheck = false) => {
+  // date: the usage date to start on (Home's missed-days list opens a past day).
+  const openUsage = (skipDraftCheck = false, date = toLocalDateKey()) => {
     if (isBlocked("usage")) return false;
     const go = () => {
       setActiveTab("usage");
       setActiveTransactionType("usage");
       setCart([]);
-      setSelectedDate(toLocalDateKey());
+      setSelectedDate(date);
       fetchItems(false);
       return true;
     };
     return skipDraftCheck === true || activeTab === "usage" ? go() : leaveDraft(go);
+  };
+
+  // "No usage today" (or on a missed day): the day counts as accounted for. Recording usage later replaces the mark.
+  const markNoUsage = async (date, reason) => {
+    try {
+      await api.post("/usage-days/none", { date, reason });
+      toast.success(date === toLocalDateKey() ? "Marked: no usage today" : "Marked as a day with no usage");
+      await fetchUsageDays();
+      return true;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Could not mark the day. Try again.");
+      return false;
+    }
+  };
+  const undoNoUsage = async (date) => {
+    try {
+      await api.delete(`/usage-days/none/${date}`);
+      await fetchUsageDays();
+      return true;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Could not undo. Try again.");
+      return false;
+    }
   };
 
   const openDeliveries = () => {
@@ -740,6 +773,10 @@ setEditIndentId(indent._id);
           orders={orders}
           sharedOrders={sharedOrders}
           onRecordUsage={openUsage}
+          onRecordUsageOn={(date) => openUsage(false, date)}
+          usageDays={usageDays}
+          onNoUsage={markNoUsage}
+          onUndoNoUsage={undoNoUsage}
           onViewStock={openStock}
           onRequestSupplies={openOrders}
           onReceiveDelivery={openWaitingDeliveries}
