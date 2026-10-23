@@ -768,7 +768,6 @@ setEditIndentId(indent._id);
         <KitchenHome
           userInfo={userInfo}
           items={items}
-          requests={requests}
           indents={indents}
           orders={orders}
           sharedOrders={sharedOrders}

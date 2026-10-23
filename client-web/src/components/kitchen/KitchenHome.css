@@ -66,6 +66,8 @@
 .kh-delivery { width: 100%; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
 .kh-delivery__who { display: flex; align-items: center; gap: 12px; }
 .kh-order { width: 100%; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
+.kh-order__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.kh-order__open { flex: none; display: inline-flex; align-items: center; gap: 2px; padding-top: 2px; color: var(--blue-deep); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 .kh-steps { display: grid; gap: 7px; }
 .kh-steps ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
 .kh-steps li { display: block; height: 4px; border-radius: 999px; background: rgba(200,212,228,.8); }

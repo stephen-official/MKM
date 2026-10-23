@@ -1,20 +1,9 @@
-import { AlertCircle, AlertTriangle, ArrowRight, CalendarDays, CalendarOff, CheckCircle2, ChevronDown, Truck } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowRight, ArrowUpRight, CalendarDays, CalendarOff, CheckCircle2, ChevronDown, Truck } from "lucide-react";
 import { useState } from "react";
 import { toLocalDateKey, localDateFromKey } from "../../utils/date";
 import { expiryStatus, itemsToUseFirst } from "../../features/kitchen";
 import { deliveryDateText, kitchenStage, myOrders, orderTimeline } from "../../features/kitchen/orders";
 import "./KitchenHome.css";
-
-const OPEN_REQUEST_STATUSES = new Set([
-  "pending",
-  "submitted",
-  "under_review",
-  "approved",
-  "partially_approved",
-  "confirmed",
-  "dispatched",
-  "partially_received",
-]);
 
 const RECEIVABLE_STATUSES = new Set([
   "approved",
@@ -119,7 +108,6 @@ const Section = ({ id, label, title, summary, attention = false, tint = "", open
 export default function KitchenHome({
   userInfo,
   items = [],
-  requests = [],
   indents = [],
   orders = [],
   sharedOrders = NO_ORDERS,
@@ -157,12 +145,10 @@ export default function KitchenHome({
   // Expired or expiring within the week, most urgent first; usable items only, since the rest cannot be recorded anyway.
   const useFirst = itemsToUseFirst(items.filter((item) => item.available !== false), today);
   const expiredCount = useFirst.filter((item) => expiryStatus(item, today).key === "expired").length;
-  const pendingRequests = [...requests, ...indents].filter((record) => OPEN_REQUEST_STATUSES.has(statusOf(record)));
   // Shared orders this kitchen is on that have not arrived yet, newest first.
   const inProgressOrders = myOrders(sharedOrders, godownId)
     .filter((order) => !["delivered", "cancelled"].includes(kitchenStage(order, godownId)))
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-  const inProgressCount = inProgressOrders.length + pendingRequests.length;
   // Old-style deliveries plus shares of shared orders that have been dispatched to this kitchen.
   const toReceive = indents.filter(isReceivable).length + sharedToReceive;
   const todaysEntries = orders.filter(
@@ -255,7 +241,7 @@ export default function KitchenHome({
 
         {canUseRequests && <div className="kh-col kh-col--side">
           <Section id="incoming" label="Requests" title="Incoming orders" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0}
-            summary={toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} arriving</span> : <span className="kh-count">{inProgressCount}</span>}
+            summary={toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} arriving</span> : <span className="kh-count">{inProgressOrders.length}</span>}
             open={isOpen("incoming")} onToggle={() => toggle("incoming")}>
             {toReceive > 0 && <button type="button" className="kg-row kh-delivery" onClick={onRequestSupplies}>
               <div className="kh-delivery__who">
@@ -266,12 +252,15 @@ export default function KitchenHome({
                 </span>
               </div>
             </button>}
-            {inProgressCount === 0 && toReceive === 0 && <Row name="No open requests" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
+            {inProgressOrders.length === 0 && toReceive === 0 && <Row name="No open requests" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
             {inProgressOrders.slice(0, 3).map((order) => (
               <button type="button" key={order._id} className="kg-row kh-order" onClick={onRequestSupplies}>
-                <span className="kh-row__text">
-                  <strong>{order.title || "Supply request"}</strong>
-                  <small>{order.neededBy ? `Delivery by ${deliveryDateText(order.neededBy)}` : "Shared order"}</small>
+                <span className="kh-order__head">
+                  <span className="kh-row__text">
+                    <strong>{order.title || "Supply request"}</strong>
+                    <small>{order.neededBy ? `Delivery by ${deliveryDateText(order.neededBy)}` : "Shared order"}</small>
+                  </span>
+                  <span className="kh-order__open">Open<ArrowUpRight size={15} strokeWidth={2} aria-hidden="true" /></span>
                 </span>
                 <span className="kh-steps">
                   <ol aria-label="Request status">
@@ -281,9 +270,7 @@ export default function KitchenHome({
                 </span>
               </button>
             ))}
-            {pendingRequests.length > 0 && <Row name={`${pendingRequests.length} older ${pendingRequests.length === 1 ? "request" : "requests"}`} hint="Sent before shared orders" tone="routine" status="Sent" onClick={onRequestSupplies} />}
-            {/* One way out of this section: the Requests page, where deliveries are received and orders followed. */}
-            <div className="kh-card__foot"><button type="button" className="kg-btn" onClick={onRequestSupplies}>Open<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" /></button></div>
+            <div className="kh-card__foot"><button type="button" className="kh-link" onClick={onRequestSupplies}>View all</button></div>
           </Section>
         </div>}
       </div>
