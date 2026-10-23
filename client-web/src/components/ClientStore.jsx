@@ -256,8 +256,7 @@ setItems(formatted);
   };
 
   // Live updates: the server names what changed and only that list is re-fetched (a burst settles into one fetch).
-  // Lists of disabled features are never requested. Everything at once after a reconnect, on coming back to the app,
-  // and from the header's Refresh button.
+  // Lists of disabled features are never requested. Everything at once after a reconnect and on coming back to the app.
   const liveFetchers = {
     stock: () => fetchItems(false),
     orders: () => isFeatureOn(flagsRef.current, "purchase-orders") && fetchSharedOrders(),
@@ -267,11 +266,7 @@ setItems(formatted);
     flags: () => fetchKitchenFlags().then(applyFlags).catch(() => {}),
   };
   useKitchenChanges(Object.keys(liveFetchers), (topic) => liveFetchers[topic]?.());
-  const [refreshing, setRefreshing] = useState(false);
-  const refetchAll = async () => {
-    setRefreshing(true);
-    try { await Promise.all([fetchItems(false), fetchFeatureData(flagsRef.current), liveFetchers.flags()]); } finally { setRefreshing(false); }
-  };
+  const refetchAll = () => Promise.all([fetchItems(false), fetchFeatureData(flagsRef.current), liveFetchers.flags()]);
   useRefetchOnReturn(refetchAll);
 
   useEffect(() => {
@@ -760,8 +755,6 @@ setEditIndentId(indent._id);
         attentionCount={attentionCount}
         onNotificationsClick={openWaitingDeliveries}
         onLogout={handleLogout}
-        onRefresh={refetchAll}
-        refreshing={refreshing}
       />
 
       {activeTab === "home" ? (
@@ -842,7 +835,6 @@ setEditIndentId(indent._id);
           onEditRequest={handleEditIndent}
           onDeleteRequest={deleteSupplyRequest}
           onReceiveDelivery={receiveDelivery}
-          refresh={fetchIndents}
         />
       ) : activeTab === "activity" ? (
         <>

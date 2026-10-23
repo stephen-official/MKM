@@ -145,8 +145,6 @@
   opacity: 0.5;
 }
 
-.kitchen-header__action svg.is-spinning { animation: kitchen-header-spin 0.8s linear infinite; }
-@keyframes kitchen-header-spin { to { transform: rotate(360deg); } }
 
 .kitchen-header__attention {
   position: absolute;
@@ -429,7 +427,6 @@
 .kg-pill--low { background: var(--st-low-bg); border-color: var(--st-low-line); color: var(--st-low-fg); }
 .kg-pill--routine { background: var(--st-routine-bg); border-color: var(--st-routine-line); color: var(--st-routine-fg); }
 @media (prefers-reduced-motion: reduce) {
-  .kitchen-header__action svg.is-spinning { animation: none; }
   .kitchen-bottom-nav__item--active::after { animation: none; }
   .kg-lift, .kg-btn, .kg-chip { transition: none; }
   .kg-lift:hover, .kg-lift:active, .kg-lift:focus-within, .kg-btn:hover, .kg-btn:active, .kg-btn:focus-visible, .kg-chip:hover, .kg-chip:active, .kg-chip:focus-visible { transform: none; }

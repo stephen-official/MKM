@@ -8,7 +8,6 @@ import {
   PackageCheck,
   Pencil,
   Plus,
-  RefreshCw,
   Trash2,
   Truck,
 } from "lucide-react";
@@ -195,7 +194,6 @@ export default function SupplyRequestsDeliveries({
   onEditRequest,
   onDeleteRequest,
   onReceiveDelivery,
-  refresh,
   initialTab = "requests",
   onBack,
 }) {
@@ -224,9 +222,6 @@ export default function SupplyRequestsDeliveries({
           <h1>Past requests &amp; deliveries</h1>
           <span>Request supplies and confirm what arrives at your kitchen.</span>
         </div>
-        <button type="button" className="srd-refresh" onClick={refresh} disabled={loading} aria-label="Refresh requests and deliveries">
-          <RefreshCw size={19} className={loading ? "srd-spin" : ""} aria-hidden="true" />
-        </button>
       </header>
 
       <div className="srd-tabs" role="tablist" aria-label="Supply activity">

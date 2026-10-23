@@ -6,7 +6,6 @@ import Login from "./pages/Login";
 import ClientStore from "./components/ClientStore";
 
 import { socket, connectSocket, disconnectSocket } from "./socket";
-import RefreshButton from "./components/RefreshButton";
 import { clearSession, isAccessTokenValid } from "./utils/session";
 
 const ProtectedRoute = ({ children }) => {
@@ -99,8 +98,6 @@ function App() {
 
     <Route path="*" element={<Navigate to="/" />} />
   </Routes>
-
-  <RefreshButton />
 
 </Router>
   );

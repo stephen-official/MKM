@@ -1,4 +1,4 @@
-import { Bell, LogOut, RotateCw, School } from "lucide-react";
+import { Bell, LogOut, School } from "lucide-react";
 import "./kitchen-ui.css";
 
 /**
@@ -9,8 +9,6 @@ import "./kitchen-ui.css";
  * @param {number} [props.attentionCount=0]
  * @param {() => void} [props.onNotificationsClick]
  * @param {() => void} [props.onLogout]
- * @param {() => void} [props.onRefresh] re-fetches the kitchen's data; without it the button reloads the page
- * @param {boolean} [props.refreshing=false]
  * @param {string} [props.className=""]
  */
 export default function KitchenHeader({
@@ -18,8 +16,6 @@ export default function KitchenHeader({
   attentionCount = 0,
   onNotificationsClick,
   onLogout,
-  onRefresh,
-  refreshing = false,
   className = "",
 }) {
   const safeAttentionCount = Number.isFinite(Number(attentionCount))
@@ -50,18 +46,7 @@ export default function KitchenHeader({
       </div>
 
       <div className="kitchen-header__actions">
-        {/* Lives here rather than floating, so it never covers the bottom navigation or an open sheet.
-            Lists update live; this is the safety net that fetches everything again without losing the ticket. */}
-        <button
-          type="button"
-          className="kitchen-header__action"
-          aria-label={onRefresh ? "Refresh" : "Reload the app"}
-          title={onRefresh ? "Refresh" : "Reload"}
-          disabled={refreshing}
-          onClick={onRefresh || (() => window.location.reload())}
-        >
-          <RotateCw size={20} aria-hidden="true" className={refreshing ? "is-spinning" : ""} />
-        </button>
+        {/* No refresh button: lists update live, and everything is re-fetched after a reconnect or on returning to the app. */}
         <button
           type="button"
           className="kitchen-header__action"
