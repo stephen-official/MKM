@@ -1,4 +1,4 @@
-import { Bell, LogOut, School } from "lucide-react";
+import { LogOut, School } from "lucide-react";
 import "./kitchen-ui.css";
 
 /**
@@ -6,23 +6,14 @@ import "./kitchen-ui.css";
  *
  * @param {object} props
  * @param {string} props.kitchenName
- * @param {number} [props.attentionCount=0]
- * @param {() => void} [props.onNotificationsClick]
  * @param {() => void} [props.onLogout]
  * @param {string} [props.className=""]
  */
 export default function KitchenHeader({
   kitchenName,
-  attentionCount = 0,
-  onNotificationsClick,
   onLogout,
   className = "",
 }) {
-  const safeAttentionCount = Number.isFinite(Number(attentionCount))
-    ? Math.max(0, Number(attentionCount))
-    : 0;
-  const hasAttention = safeAttentionCount > 0;
-
   return (
     <header className={`kitchen-header ${className}`.trim()}>
       <div className="kitchen-header__brand" aria-label="Current kitchen">
@@ -46,25 +37,7 @@ export default function KitchenHeader({
       </div>
 
       <div className="kitchen-header__actions">
-        {/* No refresh button: lists update live, and everything is re-fetched after a reconnect or on returning to the app. */}
-        <button
-          type="button"
-          className="kitchen-header__action"
-          aria-label={
-            hasAttention
-              ? `${safeAttentionCount} notifications requiring attention`
-              : "Notifications"
-          }
-          onClick={onNotificationsClick}
-          disabled={!onNotificationsClick}
-        >
-          <Bell size={21} aria-hidden="true" />
-          {hasAttention && (
-            <span className="kitchen-header__attention" aria-hidden="true">
-              {safeAttentionCount > 99 ? "99+" : safeAttentionCount}
-            </span>
-          )}
-        </button>
+        {/* Only Log out lives here: lists update live, and what needs attention shows on Home and the Requests tab badge. */}
         <button
           type="button"
           className="kitchen-header__action kitchen-header__logout"

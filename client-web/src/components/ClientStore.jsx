@@ -745,15 +745,12 @@ setEditIndentId(indent._id);
     requests.filter((request) => request.status === "pending").length + oldDeliveriesWaiting + sharedToReceive;
 
   // Deliveries now arrive through shared orders; only an old-style delivery on its own still opens Past requests.
-  const openWaitingDeliveries = () => (oldDeliveriesWaiting > 0 && sharedToReceive === 0 ? openDeliveries() : openOrders());
 
   return (
     <div className="kitchen-app-shell min-h-screen bg-[#F8F9FA] pb-24 font-sans text-slate-900">
       {confirmDialog}
       <KitchenHeader
         kitchenName={userInfo?.godown?.name || "Kitchen"}
-        attentionCount={attentionCount}
-        onNotificationsClick={openWaitingDeliveries}
         onLogout={handleLogout}
       />
 

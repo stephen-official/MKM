@@ -146,23 +146,6 @@
 }
 
 
-.kitchen-header__attention {
-  position: absolute;
-  top: 3px;
-  right: 1px;
-  display: grid;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  place-items: center;
-  color: #fff;
-  background: var(--alert-dot);
-  border: 2px solid #fff;
-  border-radius: 999px;
-  font-size: 9px;
-  font-weight: 600;
-  line-height: 1;
-}
 
 .kitchen-bottom-nav {
   position: fixed;
