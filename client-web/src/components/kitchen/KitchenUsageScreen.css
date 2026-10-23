@@ -31,6 +31,20 @@
 /* Phone: slightly tighter chips so all five sit in two rows at 360px. */
 @media (max-width: 420px) { .kus-filters { gap: 5px; } .kus-filter { padding: 0 9px; letter-spacing: .04em; } .kus-filter span { min-width: 18px; margin-left: 4px; padding: 0 5px; } }
 
+/* "No usage is recorded today": a glass checkbox row above the list; ticking it turns the ticket into a reason picker. */
+.kus-none { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; padding: 12px 16px; cursor: pointer; }
+.kus-none input { width: 22px; height: 22px; flex: none; margin: 0; accent-color: var(--blue); cursor: pointer; }
+.kus-none input:disabled { cursor: default; }
+.kus-none > span { display: grid; gap: 2px; min-width: 0; }
+.kus-none strong { font-size: 14.5px; font-weight: 500; }
+.kus-none small { color: var(--muted-2); font-size: 12.5px; font-weight: 300; }
+.kus-none.is-on { background: var(--tint-cool); }
+.kus-none-ticket__label { margin: 12px 0 8px; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
+.kus-none-ticket__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.kus-none-ticket__note { width: 100%; min-height: 44px; margin-top: 10px; padding: 0 14px; border: 1px solid var(--glass-border); border-radius: 999px; background: rgba(255,255,255,.6); color: var(--ink-2); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; font: inherit; font-size: 14px; outline: none; }
+.kus-none-ticket__note:focus { box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
+.kus-none-ticket__note::placeholder { color: var(--muted-2); font-weight: 300; }
+
 /* List heading */
 .kus-section-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 12px; padding-inline: 4px; }
 .kus-section-heading h2 { margin: 0; font-size: 18px; font-weight: 300; letter-spacing: -.01em; }
@@ -77,8 +91,8 @@
 .kus-item__entry .kus-stepper { margin-left: auto; }
 .kus-unit { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(170,186,210,.28); }
 .kus-unit .kus-item__label { flex: 1 1 100%; margin-bottom: 2px; }
-.kus-unit button, .kus-filter { min-height: 34px; padding: 0 12px; border: 1px solid var(--glass-border); border-radius: 999px; background: rgba(255,255,255,.55); color: var(--muted-2); box-shadow: 0 0 0 1px rgba(170,186,210,.28), inset 0 1px 0 #fff; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
-.kus-unit button.is-on, .kus-filter.is-on { color: var(--blue-deep); background: rgba(228,237,249,.9); box-shadow: 0 0 0 1px rgba(120,152,198,.55), inset 0 1px 0 #fff; }
+.kus-unit button, .kus-filter, .kus-none-ticket__chips button { min-height: 34px; padding: 0 12px; border: 1px solid var(--glass-border); border-radius: 999px; background: rgba(255,255,255,.55); color: var(--muted-2); box-shadow: 0 0 0 1px rgba(170,186,210,.28), inset 0 1px 0 #fff; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.kus-unit button.is-on, .kus-filter.is-on, .kus-none-ticket__chips button.is-on { color: var(--blue-deep); background: rgba(228,237,249,.9); box-shadow: 0 0 0 1px rgba(120,152,198,.55), inset 0 1px 0 #fff; }
 .kus-unit__note { display: flex; align-items: center; gap: 5px; margin: 8px 0 0; color: var(--muted-2); font-size: 12.5px; font-weight: 300; line-height: 1.4; }
 .kus-unit__note strong { font-weight: 500; color: var(--ink-2); }
 .kus-unit__note--error { color: var(--st-expired-fg); font-weight: 500; }

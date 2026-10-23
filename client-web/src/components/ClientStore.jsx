@@ -662,9 +662,9 @@ setEditIndentId(indent._id);
   };
 
   // "No usage today" (or on a missed day): the day counts as accounted for. Recording usage later replaces the mark.
-  const markNoUsage = async (date, reason) => {
+  const markNoUsage = async (date, reason, note = "") => {
     try {
-      await api.post("/usage-days/none", { date, reason });
+      await api.post("/usage-days/none", { date, reason, note });
       toast.success(date === toLocalDateKey() ? "Marked: no usage today" : "Marked as a day with no usage");
       await fetchUsageDays();
       return true;
@@ -764,7 +764,6 @@ setEditIndentId(indent._id);
           onRecordUsage={openUsage}
           onRecordUsageOn={(date) => openUsage(false, date)}
           usageDays={usageDays}
-          onNoUsage={markNoUsage}
           onUndoNoUsage={undoNoUsage}
           onViewStock={openStock}
           onRequestSupplies={openOrders}
@@ -812,6 +811,8 @@ setEditIndentId(indent._id);
             onClear={() => setCart([])}
             onSubmit={handleSubmit}
             onReview={() => setIsCartOpen(true)}
+            usageDays={usageDays}
+            onNoUsage={markNoUsage}
           />
         </>
       ) : activeTab === "requests" ? (
