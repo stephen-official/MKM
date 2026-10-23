@@ -2,6 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { Consumption, GodownStock, Notification, Request, Transfer } from "../models/FlowModels.js";
+import { NoUsageDay } from "../models/NoUsageDayModel.js";
 import { io, notifyKitchen } from "../realtime.js";
 import { bodyItemIds, requireAvailableProducts, stockRecordItemIds } from "../catalog/productService.js";
 import { isAvailable, missingFields } from "../catalog/completeness.js";
@@ -228,7 +229,10 @@ const handleStockProcessing = async (req, res) => {
       .populate("godownId", "name") 
       .populate(deepPopulateItem);
 
+    // A day with usage is accounted for: drop any "no usage" mark the kitchen gave it earlier.
+    await NoUsageDay.deleteOne({ godownId: result.godownId, date: result.date });
     notifyKitchen(result.godownId, "stock");
+    notifyKitchen(result.godownId, "usage");
     res.status(201).json(populatedResult);
   } catch (error) {
     res.status(400).json({ error: error.message });

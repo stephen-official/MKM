@@ -154,6 +154,9 @@ export const ROUTE_RULES = Object.freeze([
   feature("POST", "/api/orders", ["consumption"], "mutation", "both"),
   feature("PATCH", "/api/consumptions/:id", ["consumption"], "mutation"),
   feature("DELETE", "/api/consumptions/:id", ["consumption"], "mutation"),
+  feature("GET", "/api/usage-days", ["consumption"], "read", "kitchen"),
+  feature("POST", "/api/usage-days/none", ["consumption"], "mutation", "kitchen"),
+  feature("DELETE", "/api/usage-days/none/:date", ["consumption"], "mutation", "kitchen"),
 
   // --- reports ---
   feature("GET", "/api/reports/:entity/export/excel/:id", ["reports"], "read"),
