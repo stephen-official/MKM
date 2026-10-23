@@ -206,7 +206,7 @@ export default function KitchenHome({
   return (
     <main className="kh-shell">
       <section className="kh-top" aria-label="Today">
-        {canRecordUsage && <div className={`kg-glass kg-lift kh-day${usageComplete || todayNone ? "" : " kg-glass--warm"}`}>
+        {canRecordUsage && <div className={`kg-glass${wide ? " kg-lift" : ""} kh-day${usageComplete || todayNone ? "" : " kg-glass--warm"}`}>
           <span className="kg-orb kh-day__icon" aria-hidden="true">{usageComplete ? <CheckCircle2 size={20} strokeWidth={1.6} /> : todayNone ? <CalendarOff size={20} strokeWidth={1.6} /> : <CalendarDays size={20} strokeWidth={1.6} />}</span>
           <div className="kh-day__text">
             <p className="kh-day__date"><DayLine dateKey={today} today={today} suffix={usageComplete ? ` · ${entryCount} ${entryCount === 1 ? "entry" : "entries"} recorded` : todayNone ? ` · No usage (${REASON_LABEL[todayRow.reason] || "other"})` : ""} /></p>
