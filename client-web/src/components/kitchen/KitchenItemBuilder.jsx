@@ -2,6 +2,7 @@ import { AlertTriangle, ArrowLeft, Check, ChevronUp, MapPin, Plus, Search, X } f
 import { useEffect, useState } from "react";
 import "./KitchenItemBuilder.css";
 import { getStockHealth, productPacks } from "../../features/kitchen";
+import { lockBodyScroll } from "../../utils/scrollLock";
 import { useConfirm } from "../ui/ConfirmDialog";
 import Select from "../ui/Select";
 import OrderTicket from "./OrderTicket";
@@ -69,11 +70,10 @@ export default function KitchenItemBuilder({ type, items = [], cart = [], loadin
   }
   useEffect(() => {
     if (!sheetOpen) return undefined;
-    const onKey = (event) => { if (event.key === "Escape") setSheetOpen(false); };
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const onKey = (event) => { if (event.key === "Escape" && !event.defaultPrevented) setSheetOpen(false); }; // the review panel above takes Escape first
+    const unlock = lockBodyScroll();
     document.addEventListener("keydown", onKey);
-    return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", onKey); };
+    return () => { unlock(); document.removeEventListener("keydown", onKey); };
   }, [sheetOpen]);
 
   const destinationName = destinations.find((candidate) => String(candidate._id) === String(destination))?.name || "";
