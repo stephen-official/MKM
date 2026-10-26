@@ -3,6 +3,8 @@
 .kh-shell * { box-sizing: border-box; }
 .kh-shell h2 { margin: 2px 0 0; font-size: 18px; font-weight: 300; letter-spacing: -.01em; line-height: 1.2; text-wrap: balance; }
 .kh-shell button { font: inherit; color: inherit; cursor: pointer; }
+/* The line above outranks .kg-btn, so the primary pill gets its deep blue back here. */
+.kh-shell .kg-btn { color: var(--blue-deep); }
 
 /* Today row */
 /* Both rows share one column template (--kh-cols), so the day card lines up with the left column and the tile with the right. */
