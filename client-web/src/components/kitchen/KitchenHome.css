@@ -23,9 +23,10 @@
 /* Missed days live inside the usage card: a red row with a chevron that drops the day list open underneath. */
 .kh-day__missed { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; margin-top: 2px; padding: 10px 2px 2px; border: 0; border-top: 1px solid rgba(170,186,210,.28); background: none; color: var(--st-expired-fg); font-size: 13px; font-weight: 500; text-align: left; }
 .kh-day__missed > span { flex: 1; min-width: 0; }
-.kh-day__missed > svg:last-child { flex: none; transition: transform .15s; }
+.kh-day__missed > svg:last-child { flex: none; transition: transform var(--dur-glass) var(--ease-glass); }
 .kh-day__missed > svg.is-open { transform: rotate(180deg); }
-.kh-missed__list { flex: 1 1 100%; list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.kh-missed { flex: 1 1 100%; display: grid; }
+.kh-missed__list { list-style: none; margin: 0; padding: 14px 0 0; display: grid; gap: 8px; }
 .kh-missed__list li { display: grid; gap: 10px; padding: 10px 14px; background: rgba(255,255,255,.6); border: 1px solid var(--glass-border); border-radius: var(--radius-row); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
 .kh-missed__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .kh-missed__date { flex: 1 1 160px; font-size: 14.5px; font-weight: 400; }
@@ -40,21 +41,27 @@
 .kh-card__title { font-size: 18px; font-weight: 300; letter-spacing: -.01em; line-height: 1.2; }
 .kh-card__summary { flex: none; color: var(--muted-2); font-size: 12.5px; }
 .kh-card__alert { flex: none; display: grid; place-items: center; color: var(--st-expired-fg); }
-.kh-card__head > svg:last-child { flex: none; color: var(--muted-2); transition: transform .15s; }
+.kh-card__head > svg:last-child { flex: none; color: var(--muted-2); transition: transform var(--dur-glass) var(--ease-glass); }
 .kh-card__head > svg.is-open { transform: rotate(180deg); }
 .kh-card__body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 10px; }
+/* Every dropdown (card, group, missed days) slides open: the one grid row grows from nothing to its content height.
+   Closed bodies are hidden, so nothing inside can be reached by Tab; the visibility change waits for the slide to end. */
+.kh-drop { display: grid; grid-template-rows: 0fr; visibility: hidden; transition: grid-template-rows var(--dur-glass) var(--ease-glass), visibility 0s linear var(--dur-glass); }
+/* The body's own top and bottom padding would hold the closed row open by a few pixels, so it is folded away with it. */
+.kh-drop > * { min-height: 0; overflow: hidden; transition: padding var(--dur-glass) var(--ease-glass); }
+.kh-drop:not(.is-open) > * { padding-top: 0; padding-bottom: 0; }
+.kh-drop.is-open { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows var(--dur-glass) var(--ease-glass), visibility 0s; }
 .kh-card__foot { display: flex; justify-content: flex-end; padding-top: 4px; }
 .kh-card__head--static { min-height: 54px; cursor: default; }
 /* Desktop tiles: the whole card opens its page (hover rim from kg-lift, arrow in the corner). */
 .kh-card--link, .kh-card--link .kh-card__head--static { cursor: pointer; }
 .kh-card--link:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
 .kh-card--link .kh-card__head > svg:last-child { flex: none; color: var(--blue-deep); }
-.kh-group--static .kh-group__head { cursor: inherit; }
 /* Dropdown rows inside a section (Stock: Use first, Running low). */
 .kh-group { background: rgba(255,255,255,.5); border: 1px solid var(--glass-border); border-radius: var(--radius-row); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
 .kh-group__head { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 54px; padding: 8px 14px; border: 0; background: none; text-align: left; }
 .kh-group__title { flex: 1; min-width: 0; font-size: 15px; font-weight: 500; }
-.kh-group__head > svg:last-child { flex: none; color: var(--muted-2); transition: transform .15s; }
+.kh-group__head > svg:last-child { flex: none; color: var(--muted-2); transition: transform var(--dur-glass) var(--ease-glass); }
 .kh-group__head > svg.is-open { transform: rotate(180deg); }
 .kh-group__body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 8px; }
 .kh-count { font-size: 22px; font-weight: 300; color: var(--blue); line-height: 1; font-variant-numeric: tabular-nums; padding-right: 2px; }
@@ -78,6 +85,7 @@
 .kh-steps small { font-size: 11.5px; font-weight: 500; color: var(--blue-deep); }
 
 .kh-shell button:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .kh-drop, .kh-drop > *, .kh-card__head > svg:last-child, .kh-group__head > svg:last-child, .kh-day__missed > svg:last-child { transition: none; } }
 
 @media (max-width: 560px) {
   .kh-day .kg-btn { flex: 1 1 100%; }

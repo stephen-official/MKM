@@ -80,7 +80,7 @@ const Row = ({ name, hint, tone, status, qty, onClick }) => (
  * A collapsible section: the header (one tap target) carries the name, a count or pill, an exclamation mark when it
  * needs attention, and the chevron. Everything starts closed so the page stays short; the header says what is inside.
  */
-const Section = ({ id, label, title, summary, attention = false, tint = "", open, onToggle, onOpen, wide = false, children }) => {
+const Section = ({ id, label, title, summary, attention = false, tint = "", open, onToggle, onOpen, wide = false, groupTitle = "Details", children }) => {
   const head = (
     <>
       <span className="kh-card__text">{label && <span className="kg-label">{label}</span>}<span className="kh-card__title" id={`${id}-title`}>{title}</span></span>
@@ -88,11 +88,12 @@ const Section = ({ id, label, title, summary, attention = false, tint = "", open
       {attention && <span className="kh-card__alert" role="img" aria-label="Needs attention"><AlertCircle size={20} strokeWidth={1.9} /></span>}
     </>
   );
-  // Desktop: the whole tile is a link to its page (hover rim, arrow instead of a chevron); the dropdown is a phone thing.
+  // Desktop: the whole tile is a link to its page (hover rim, arrow in the corner); the content sits in a dropdown row inside it.
   if (wide && onOpen) {
     return (
       <LinkTile className={`kg-glass kg-lift kh-card kh-card--link${tint}`} labelledBy={`${id}-title`} onOpen={onOpen}>
         <div className="kh-card__head kh-card__head--static">{head}<ArrowUpRight size={20} aria-hidden="true" /></div>
+        <div className="kh-card__body"><Group id={id} title={groupTitle} open={open} onToggle={onToggle}>{children}</Group></div>
       </LinkTile>
     );
   }
@@ -102,7 +103,7 @@ const Section = ({ id, label, title, summary, attention = false, tint = "", open
         {head}
         <ChevronDown size={20} className={open ? "is-open" : ""} aria-hidden="true" />
       </button>
-      {open && <div id={`${id}-body`} className="kh-card__body">{children}</div>}
+      <div id={`${id}-body`} className={`kh-drop${open ? " is-open" : ""}`}><div className="kh-card__body">{children}</div></div>
     </section>
   );
 };
@@ -115,16 +116,19 @@ const InventoryTile = ({ wide, onOpen, tint, children }) => {
     : <section className={`kg-glass kh-card${tint}`} aria-labelledby="stock-title">{head}{children}</section>;
 };
 
-/** A card that behaves like a link: click or Enter anywhere on it opens the page. Buttons inside stop the click. */
-const LinkTile = ({ className, labelledBy, onOpen, children }) => (
-  <section className={className} aria-labelledby={labelledBy} role="link" tabIndex={0} onClick={onOpen}
-    onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(); } }}>
-    {children}
-  </section>
-);
+/** A card that behaves like a link: click or Enter anywhere on it opens the page. Buttons inside (dropdown headers, rows) keep their own tap. */
+const LinkTile = ({ className, labelledBy, onOpen, children }) => {
+  const onTile = (event) => !event.target.closest("button");
+  return (
+    <section className={className} aria-labelledby={labelledBy} role="link" tabIndex={0} onClick={(event) => { if (onTile(event)) onOpen(); }}
+      onKeyDown={(event) => { if (onTile(event) && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onOpen(); } }}>
+      {children}
+    </section>
+  );
+};
 
 /** A dropdown row inside a section (Stock has two: Use first and Running low). Same header grammar as a section, smaller. */
-const Group = ({ id, title, summary, attention = false, open, onToggle, summaryOnly = false, children }) => {
+const Group = ({ id, title, summary, attention = false, open, onToggle, children }) => {
   const head = (
     <>
       <span className="kh-group__title">{title}</span>
@@ -132,14 +136,13 @@ const Group = ({ id, title, summary, attention = false, open, onToggle, summaryO
       {attention && <span className="kh-card__alert" role="img" aria-label="Needs attention"><AlertCircle size={18} strokeWidth={1.9} /></span>}
     </>
   );
-  if (summaryOnly) return <div className="kh-group kh-group--static"><div className="kh-group__head">{head}</div></div>;
   return (
     <div className={`kh-group${open ? " is-open" : ""}`}>
       <button type="button" className="kh-group__head" onClick={onToggle} aria-expanded={open} aria-controls={`${id}-body`}>
         {head}
         <ChevronDown size={18} className={open ? "is-open" : ""} aria-hidden="true" />
       </button>
-      {open && <div id={`${id}-body`} className="kh-group__body">{children}</div>}
+      <div id={`${id}-body`} className={`kh-drop${open ? " is-open" : ""}`}><div className="kh-group__body">{children}</div></div>
     </div>
   );
 };
@@ -218,21 +221,21 @@ export default function KitchenHome({
             {todayNone && onUndoNoUsage && <button type="button" className="kg-chip" onClick={() => onUndoNoUsage(today)}>Undo</button>}
           </div>
           {/* Days in the last month with neither usage nor a "no usage" mark: a red row that drops the list open in place. */}
-          {missedDays.length > 0 && <>
+          {missedDays.length > 0 && <div className="kh-missed">
             <button type="button" className="kh-day__missed" onClick={() => setMissedOpen((value) => !value)} aria-expanded={missedOpen} aria-controls="kh-missed-list">
               <AlertTriangle size={16} strokeWidth={1.9} aria-hidden="true" />
               <span>{missedDays.length} missed {missedDays.length === 1 ? "day" : "days"} · usage not recorded</span>
               <ChevronDown size={18} className={missedOpen ? "is-open" : ""} aria-hidden="true" />
             </button>
-            {missedOpen && <ul id="kh-missed-list" className="kh-missed__list">
+            <div id="kh-missed-list" className={`kh-drop${missedOpen ? " is-open" : ""}`}><ul className="kh-missed__list">
               {missedDays.map((day) => <li key={day.date}>
                 <div className="kh-missed__row">
                   <span className="kh-missed__date"><DayLine dateKey={day.date} today={today} /></span>
                   <button type="button" className="kg-btn" onClick={() => onRecordUsageOn?.(day.date)}>Record</button>
                 </div>
               </li>)}
-            </ul>}
-          </>}
+            </ul></div>
+          </div>}
         </div>}
       </section>
 
@@ -240,7 +243,7 @@ export default function KitchenHome({
         <div className="kh-col">
           <InventoryTile wide={wide} onOpen={onViewStock} tint={expiredCount > 0 || outOfStock.length > 0 ? " kg-glass--rose" : useFirst.length > 0 || lowStock.length > 0 ? " kg-glass--warm" : ""}>
             <div className="kh-card__body">
-              {canRecordUsage && <Group id="use-first" title="Use first" attention={useFirst.length > 0} summaryOnly={wide}
+              {canRecordUsage && <Group id="use-first" title="Use first" attention={useFirst.length > 0}
                 summary={expiredCount > 0 ? <span className="kg-pill kg-pill--expired">{expiredCount} expired</span> : `${useFirst.length} ${useFirst.length === 1 ? "item" : "items"}`}
                 open={isOpen("use-first")} onToggle={() => toggle("use-first")}>
                 {useFirst.length === 0 && <Row name="Nothing expiring this week" hint="Every dated item has more than 7 days left" tone="routine" status="In date" onClick={onViewStock} />}
@@ -254,7 +257,7 @@ export default function KitchenHome({
                 <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onRecordUsage}>Record</button></div>
               </Group>}
 
-              <Group id="running-low" title="Running low" attention={attentionItems.length > 0} summaryOnly={wide}
+              <Group id="running-low" title="Running low" attention={attentionItems.length > 0}
                 summary={outOfStock.length > 0 ? <span className="kg-pill kg-pill--expired">{outOfStock.length} out of stock</span> : lowStock.length > 0 ? <span className="kg-pill kg-pill--low">{lowStock.length} low</span> : "All fine"}
                 open={isOpen("running-low")} onToggle={() => toggle("running-low")}>
                 {attentionItems.length === 0 && <Row name="All stock above its low level" hint={`${items.filter((item) => item.available !== false).length} items you can use`} tone="routine" status="Fine" onClick={onViewStock} />}
@@ -272,7 +275,7 @@ export default function KitchenHome({
         </div>
 
         {canUseRequests && <div className="kh-col kh-col--side">
-          <Section id="incoming" title="Requests" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0} wide={wide} onOpen={onRequestSupplies}
+          <Section id="incoming" title="Requests" groupTitle="Open requests" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0} wide={wide} onOpen={onRequestSupplies}
             summary={toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} arriving</span> : <span className="kh-count">{inProgressOrders.length}</span>}
             open={isOpen("incoming")} onToggle={() => toggle("incoming")}>
             {inProgressOrders.length === 0 && <Row name="No open requests" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
