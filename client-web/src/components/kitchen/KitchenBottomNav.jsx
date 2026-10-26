@@ -23,6 +23,7 @@ const TABS = [
  * @param {"home"|"stock"|"usage"|"requests"} props.activeTab
  * @param {(tab: string) => void} props.onTabChange
  * @param {number} [props.requestCount=0] Number of requests requiring attention.
+ * @param {boolean} [props.requestAlert=false] An unsent supply order is waiting (items added from Home): the badge shows "!" instead.
  * @param {Set<string>} [props.hiddenTabs] Tab ids to hide (features disabled for this kitchen).
  * @param {boolean} [props.disabled=false]
  * @param {string} [props.className=""]
@@ -31,6 +32,7 @@ export default function KitchenBottomNav({
   activeTab,
   onTabChange,
   requestCount = 0,
+  requestAlert = false,
   hiddenTabs = NO_HIDDEN_TABS,
   disabled = false,
   className = "",
@@ -47,7 +49,7 @@ export default function KitchenBottomNav({
       <div className="kitchen-bottom-nav__items">
         {TABS.filter(({ id }) => !hiddenTabs.has(id)).map(({ id, label, accessibleLabel, Icon }) => {
           const isActive = activeTab === id;
-          const showBadge = id === "requests" && safeRequestCount > 0;
+          const showBadge = id === "requests" && (requestAlert || safeRequestCount > 0);
 
           return (
             <button
@@ -67,8 +69,8 @@ export default function KitchenBottomNav({
                   strokeWidth: isActive ? 1.8 : 1.6,
                 })}
                 {showBadge && (
-                  <span className="kitchen-bottom-nav__badge">
-                    {safeRequestCount > 99 ? "99+" : safeRequestCount}
+                  <span className={`kitchen-bottom-nav__badge${requestAlert ? " kitchen-bottom-nav__badge--alert" : ""}`}>
+                    {requestAlert ? "!" : safeRequestCount > 99 ? "99+" : safeRequestCount}
                   </span>
                 )}
               </span>

@@ -28,7 +28,7 @@ import { FEATURE_DISABLED_EVENT, canOpenView, draftFeature, featureForView, fetc
 import { toastFeatureDisabled } from "../featureToast.js";
 import Select from "./ui/Select";
 import { useConfirm } from "./ui/ConfirmDialog";
-import { hasArriving } from "../features/kitchen/orders";
+import { draftCounts, hasArriving } from "../features/kitchen/orders";
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
   <button
@@ -706,6 +706,17 @@ setEditIndentId(indent._id);
       return true;
     });
   };
+  // Home's "Add": the product joins the supply-order draft with no quantity yet (once; adding again does nothing).
+  const addToOrderDraft = (item) => {
+    if (isBlocked("requests")) return false;
+    const id = String(item._id);
+    setOrderDraft((previous) => (previous[id] ? previous : { ...previous, [id]: { qty: "", packId: "base", needsQty: true } }));
+    return true;
+  };
+  // "Enter quantity" on Home: go to Requests and open the new order there (only if leaving the usage draft was allowed).
+  const goToOrderDraft = async () => {
+    if (await openOrders()) setOpenOrderDraft(true);
+  };
 
   const handleTabChange = (tab) => {
     if (tab === activeTab) return;
@@ -772,6 +783,9 @@ setEditIndentId(indent._id);
           onRequestSupplies={openOrders}
           sharedToReceive={sharedToReceive}
           hidden={hidden}
+          orderDraft={orderDraft}
+          onAddToOrder={addToOrderDraft}
+          onOpenOrderDraft={goToOrderDraft}
         />
       ) : activeTab === "stock" ? (
         <>
@@ -1534,6 +1548,7 @@ activeTransactionType === "request"
         }
         onTabChange={handleTabChange}
         requestCount={attentionCount}
+        requestAlert={draftCounts(orderDraft).items > 0}
         hiddenTabs={hidden}
       />
     </div>

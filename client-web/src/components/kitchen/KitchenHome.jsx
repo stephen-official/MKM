@@ -1,5 +1,6 @@
-import { AlertCircle, AlertTriangle, ArrowRight, ArrowUpRight, CalendarDays, CalendarOff, CheckCircle2, ChevronDown } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowRight, ArrowUpRight, CalendarDays, CalendarOff, Check, CheckCircle2, ChevronDown, Plus } from "lucide-react";
 import { useState } from "react";
+import { useConfirm } from "../ui/ConfirmDialog";
 import { useWide } from "./useWide";
 import { toLocalDateKey, localDateFromKey } from "../../utils/date";
 import { expiryStatus, itemsToUseFirst } from "../../features/kitchen";
@@ -67,14 +68,27 @@ const REASON_LABEL = Object.fromEntries(REASONS);
 
 const qtyText = (value, item) => `${asNumber(value).toLocaleString("en-IN", { maximumFractionDigits: 3 })} ${item.unit || item.unitId?.symbol || "units"}`;
 
-/** One item line: name and hint on the left, a status pill, the quantity on the right. */
-const Row = ({ name, hint, tone, status, qty, onClick }) => (
-  <button type="button" className="kg-row kh-row" onClick={onClick}>
-    <span className="kh-row__text"><strong>{name}</strong><small>{hint}</small></span>
-    {status && <span className={`kg-pill kg-pill--${tone}`}>{status}</span>}
-    {qty && <span className="kh-row__qty">{qty}</span>}
-  </button>
-);
+/** One item line: name and hint on the left, a status pill, the quantity on the right.
+ *  With onAdd, an "Add" chip sits at the end of the row and puts the item on the supply-order ticket ("Added" once it is there). */
+const Row = ({ name, hint, tone, status, qty, onClick, onAdd, added = false }) => {
+  const main = (
+    <button type="button" className={onAdd ? "kh-row kh-row__main" : "kg-row kh-row"} onClick={onClick}>
+      <span className="kh-row__text"><strong>{name}</strong><small>{hint}</small></span>
+      {status && <span className={`kg-pill kg-pill--${tone}`}>{status}</span>}
+      {qty && <span className="kh-row__qty">{qty}</span>}
+    </button>
+  );
+  if (!onAdd) return main;
+  return (
+    <div className="kg-row kh-row--add">
+      {main}
+      <button type="button" className={`kg-chip kh-row__add${added ? " is-added" : ""}`} onClick={onAdd} disabled={added}
+        aria-label={added ? `${name} is on the order ticket` : `Add ${name} to the order ticket`}>
+        {added ? <><Check size={15} aria-hidden="true" /> Added</> : <><Plus size={15} aria-hidden="true" /> Add</>}
+      </button>
+    </div>
+  );
+};
 
 /**
  * A collapsible section: the header (one tap target) carries the name, a count or pill, an exclamation mark when it
@@ -165,6 +179,9 @@ export default function KitchenHome({
   onRequestSupplies,
   sharedToReceive = 0,
   hidden = NO_HIDDEN,
+  orderDraft = {},
+  onAddToOrder,
+  onOpenOrderDraft,
 }) {
   // Views whose feature is off for this kitchen are not offered at all (rather than toasting on tap).
   const canRecordUsage = !hidden.has("usage");
@@ -176,6 +193,15 @@ export default function KitchenHome({
   const isOpen = (key) => Boolean(openSections[key]);
   const toggle = (key) => setOpenSections((previous) => ({ ...previous, [key]: !previous[key] }));
   const godownId = userInfo?.godown?._id;
+  const [confirm, confirmDialog] = useConfirm();
+  // "Add" on a stock row: the item goes on the supply-order ticket at once, without a quantity; the dialog offers to go and enter it now.
+  const canAddToOrder = canUseRequests && Boolean(onAddToOrder);
+  const addToOrder = async (item) => {
+    if (!onAddToOrder(item)) return;
+    const go = await confirm({ title: "Added to your order ticket", message: `${item.name || "This item"} is on the ticket. Enter the quantity on the Requests page, then place the order.`, confirmLabel: "Enter quantity", cancelLabel: "Not now" });
+    if (go) onOpenOrderDraft?.();
+  };
+  const addProps = (item) => (canAddToOrder ? { onAdd: () => addToOrder(item), added: Boolean(orderDraft[String(item._id)]) } : {});
 
   const outOfStock = items.filter((item) => asNumber(item.currentQty ?? item.quantity ?? item.kitchenQty) <= 0);
   const lowStock = items.filter((item) => {
@@ -208,6 +234,7 @@ export default function KitchenHome({
 
   return (
     <main className="kh-shell">
+      {confirmDialog}
       <section className="kh-top" aria-label="Today">
         {canRecordUsage && <div className={`kg-glass${wide ? " kg-lift" : ""} kh-day${usageComplete || todayNone ? "" : " kg-glass--warm"}`}>
           <span className="kg-orb kh-day__icon" aria-hidden="true">{usageComplete ? <CheckCircle2 size={20} strokeWidth={1.6} /> : todayNone ? <CalendarOff size={20} strokeWidth={1.6} /> : <CalendarDays size={20} strokeWidth={1.6} />}</span>
@@ -252,7 +279,7 @@ export default function KitchenHome({
                   const expired = expiry.key === "expired";
                   return <Row key={item._id || item.stockRecordId || `${item.name}-${index}`} name={item.name || "Unnamed item"}
                     hint={expired ? "Check before using" : "Use within the week"} tone={expired ? "expired" : "soon"} status={expiry.label}
-                    qty={qtyText(expiry.qtyBaseUnit, item)} onClick={onRecordUsage} />;
+                    qty={qtyText(expiry.qtyBaseUnit, item)} onClick={onRecordUsage} {...addProps(item)} />;
                 })}
               </Group>}
 
@@ -265,7 +292,7 @@ export default function KitchenHome({
                   const out = quantity <= 0;
                   return <Row key={item._id || item.stockRecordId || `${item.name}-${index}`} name={item.name || "Unnamed item"}
                     hint={out ? "Ask for supplies now" : "Ask for supplies soon"} tone={out ? "expired" : "low"} status={out ? "Out of stock" : "Low stock"}
-                    qty={qtyText(quantity, item)} onClick={onViewStock} />;
+                    qty={qtyText(quantity, item)} onClick={onViewStock} {...addProps(item)} />;
                 })}
                 <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onViewStock}>View all</button></div>
               </Group>
