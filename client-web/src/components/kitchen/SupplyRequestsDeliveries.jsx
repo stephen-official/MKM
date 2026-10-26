@@ -64,7 +64,7 @@ function QuantityLine({ line, delivery = false }) {
 
 function LoadingState() {
   return (
-    <div className="srd-loading" role="status" aria-live="polite">
+    <div className="kg-glass srd-loading" role="status" aria-live="polite">
       <span className="srd-spinner" aria-hidden="true" />
       <p>Loading kitchen supplies…</p>
     </div>
@@ -74,8 +74,8 @@ function LoadingState() {
 function EmptyState({ tab, onCreateRequest }) {
   const deliveries = tab === "deliveries";
   return (
-    <div className="srd-empty">
-      <span aria-hidden="true">{deliveries ? <Truck size={30} /> : <Inbox size={30} />}</span>
+    <div className="kg-glass srd-empty">
+      <span className="kg-orb" aria-hidden="true">{deliveries ? <Truck size={30} /> : <Inbox size={30} />}</span>
       <h2>{deliveries ? "No deliveries yet" : "No supply requests yet"}</h2>
       <p>
         {deliveries
@@ -83,7 +83,7 @@ function EmptyState({ tab, onCreateRequest }) {
           : "Create a request when your kitchen needs ingredients or other supplies."}
       </p>
       {!deliveries && onCreateRequest && (
-        <button type="button" className="srd-primary-button" onClick={onCreateRequest}>
+        <button type="button" className="kg-btn" onClick={onCreateRequest}>
           <Plus size={18} aria-hidden="true" /> Create supply request
         </button>
       )}
@@ -96,7 +96,7 @@ function RequestCard({ request, rawRecord, onEditRequest, onDeleteRequest }) {
   const canDelete = DELETABLE_STATUSES.has(request.status.key);
 
   return (
-    <article className="srd-card">
+    <article className="kg-glass srd-card">
       <header className="srd-card__header">
         <div>
           <p className="srd-card__eyebrow">Supply request</p>
@@ -120,12 +120,12 @@ function RequestCard({ request, rawRecord, onEditRequest, onDeleteRequest }) {
       {(canEdit || canDelete) && (
         <footer className="srd-card__actions">
           {canEdit && (
-            <button type="button" onClick={() => onEditRequest?.(rawRecord)}>
+            <button type="button" className="kg-chip" onClick={() => onEditRequest?.(rawRecord)}>
               <Pencil size={16} aria-hidden="true" /> Edit
             </button>
           )}
           {canDelete && (
-            <button type="button" className="srd-danger-action" onClick={() => onDeleteRequest?.(rawRecord)}>
+            <button type="button" className="kg-chip srd-danger-action" onClick={() => onDeleteRequest?.(rawRecord)}>
               <Trash2 size={16} aria-hidden="true" /> Delete
             </button>
           )}
@@ -141,7 +141,7 @@ function DeliveryCard({ delivery, rawRecord, onReceiveDelivery }) {
     : 0;
 
   return (
-    <article className="srd-card srd-card--delivery">
+    <article className="kg-glass srd-card srd-card--delivery">
       <header className="srd-card__header">
         <div>
           <p className="srd-card__eyebrow">Kitchen delivery</p>
@@ -172,7 +172,7 @@ function DeliveryCard({ delivery, rawRecord, onReceiveDelivery }) {
           <strong>{formatQuantity(delivery.remainingQuantity)} total units</strong>
         </div>
         {delivery.canReceive ? (
-          <button type="button" className="srd-primary-button" onClick={() => onReceiveDelivery?.(rawRecord)}>
+          <button type="button" className="kg-btn srd-receive" onClick={() => onReceiveDelivery?.(rawRecord)}>
             Confirm received <ChevronRight size={18} aria-hidden="true" />
           </button>
         ) : (
@@ -212,7 +212,7 @@ export default function SupplyRequestsDeliveries({
   return (
     <main className="srd-shell">
       {onBack && (
-        <button type="button" className="ko-back" onClick={onBack}>
+        <button type="button" className="kg-chip ko-back" onClick={onBack}>
           <ArrowLeft size={18} aria-hidden="true" /> Back to Ask for supplies
         </button>
       )}
@@ -234,8 +234,8 @@ export default function SupplyRequestsDeliveries({
       </div>
 
       {activeTab === "requests" && !loading && onCreateRequest && (
-        <button type="button" className="srd-create" onClick={onCreateRequest}>
-          <Plus size={20} aria-hidden="true" />
+        <button type="button" className="kg-glass kg-lift srd-create" onClick={onCreateRequest}>
+          <span className="kg-orb" aria-hidden="true"><Plus size={20} /></span>
           <span><strong>New supply request</strong><small>Ask the central store for kitchen supplies</small></span>
           <ChevronRight size={20} aria-hidden="true" />
         </button>
