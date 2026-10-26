@@ -254,7 +254,6 @@ export default function KitchenHome({
                     hint={expired ? "Check before using" : "Use within the week"} tone={expired ? "expired" : "soon"} status={expiry.label}
                     qty={qtyText(expiry.qtyBaseUnit, item)} onClick={onRecordUsage} />;
                 })}
-                <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onRecordUsage}>Record</button></div>
               </Group>}
 
               <Group id="running-low" title="Running low" attention={attentionItems.length > 0}
