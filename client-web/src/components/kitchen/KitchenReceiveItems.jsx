@@ -7,7 +7,6 @@ import { EXPIRY_CHIPS, PROBLEM_REASONS, STORAGE_OPTIONS, adminExpiryFor, arrivin
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import { canScanLabels, readLabelText, stopLabelScanner } from "../../utils/labelOcr";
 import DateField from "../ui/DateField";
-import "./SupplyRequestsDeliveries.css";
 import "./KitchenReceive.css";
 
 const BASE = "/procurement/collaborative-purchase-orders";
@@ -161,10 +160,10 @@ function ItemCard({ order, line, form, today, onChange }) {
     }
   };
 
-  return <article className={`srd-card kr-item${problems.length === 0 ? " is-ready" : ""}${problem ? " has-problem" : ""}`}>
+  return <article className={`kg-glass kr-item${problems.length === 0 ? " is-ready" : ""}${problem ? " has-problem" : ""}`}>
     <header className="kr-item__head">
       <div><h2>{product.name || "Item"}</h2><span>{amountText(line)}</span></div>
-      {problems.length === 0 ? <span className={`srd-status srd-status--${problem ? "warning" : "positive"}`}><Check size={13} aria-hidden="true" /> {problem ? "Problem ready to send" : "Ready"}</span> : <span className="srd-status srd-status--neutral">{problems.length} to do</span>}
+      {problems.length === 0 ? <span className={`kg-pill ${problem ? "kg-pill--soon" : "kg-pill--routine"}`}><Check size={13} aria-hidden="true" /> {problem ? "Problem ready to send" : "Ready"}</span> : <span className="kg-pill kr-pill--todo">{problems.length} to do</span>}
     </header>
 
     <div className="kr-photos">
@@ -260,14 +259,14 @@ export default function KitchenReceiveItems({ order, lines, notSentCount = 0, on
     }
   };
 
-  return <main className="srd-shell kr-shell">
-    <button type="button" className="kr-back" onClick={onBack} disabled={busy}><ArrowLeft size={18} /> Back</button>
-    <header className="srd-page-header"><div><p>Delivery</p><h1>Receive items</h1>
+  return <main className="kr-shell">
+    <button type="button" className="kg-chip kr-back" onClick={onBack} disabled={busy}><ArrowLeft size={16} aria-hidden="true" /> Back</button>
+    <header className="kr-heading"><div><p>Delivery</p><h1>Receive items</h1>
       <span>Take two photos of each item and enter the dates from the label. Only the items on the way are listed{notSentCount ? "; the rest will come later" : ""}.</span></div></header>
 
     {groupBySupplier(order, lines).map((group) => <section key={group.key || "none"} className="kr-group" aria-label={group.supplier ? `From ${group.supplier.name}` : "Items"}>
-      <div className="kr-supplier">
-        <Truck size={17} aria-hidden="true" />
+      <div className="kg-row kr-supplier">
+        <span className="kg-orb" aria-hidden="true"><Truck size={18} strokeWidth={1.6} /></span>
         <div>
           <strong>{group.supplier?.name || "Supplier not recorded"}</strong>
           <small>{group.supplier?.fssaiLicence ? `FSSAI licence ${group.supplier.fssaiLicence}` : "FSSAI licence not recorded"} · {order.invoiceNo ? `Invoice ${order.invoiceNo}` : "Invoice: not yet"}</small>
@@ -279,6 +278,6 @@ export default function KitchenReceiveItems({ order, lines, notSentCount = 0, on
     </section>)}
 
     <footer className="kr-submit"><div><strong>{readyCount} of {products.length}</strong><span>{products.length === 1 ? "item ready" : "items ready"}</span></div>
-      <button type="button" className="srd-primary-button" disabled={busy || !ready} onClick={submit}>{busy ? "Saving…" : <><PackageCheck size={18} aria-hidden="true" /> {Object.values(forms).some((form) => form.problem) ? "Save & send problems" : "Add to my stock"}</>}</button></footer>
+      <button type="button" className="kg-btn" disabled={busy || !ready} onClick={submit}>{busy ? "Saving…" : <><PackageCheck size={18} aria-hidden="true" /> {Object.values(forms).some((form) => form.problem) ? "Save & send problems" : "Add to my stock"}</>}</button></footer>
   </main>;
 }
