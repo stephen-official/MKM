@@ -18,6 +18,10 @@ div.kt-ticket__head { cursor: default; }
 .kt-ticket__name { min-width: 0; }
 .kt-ticket__name strong { display: block; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kt-ticket__name small { color: var(--muted-2); font-size: 12px; font-weight: 300; }
+/* Added from Home, no amount yet: an amber "Enter quantity" note and an amber rim on the empty box. */
+.kt-ticket__name small em { color: var(--st-soon-fg); font-style: normal; font-weight: 500; }
+.kt-ticket__row--needs .kt-ticket__stepper { box-shadow: 0 0 0 1px var(--st-soon-line), inset 0 1px 0 #fff; background: linear-gradient(160deg, rgba(255,255,255,.75), var(--st-soon-bg)); }
+.kt-ticket__stepper input::placeholder { color: var(--muted-2); font-weight: 300; }
 .kt-ticket__stepper { align-items: center; background: rgba(255,255,255,.6); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; display: flex; flex: none; gap: 2px; padding: 2px; }
 .kt-ticket__stepper button { align-items: center; background: transparent; border: 0; border-radius: 50%; color: var(--blue-deep); display: flex; height: 34px; justify-content: center; width: 34px; cursor: pointer; }
 .kt-ticket__stepper button:hover:not(:disabled) { background: var(--blue-soft); }

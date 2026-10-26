@@ -73,6 +73,9 @@ const ClientStore = () => {
   const [userInfo, setUserInfo] = useState(null);
   const [items, setItems] = useState([]);
   const [cart, setCart] = useState([]);
+  // Supply-order draft ({ [productId]: { qty, packId, needsQty? } }): Home's "Add" puts items here; Requests' new order edits it.
+  const [orderDraft, setOrderDraft] = useState({});
+  const [openOrderDraft, setOpenOrderDraft] = useState(false);
   const [orders, setOrders] = useState([]); 
   // Day-by-day usage account from GET /usage-days (today, missed, days); null while loading or when usage is off.
   const [usageDays, setUsageDays] = useState(null);
@@ -820,6 +823,10 @@ setEditIndentId(indent._id);
           products={usableItems}
           onOrdersLoaded={setSharedOrders}
           godownId={userInfo?.godown?._id}
+          draft={orderDraft}
+          onDraftChange={setOrderDraft}
+          openDraft={openOrderDraft}
+          onDraftOpened={() => setOpenOrderDraft(false)}
           canShowPast={!hidden.has("past-requests")}
           onShowPast={() => { setSupplyInitialTab("requests"); setActiveTab("past-requests"); }}
         />

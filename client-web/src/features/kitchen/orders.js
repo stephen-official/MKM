@@ -83,3 +83,11 @@ export const deliveryDateText = (value, { withTime = false } = {}) => {
   if (withTime) Object.assign(options, { hour: "numeric", minute: "2-digit", hour12: true });
   return new Intl.DateTimeFormat("en-IN", options).format(new Date(value));
 };
+
+/** Order-draft entries ({ qty, packId, needsQty? }) keyed by product id. Items added from Home arrive with needsQty and no
+ *  amount: the ticket lists them as "Enter quantity" and the order cannot be placed until each has one. */
+export const needsQuantity = (entry) => Boolean(entry?.needsQty) && !(Number(entry?.qty) > 0);
+export const draftCounts = (draft) => {
+  const entries = Object.values(draft || {});
+  return { items: entries.filter((entry) => entry?.needsQty || Number(entry?.qty) > 0).length, missing: entries.filter(needsQuantity).length };
+};

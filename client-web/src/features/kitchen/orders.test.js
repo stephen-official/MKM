@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canJoin, closesInText, deliveryDateText, hasArriving, kitchenStage, lineState, myShare, orderTimeline, otherOpenOrders, myOrders } from "./orders.js";
+import { canJoin, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myShare, needsQuantity, orderTimeline, otherOpenOrders, myOrders } from "./orders.js";
 
 const me = "kitchenA";
 const now = new Date("2026-10-18T04:30:00.000Z"); // 10:00 in India
@@ -82,4 +82,15 @@ test("lines sent on different days: the stage, each line and what can be receive
   const old = order({ status: "ordered", contributions: [share(me, { dispatchedAt: at(-1), items: [{ stockItemId: "rice" }] })] });
   assert.equal(hasArriving(old, me), true);
   assert.equal(lineState(old.contributions[0].items[0], myShare(old, me)), "on_the_way");
+});
+
+test("an order draft counts its items and the ones still missing a quantity", () => {
+  const draft = { rice: { qty: "2", packId: "base" }, oil: { qty: "", packId: "base", needsQty: true }, salt: { qty: "1", packId: "base", needsQty: true }, atta: { qty: "", packId: "base" } };
+  assert.deepEqual(draftCounts(draft), { items: 3, missing: 1 });
+  assert.deepEqual(draftCounts({}), { items: 0, missing: 0 });
+  assert.deepEqual(draftCounts(undefined), { items: 0, missing: 0 });
+  // Only a Home-added item with no amount yet is "missing"; a typed amount clears it, and an ordinary empty entry is just ignored.
+  assert.equal(needsQuantity(draft.oil), true);
+  assert.equal(needsQuantity(draft.salt), false);
+  assert.equal(needsQuantity(draft.atta), false);
 });

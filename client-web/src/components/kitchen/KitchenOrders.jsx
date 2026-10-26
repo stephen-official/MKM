@@ -1,10 +1,10 @@
-import { AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, Clock, History, Lock, Minus, Plus, Search, Truck, Users, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, Clock, History, Lock, Minus, Plus, Search, Truck, Users, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { useKitchenChanges } from "../../liveUpdates";
 import { productPacks } from "../../features/kitchen";
-import { canEditShare, closesInText, deliveryDateText, hasArriving, kitchenStage, lineState, myOrders, myShare, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
+import { canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myOrders, myShare, needsQuantity, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
 import { arrivingLines } from "../../features/kitchen/receiving";
 import KitchenReceiveItems from "./KitchenReceiveItems";
 import OrderTicket from "./OrderTicket";
@@ -92,13 +92,14 @@ function JoinCard({ order, now, onJoin }) {
   </article>;
 }
 
-/** Cart entries with an amount → the ticket's rows, in the order they were added: name, amount, unit (pack name when in packs). */
+/** Cart entries with an amount (or added from Home and still waiting for one) → the ticket's rows, in the order they were added. */
 const ticketRows = (cart, products, locked) => Object.entries(cart).flatMap(([id, entry]) => {
   const amount = Number(entry.qty);
+  const pending = needsQuantity(entry);
   const product = products.find((candidate) => String(candidate._id) === id);
-  if (!(amount > 0) || !product) return [];
+  if ((!(amount > 0) && !pending) || !product) return [];
   const pack = productPacks(product).find((candidate) => String(candidate._id) === String(entry.packId));
-  return [{ id, name: product.name, amount, unit: pack ? pack.name : product.unit, locked: locked.has(id) }];
+  return [{ id, name: product.name, amount: amount > 0 ? amount : 0, unit: pack ? pack.name : product.unit, locked: locked.has(id), needsQty: pending }];
 });
 
 function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeededIn, emergency, setEmergency, busy, onBack, onSubmit, now }) {
@@ -114,7 +115,8 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
   const previewHours = emergency ? settings?.emergencyHours : option?.hours;
   const preview = previewHours ? new Date(now.getTime() + previewHours * 3_600_000) : null;
   const setEntry = (id, change) => setCart((previous) => ({ ...previous, [id]: { qty: "", packId: "base", ...previous[id], ...change } }));
-  const setAmount = (id, amount) => setEntry(id, { qty: amount > 0 ? String(amount) : "" });
+  const setAmount = (id, amount) => (amount > 0 ? setEntry(id, { qty: String(amount) }) : setCart((previous) => { const next = { ...previous }; delete next[id]; return next; }));
+  const missing = rows.filter((row) => row.needsQty).length;
   const title = mode.type === "new" ? "New order" : mode.type === "join" ? "Add my items" : "Edit my items";
   const when = mode.type === "new" ? (preview ? `≈ ${deliveryDateText(preview, { withTime: emergency })}` : null) : deliveryDateText(mode.order.neededBy, { withTime: mode.order.emergency });
 
@@ -164,9 +166,9 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
               <div className="ko-entry">
                 {packs.length > 0 && <select aria-label={`Packaging for ${product.name}`} value={entry.packId} disabled={isLocked} onChange={(event) => setEntry(id, { packId: event.target.value })}>
                   <option value="base">{product.unit}</option>{packs.map((pack) => <option key={pack._id} value={pack._id}>{pack.name}</option>)}</select>}
-                {amount > 0 || isLocked
+                {amount > 0 || isLocked || needsQuantity(entry)
                   ? <div className="ko-stepper">
-                    <button type="button" disabled={isLocked || amount <= 0} onClick={() => setAmount(id, Math.max(0, amount - 1))} aria-label={amount <= 1 ? `Remove ${product.name}` : `Less ${product.name}`}>{amount <= 1 ? <X size={17} /> : <Minus size={17} />}</button>
+                    <button type="button" disabled={isLocked || (amount <= 0 && !needsQuantity(entry))} onClick={() => setAmount(id, Math.max(0, amount - 1))} aria-label={amount <= 1 ? `Remove ${product.name}` : `Less ${product.name}`}>{amount <= 1 ? <X size={17} /> : <Minus size={17} />}</button>
                     <input type="text" inputMode="decimal" value={entry.qty} placeholder="0" disabled={isLocked} aria-label={`${product.name} quantity`}
                       onChange={(event) => /^\d*(\.\d{0,3})?$/.test(event.target.value) && setEntry(id, { qty: event.target.value })} />
                     <span>{unit}</span>
@@ -181,18 +183,25 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
     </div>
 
     <footer className="ko-submit">
-      <button type="button" className="ko-submit__count" onClick={showTicket} aria-label={`${count} ${count === 1 ? "item" : "items"} on the ticket. Show the ticket.`}><strong>{count}</strong><span>{count === 1 ? "item" : "items"} · view ticket</span></button>
-      <button type="button" className="kg-btn" disabled={busy || count === 0} onClick={onSubmit}>{busy ? "Placing…" : mode.type === "edit" ? "Save changes" : "Place request"}</button></footer>
+      <button type="button" className="ko-submit__count" onClick={showTicket} aria-label={`${count} ${count === 1 ? "item" : "items"} on the ticket. Show the ticket.`}><strong>{count}</strong><span>{missing ? `${missing} ${missing === 1 ? "needs" : "need"} a quantity` : `${count === 1 ? "item" : "items"} · view ticket`}</span></button>
+      <button type="button" className="kg-btn" disabled={busy || count === 0 || missing > 0} onClick={onSubmit}>{busy ? "Placing…" : mode.type === "edit" ? "Save changes" : "Place request"}</button></footer>
   </main>;
 }
 
-export default function KitchenOrders({ products = [], godownId, onShowPast, canShowPast = true, onOrdersLoaded }) {
+/**
+ * draft / onDraftChange: the new-order cart, held by the parent so items added from Home stay put while the cook is elsewhere.
+ * openDraft: true asks this screen to open the new order as soon as it can (the cook chose "Enter quantity" on Home); onDraftOpened resets it.
+ */
+export default function KitchenOrders({ products = [], godownId, onShowPast, canShowPast = true, onOrdersLoaded, draft = {}, onDraftChange, openDraft = false, onDraftOpened }) {
   const [orders, setOrders] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [mode, setMode] = useState(null); // null = list; { type: "new" | "join" | "edit" | "receive", order?, godownId, notSent? }
-  const [cart, setCart] = useState({});
+  const [localCart, setLocalCart] = useState({});
+  const isNew = mode?.type === "new";
+  const cart = isNew ? draft : localCart;
+  const setCart = isNew && onDraftChange ? onDraftChange : setLocalCart;
   const [neededIn, setNeededIn] = useState("");
   const [emergency, setEmergency] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -217,13 +226,21 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
   useEffect(() => { load(); }, [load]);
   useKitchenChanges(["orders"], load);
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
+  // "Enter quantity" on Home lands here: open the new order once the ordering settings are in.
+  useEffect(() => {
+    if (!openDraft || !settings || mode) return;
+    start("new");
+    onDraftOpened?.();
+  }, [openDraft, settings, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const joinable = useMemo(() => otherOpenOrders(orders, godownId, now), [orders, godownId, now]);
   const mine = useMemo(() => myOrders(orders, godownId), [orders, godownId]);
+  const waiting = draftCounts(draft);
 
   const start = (type, order) => {
     const share = order ? myShare(order, godownId) : null;
-    setCart(Object.fromEntries((share?.items || []).map((line) => [String(line.stockItemId?._id || line.stockItemId), { qty: String(line.packId ? line.packQuantity : line.qtyBaseUnit), packId: line.packId || "base" }])));
+    // A new order starts from the shared draft as it is (items added from Home, or left half-filled); join and edit start from the order's own lines.
+    if (type !== "new") setLocalCart(Object.fromEntries((share?.items || []).map((line) => [String(line.stockItemId?._id || line.stockItemId), { qty: String(line.packId ? line.packQuantity : line.qtyBaseUnit), packId: line.packId || "base" }])));
     setNeededIn(settings?.neededInOptions[0]?.key || "");
     setEmergency(false);
     setMode({ type, order, godownId });
@@ -237,6 +254,7 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
       else if (mode.type === "join") await api.post(`${BASE}/${mode.order._id}/contributions`, { items });
       else await api.put(`${BASE}/${mode.order._id}/contributions/me`, { items });
       toast.success(mode.type === "edit" ? "Your items were updated" : "Request placed with the central store");
+      if (mode.type === "new") onDraftChange?.({});
       setMode(null);
       await load();
     } catch (error) {
@@ -264,8 +282,11 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
       <div><p>Kitchen supplies</p><h1>Ask for supplies</h1><span>Order from the central store, or add your items to another kitchen’s order.</span></div>
     </header>
 
-    <button type="button" className="kg-glass kg-lift ko-create" onClick={() => start("new")} disabled={!settings}>
-      <span className="kg-orb" aria-hidden="true"><Plus size={20} /></span><span><strong>New order</strong><small>Choose items and when you need them</small></span><ChevronRight size={20} aria-hidden="true" />
+    <button type="button" className={`kg-glass kg-lift ko-create${waiting.items ? " ko-create--waiting" : ""}`} onClick={() => start("new")} disabled={!settings}>
+      <span className="kg-orb" aria-hidden="true">{waiting.items ? <AlertCircle size={20} /> : <Plus size={20} />}</span>
+      <span><strong>{waiting.items ? "Continue your order" : "New order"}</strong>
+        <small>{waiting.missing ? `${waiting.missing} ${waiting.missing === 1 ? "item" : "items"} from Home ${waiting.missing === 1 ? "needs" : "need"} a quantity` : waiting.items ? `${waiting.items} ${waiting.items === 1 ? "item" : "items"} waiting to be sent` : "Choose items and when you need them"}</small></span>
+      <ChevronRight size={20} aria-hidden="true" />
     </button>
 
     {loading && orders.length === 0 ? <div className="ko-state" role="status"><span className="ko-spinner" aria-hidden="true" /><p>Loading orders…</p></div>

@@ -20,14 +20,17 @@ function TicketQty({ row, onChange }) {
     if (draft !== null && !(Number(draft) > 0)) onChange(row.id, 0);
     setDraft(null);
   };
-  return <input type="text" inputMode="decimal" value={draft ?? qty(row.amount)} disabled={row.locked} aria-label={`${row.name} quantity`}
-    onFocus={(event) => { setDraft(String(row.amount)); event.target.select(); }} onChange={(event) => edit(event.target.value)} onBlur={done} />;
+  // A row added from Home has no amount yet: the box is empty with a "0" placeholder until something is typed.
+  const shown = row.amount > 0 ? qty(row.amount) : "";
+  return <input type="text" inputMode="decimal" value={draft ?? shown} placeholder="0" disabled={row.locked} aria-label={`${row.name} quantity`}
+    onFocus={(event) => { setDraft(row.amount > 0 ? String(row.amount) : ""); event.target.select(); }} onChange={(event) => edit(event.target.value)} onBlur={done} />;
 }
 
 /**
  * Receipt-style list of what the cook has added, with no prices: one row per item with its own stepper, so the whole
  * request or usage entry is visible at once. Folds away on a phone; wide screens show it beside the list.
- * rows: [{ id, name, amount, unit, locked? }] in the order they were added. meta: [{ label, value }] shown under the title.
+ * rows: [{ id, name, amount, unit, locked?, needsQty? }] in the order they were added; needsQty marks an item added from Home
+ * that still has no amount. meta: [{ label, value }] shown under the title.
  */
 export default function OrderTicket({ title = "Order ticket", rows = [], meta = [], emptyText = "Tap “Add” on an item below and it will be listed here.", open = true, onToggle, onChange, onClear, clearLabel = "Remove all items",
   onSubmit, submitLabel = "Done", submittingLabel = "Saving…", submitting = false, submitDisabled = false }) {
@@ -43,8 +46,8 @@ export default function OrderTicket({ title = "Order ticket", rows = [], meta = 
         ? <p className="kt-ticket__empty">{emptyText}</p>
         : <ul className="kt-ticket__rows" aria-label={`Items on this ${title.toLowerCase()}`}>
           <li className="kt-ticket__cols" aria-hidden="true"><span>Item</span><span>Qty</span></li>
-          {rows.map((row) => <li key={row.id}>
-            <div className="kt-ticket__name"><strong>{row.name}</strong><small>{row.unit}{row.locked ? " · approved" : ""}</small></div>
+          {rows.map((row) => <li key={row.id} className={row.needsQty ? "kt-ticket__row--needs" : undefined}>
+            <div className="kt-ticket__name"><strong>{row.name}</strong><small>{row.needsQty ? <em>Enter quantity · </em> : null}{row.unit}{row.locked ? " · approved" : ""}</small></div>
             <div className="kt-ticket__stepper">
               <button type="button" disabled={row.locked} onClick={() => onChange(row.id, Math.max(0, row.amount - 1))} aria-label={row.amount <= 1 ? `Remove ${row.name}` : `Less ${row.name}`}>{row.amount <= 1 ? <X size={15} /> : <Minus size={15} />}</button>
               <TicketQty row={row} onChange={onChange} />

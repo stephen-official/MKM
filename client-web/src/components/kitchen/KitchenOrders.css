@@ -17,6 +17,10 @@
 .ko-create > span:not(.kg-orb) { display: grid; flex: 1; min-width: 0; gap: 2px; }
 .ko-create strong { font-size: 15px; font-weight: 500; }
 .ko-create small { color: var(--muted-2); font-size: 12.5px; font-weight: 300; }
+/* Items added from Home are waiting: the card turns rose and its orb carries an exclamation mark. */
+.ko-create--waiting { background: var(--tint-rose); }
+.ko-create--waiting .kg-orb { color: var(--st-expired-fg); border-color: var(--st-expired-line); }
+.ko-create--waiting small { color: var(--st-expired-fg); font-weight: 500; }
 .ko-create > svg:last-child { flex: none; color: var(--muted-2); }
 .ko-create:disabled { cursor: default; opacity: .6; }
 
