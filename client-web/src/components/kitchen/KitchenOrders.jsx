@@ -1,9 +1,9 @@
-import { AlertCircle, AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, ChevronUp, Clock, History, Lock, Minus, Plus, Search, Truck, Users, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, ChevronUp, Clock, History, Lock, Plus, Search, Truck, Users, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { useKitchenChanges } from "../../liveUpdates";
-import { productPacks } from "../../features/kitchen";
+import { formatStockQuantity, getStockHealth, productPacks } from "../../features/kitchen";
 import { canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myOrders, myShare, needsQuantity, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
 import { arrivingLines } from "../../features/kitchen/receiving";
 import KitchenReceiveItems from "./KitchenReceiveItems";
@@ -25,6 +25,11 @@ const lineStateText = (line, share) => {
   return `${LINE_STATE[state].label}${line.trackingId ? ` · ${line.trackingId}` : ""}`;
 };
 const lineAmount = (line) => (line.packId ? `${qty(line.packQuantity)} × ${line.packName}` : `${qty(line.qtyBaseUnit)} ${unitOf(line)}`);
+const numericQuantity = (value) => { const number = Number(value); return Number.isFinite(number) && number > 0 ? number : 0; };
+/** Cooks count rice in bags and oil in tins, so the biggest pack is the unit "Add" suggests; the chips let them switch to kg. */
+const defaultPackFor = (product) => [...productPacks(product)].sort((a, b) => Number(b.size) - Number(a.size))[0] || null;
+const packLabel = (pack, count) => (count === 1 ? pack.name : `${pack.name}s`);
+const initialOf = (name) => (String(name).trim().charAt(0) || "?").toUpperCase();
 
 /** Cart entries ({ qty, packId }) keyed by product id → API item lines. */
 const toItems = (cart, products) => Object.entries(cart).flatMap(([id, entry]) => {
@@ -118,6 +123,41 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
   const previewHours = emergency ? settings?.emergencyHours : option?.hours;
   const preview = previewHours ? new Date(now.getTime() + previewHours * 3_600_000) : null;
   const setEntry = (id, change) => setCart((previous) => ({ ...previous, [id]: { qty: "", packId: "base", ...previous[id], ...change } }));
+  // Per-card entry state, as on Use: { [id]: { done, round } }. done = the field has sunk into a confirmed row; round remounts the field so it refocuses.
+  const [ui, setUi] = useState({});
+  const addProduct = (product) => {
+    const id = String(product._id);
+    setEntry(id, { qty: "", packId: productPacks(product).length ? "" : "base" });
+    setUi((previous) => ({ ...previous, [id]: { done: false, round: 0 } }));
+  };
+  // Switching the unit keeps what was entered: 2 bags becomes 50 kg, 50 kg becomes 2 bags.
+  const chooseUnit = (product, unit) => {
+    const id = String(product._id);
+    const packs = productPacks(product);
+    const current = cart[id] || {};
+    const currentPack = packs.find((candidate) => String(candidate._id) === String(current.packId));
+    const base = numericQuantity(current.qty) * (currentPack ? Number(currentPack.size) : 1);
+    const next = unit === "base" ? null : packs.find((candidate) => String(candidate._id) === unit);
+    const converted = Number((base / (next ? Number(next.size) : 1)).toFixed(3));
+    setEntry(id, { packId: unit, qty: converted > 0 ? String(converted) : "" });
+    setUi((previous) => ({ ...previous, [id]: { ...(previous[id] || { round: 0 }), done: false } }));
+  };
+  // Typing into a card that was filled from Home (no card state yet) keeps the field open until the tick, like any other card.
+  const touchProduct = (id) => setUi((previous) => (previous[id] ? previous : { ...previous, [id]: { done: false, round: 0 } }));
+  const removeProduct = (product) => {
+    const id = String(product._id);
+    setCart((previous) => { const next = { ...previous }; delete next[id]; return next; });
+    setUi((previous) => { const next = { ...previous }; delete next[id]; return next; });
+  };
+  const confirmProduct = (product, amount) => {
+    const id = String(product._id);
+    document.getElementById(`order-${id}`)?.blur();
+    if (amount > 0) setUi((previous) => ({ ...previous, [id]: { ...(previous[id] || { round: 0 }), done: true } }));
+  };
+  const reopenProduct = (product) => {
+    const id = String(product._id);
+    setUi((previous) => ({ ...previous, [id]: { done: false, round: (previous[id]?.round || 0) + 1 } }));
+  };
   const setAmount = (id, amount) => (amount > 0 ? setEntry(id, { qty: String(amount) }) : setCart((previous) => { const next = { ...previous }; delete next[id]; return next; }));
   const missing = rows.filter((row) => row.needsQty).length;
   const title = mode.type === "new" ? "New order" : mode.type === "join" ? "Add my items" : "Edit my items";
@@ -175,25 +215,97 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
           {shown.length === 0 && <div className="kg-glass ko-empty"><h2>No supplies found</h2><p>Try another name.</p></div>}
           {shown.map((product) => {
             const id = String(product._id);
-            const entry = cart[id] || { qty: "", packId: "base" };
-            const amount = Number(entry.qty || 0);
+            const entry = cart[id];
+            const begun = Boolean(entry);
+            const amount = numericQuantity(entry?.qty);
             const packs = productPacks(product);
             const isLocked = locked.has(id);
-            const unit = packs.find((pack) => String(pack._id) === String(entry.packId))?.name || product.unit;
-            return <article key={id} className={`kg-glass kg-lift ko-product${amount > 0 ? " is-selected" : ""}`}>
-              <div className="ko-product__name"><strong>{product.name}</strong>{isLocked && <small className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved — can’t change</small>}</div>
-              <div className="ko-entry">
-                {packs.length > 0 && <select aria-label={`Packaging for ${product.name}`} value={entry.packId} disabled={isLocked} onChange={(event) => setEntry(id, { packId: event.target.value })}>
-                  <option value="base">{product.unit}</option>{packs.map((pack) => <option key={pack._id} value={pack._id}>{pack.name}</option>)}</select>}
-                {amount > 0 || isLocked || needsQuantity(entry)
-                  ? <div className="ko-stepper">
-                    <button type="button" disabled={isLocked || (amount <= 0 && !needsQuantity(entry))} onClick={() => setAmount(id, Math.max(0, amount - 1))} aria-label={amount <= 1 ? `Remove ${product.name}` : `Less ${product.name}`}>{amount <= 1 ? <X size={17} /> : <Minus size={17} />}</button>
-                    <input type="text" inputMode="decimal" value={entry.qty} placeholder="0" disabled={isLocked} aria-label={`${product.name} quantity`}
-                      onChange={(event) => /^\d*(\.\d{0,3})?$/.test(event.target.value) && setEntry(id, { qty: event.target.value })} />
-                    <span>{unit}</span>
-                    <button type="button" disabled={isLocked} onClick={() => setAmount(id, amount + 1)} aria-label={`More ${product.name}`}><Plus size={17} /></button>
+            const unit = product.unit;
+            const pack = packs.find((candidate) => String(candidate._id) === String(entry?.packId)) || null;
+            // Items added from Home arrive with no unit, so the card asks for one before the number box unlocks (as on Use).
+            const chosenUnit = !begun ? null : pack ? String(pack._id) : entry.packId === "base" || packs.length === 0 ? "base" : null;
+            const unitChosen = chosenUnit !== null;
+            const isSelected = amount > 0;
+            // Lines loaded from an existing order (or approved ones) start as confirmed rows; a tap reopens them.
+            const confirmed = isLocked || (isSelected && (ui[id]?.done ?? true));
+            const health = getStockHealth(product);
+            const image = product.image && product.image !== "null" ? product.image : "";
+            const baseAmount = amount * (pack ? Number(pack.size) : 1);
+            const entryUnit = pack ? packLabel(pack, amount || 1) : unit;
+            const tone = isSelected ? " is-selected" : health.key === "out" ? " ko-product--out" : health.key === "low" ? " ko-product--low" : "";
+            return <article key={id} className={`kg-glass kg-lift ko-product${tone}`}>
+              <div className={`ko-product__media${image ? " has-image" : ""}`} aria-hidden="true">
+                {image ? <img src={image} alt="" loading="lazy" decoding="async" /> : <span>{initialOf(product.name)}</span>}
+              </div>
+              <div className="ko-product__body">
+                <div className="ko-product__head">
+                  <h3>{product.name}</h3>
+                  {health.key === "out" ? <span className="kg-pill kg-pill--expired">Out of stock</span> : health.key === "low" ? <span className="kg-pill kg-pill--low">Low stock</span> : null}
+                </div>
+                <dl className="ko-facts">
+                  <div>
+                    <dt>In stock</dt>
+                    <dd>{health.quantity > 0
+                      ? <>{formatStockQuantity(health.quantity, unit, product)}{packs.length > 0 && <small> · {qty(health.quantity)} {unit}</small>}</>
+                      : <span className="ko-facts__none">Nothing left</span>}</dd>
                   </div>
-                  : <button type="button" className="kt-add" onClick={() => setAmount(id, 1)} aria-label={`Add ${product.name}`}><Plus size={17} aria-hidden="true" /> Add<span>{unit}</span></button>}
+                </dl>
+                {isLocked && <p className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved — can’t change</p>}
+
+                {!begun ? (
+                  <div className="ko-product__entry">
+                    <span className="ko-product__label">Quantity needed</span>
+                    <button type="button" className="kt-add" onClick={() => addProduct(product)} aria-label={`Add ${product.name}`}><Plus size={17} aria-hidden="true" /> Add<span>{defaultPackFor(product)?.name || unit}</span></button>
+                  </div>
+                ) : (
+                  <>
+                    {packs.length > 0 && !confirmed && (
+                      <div className="ko-unit" role="group" aria-label={`Count ${product.name} in`}>
+                        <span className="ko-product__label">Count in</span>
+                        {packs.map((candidate) => <button type="button" key={candidate._id} className={chosenUnit === String(candidate._id) ? "is-on" : ""} aria-pressed={chosenUnit === String(candidate._id)} onClick={() => chooseUnit(product, String(candidate._id))}>{candidate.name}</button>)}
+                        <button type="button" className={chosenUnit === "base" ? "is-on" : ""} aria-pressed={chosenUnit === "base"} onClick={() => chooseUnit(product, "base")}>{unit}</button>
+                      </div>
+                    )}
+                    {packs.length > 0 && !confirmed && (
+                      !unitChosen
+                        ? <p className="ko-unit__note ko-unit__note--error" role="alert"><AlertTriangle size={14} aria-hidden="true" /> Please select units</p>
+                        : <p className="ko-unit__note">{pack
+                          ? <>1 × {pack.name} = <strong>{qty(pack.size)} {unit}</strong></>
+                          : <>Counted in {unit} · 1 × {packs[0].name} = {qty(packs[0].size)} {unit}</>}</p>
+                    )}
+                    <div className="ko-product__entry">
+                      <label htmlFor={`order-${id}`}>Quantity needed</label>
+                      {confirmed ? (
+                        <div className="ko-stepper ko-stepper--done">
+                          <button type="button" onClick={() => removeProduct(product)} disabled={isLocked} aria-label={`Remove ${product.name}`}><X size={17} /></button>
+                          <button type="button" className="ko-stepper__value" onClick={() => reopenProduct(product)} disabled={isLocked} aria-label={`Change ${product.name} quantity`}>
+                            {pack ? <>{qty(amount)} × {pack.name}<small> · {qty(baseAmount)} {unit}</small></> : <>{qty(amount)} {unit}</>}<Check size={15} aria-hidden="true" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="ko-stepper ko-stepper--open">
+                          <button type="button" onClick={() => removeProduct(product)} aria-label={`Remove ${product.name}`}><X size={17} /></button>
+                          <input
+                            key={`${chosenUnit}-${ui[id]?.round || 0}`}
+                            id={`order-${id}`}
+                            type="text"
+                            inputMode="decimal"
+                            value={entry.qty}
+                            placeholder="0"
+                            disabled={!unitChosen}
+                            autoFocus={unitChosen && Boolean(ui[id])}
+                            onChange={(event) => { if (!/^\d*(\.\d{0,3})?$/.test(event.target.value)) return; setEntry(id, { qty: event.target.value }); touchProduct(id); }}
+                            aria-label={`${product.name} quantity`}
+                          />
+                          <span>{unitChosen ? entryUnit : "—"}</span>
+                          {/* The tick only puts the keyboard away: the amount is already on the ticket as it is typed. */}
+                          <button type="button" onClick={() => confirmProduct(product, amount)} disabled={!unitChosen} aria-label={`Done entering ${product.name}`}><Check size={17} /></button>
+                        </div>
+                      )}
+                    </div>
+                    <p className="ko-product__hint">{isSelected ? (pack ? <em>= {qty(baseAmount)} {unit}</em> : "") : unitChosen ? "Type how much you need" : ""}</p>
+                  </>
+                )}
               </div>
             </article>;
           })}

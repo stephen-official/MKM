@@ -727,7 +727,7 @@ setEditIndentId(indent._id);
   const addToOrderDraft = (item) => {
     if (isBlocked("requests")) return false;
     const id = String(item._id);
-    setOrderDraft((previous) => (previous[id] ? previous : { ...previous, [id]: { qty: "", packId: "base", needsQty: true } }));
+    setOrderDraft((previous) => (previous[id] ? previous : { ...previous, [id]: { qty: "", packId: "", needsQty: true } }));
     return true;
   };
   // "Enter quantity" on Home: go to Requests and open the new order there (only if leaving the usage draft was allowed).
