@@ -40,6 +40,9 @@ export default function KitchenBottomNav({
   const safeRequestCount = Number.isFinite(Number(requestCount))
     ? Math.max(0, Number(requestCount))
     : 0;
+  const visibleTabs = TABS.filter(({ id }) => !hiddenTabs.has(id));
+  // The glass bubble under the current tab: one slot wide, slid across by whole slots (phone only; the sidebar styles the item itself).
+  const activeIndex = visibleTabs.findIndex(({ id }) => id === activeTab);
 
   return (
     <nav
@@ -47,7 +50,11 @@ export default function KitchenBottomNav({
       aria-label="Kitchen navigation"
     >
       <div className="kitchen-bottom-nav__items">
-        {TABS.filter(({ id }) => !hiddenTabs.has(id)).map(({ id, label, accessibleLabel, Icon }) => {
+        {activeIndex >= 0 && (
+          <span className="kitchen-bottom-nav__bubble" aria-hidden="true"
+            style={{ width: `${100 / visibleTabs.length}%`, transform: `translateX(${activeIndex * 100}%)` }} />
+        )}
+        {visibleTabs.map(({ id, label, accessibleLabel, Icon }) => {
           const isActive = activeTab === id;
           const showBadge = id === "requests" && (requestAlert || safeRequestCount > 0);
 
@@ -57,7 +64,7 @@ export default function KitchenBottomNav({
               type="button"
               className={`kitchen-bottom-nav__item${
                 isActive ? " kitchen-bottom-nav__item--active" : ""
-              }${id === "usage" ? " kitchen-bottom-nav__item--primary" : ""}`}
+              }`}
               aria-label={accessibleLabel || label}
               aria-current={isActive ? "page" : undefined}
               disabled={disabled}

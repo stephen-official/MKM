@@ -59,7 +59,7 @@
 .kr-scan--none, .kr-scan--failed { background: #fff7e6; color: #82520c; }
 .kr-todo { background: #fff7e6; border-radius: 10px; color: #82520c; font-size: .8rem; font-weight: 700; line-height: 1.4; margin: 0; padding: 8px 10px; }
 
-.kr-submit { align-items: center; background: #fff; border-top: 1px solid #dde6e0; bottom: 68px; box-shadow: 0 -6px 18px rgba(26, 47, 33, .06); display: flex; gap: 12px; justify-content: space-between; left: 0; padding: 12px var(--page-gutter); position: fixed; right: 0; z-index: 30; }
+.kr-submit { align-items: center; background: #fff; border-top: 1px solid #dde6e0; bottom: calc(82px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -6px 18px rgba(26, 47, 33, .06); display: flex; gap: 12px; justify-content: space-between; left: 0; padding: 12px var(--page-gutter); position: fixed; right: 0; z-index: 30; }
 .kr-submit > div { display: grid; }
 .kr-submit strong { font-size: 1.1rem; }
 .kr-submit span { color: #5d7068; font-size: .74rem; }

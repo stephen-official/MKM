@@ -140,40 +140,59 @@
 
 
 
+/* Phone: a floating glass pill above the content, like the laptop sidebar laid flat. The active tab sits on a glass bubble
+   (the same pale-blue pill the sidebar uses) that slides across when the tab changes. */
 .kitchen-bottom-nav {
   position: fixed;
   z-index: 40;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  padding: 6px 8px max(6px, env(safe-area-inset-bottom));
+  right: 12px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  left: 12px;
+  padding: 5px;
   background: var(--nav-glass-bg);
-  border-top: 1px solid var(--glass-border);
-  box-shadow: 0 0 0 1px var(--glass-outline), 0 -8px 24px rgba(30, 52, 92, 0.07);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170, 186, 210, 0.25), 0 0 0 1px var(--glass-outline), 0 12px 30px rgba(30, 52, 92, 0.14);
   -webkit-backdrop-filter: var(--nav-glass-blur);
   backdrop-filter: var(--nav-glass-blur);
 }
 
 .kitchen-bottom-nav__items {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  width: min(100%, 720px);
+  position: relative;
+  display: flex;
+  width: min(100%, 520px);
   margin: 0 auto;
 }
 
+.kitchen-bottom-nav__bubble {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  background: rgba(228, 237, 249, 0.9);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(170, 186, 210, 0.32), inset 0 1px 0 #fff;
+  pointer-events: none;
+}
+
 .kitchen-bottom-nav__item {
+  position: relative;
+  z-index: 1;
   display: flex;
+  flex: 1;
   min-width: 0;
-  min-height: 54px;
-  padding: 5px 2px 3px;
+  min-height: 52px;
+  padding: 6px 4px 5px;
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  gap: 2px;
-  color: #3c4a63;
+  gap: 3px;
+  color: var(--muted-2);
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 12px;
+  border: 0;
+  border-radius: 999px;
   font-weight: 400;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -181,33 +200,11 @@
 
 .kitchen-bottom-nav__item:hover:not(:disabled) {
   color: var(--blue-deep);
-  background: var(--blue-soft);
 }
 
 .kitchen-bottom-nav__item--active {
-  position: relative;
   color: var(--blue-deep);
   font-weight: 500;
-}
-
-/* The blue dot marks the current tab; it scales in once when the tab changes and then sits still. */
-.kitchen-bottom-nav__item--active::after {
-  content: "";
-  position: absolute;
-  bottom: 3px;
-  left: 50%;
-  width: 6px;
-  height: 6px;
-  margin-left: -3px;
-  border-radius: 50%;
-  background: var(--blue);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
-  animation: kitchen-dot-in var(--dur-glass) var(--ease-glass);
-}
-
-@keyframes kitchen-dot-in {
-  from { transform: scale(0.3); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
 }
 
 .kitchen-bottom-nav__item:disabled {
@@ -218,26 +215,15 @@
 .kitchen-bottom-nav__icon-wrap {
   position: relative;
   display: grid;
-  min-width: 34px;
-  height: 28px;
-  padding: 3px 6px;
+  width: 24px;
+  height: 24px;
   place-items: center;
-  border-radius: 999px;
-}
-
-.kitchen-bottom-nav__item--active .kitchen-bottom-nav__icon-wrap {
-  background: var(--blue-soft);
-}
-
-.kitchen-bottom-nav__item--primary .kitchen-bottom-nav__icon-wrap {
-  color: #fff;
-  background: var(--blue);
 }
 
 .kitchen-bottom-nav__badge {
   position: absolute;
-  top: -4px;
-  right: -7px;
+  top: -5px;
+  right: -9px;
   display: grid;
   min-width: 17px;
   height: 17px;
@@ -274,7 +260,12 @@
 .kitchen-bottom-nav__item:focus-visible {
   outline: none;
   color: var(--blue-deep);
-  background: var(--blue-soft);
+}
+
+.kitchen-bottom-nav__item:focus-visible .kitchen-bottom-nav__icon-wrap {
+  outline: 2px solid var(--blue);
+  outline-offset: 4px;
+  border-radius: 50%;
 }
 
 @media (min-width: 760px) {
@@ -283,13 +274,10 @@
   }
 
   .kitchen-bottom-nav {
-    right: 50%;
-    left: auto;
-    width: min(720px, 100%);
-    transform: translateX(50%);
-    border-right: 1px solid var(--glass-border);
-    border-left: 1px solid var(--glass-border);
-    border-radius: 18px 18px 0 0;
+    right: auto;
+    left: 50%;
+    width: min(560px, calc(100% - 48px));
+    transform: translateX(-50%);
   }
 }
 
@@ -309,28 +297,42 @@
   .kitchen-header { position: static; width: calc(100% + 232px - 56px); height: 72px; min-height: 0; margin: 22px 28px 0 calc(28px - 232px); padding: 0 14px; border: 1px solid var(--glass-border); border-radius: var(--radius-glass); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.25), 0 0 0 1px var(--glass-outline), var(--glass-shadow); }
   .kitchen-bottom-nav { top: 128px; right: auto; bottom: auto; left: 28px; width: 188px; padding: 8px; background: var(--nav-glass-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-glass); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.25), 0 0 0 1px var(--glass-outline), var(--glass-shadow); -webkit-backdrop-filter: var(--nav-glass-blur); backdrop-filter: var(--nav-glass-blur); transform: none; }
   .kitchen-bottom-nav__items { display: flex; width: 100%; flex-direction: column; gap: 2px; }
-  .kitchen-bottom-nav__item { min-height: 44px; padding: 0 12px; justify-content: flex-start; flex-direction: row; gap: 11px; border-radius: 14px; }
+  .kitchen-bottom-nav__bubble { display: none; }
+  .kitchen-bottom-nav__item { min-height: 44px; padding: 0 12px; justify-content: flex-start; flex-direction: row; gap: 11px; border: 1px solid transparent; border-radius: 14px; }
+  .kitchen-bottom-nav__item:hover:not(:disabled) { background: var(--blue-soft); }
   .kitchen-bottom-nav__item--active { background: rgba(228, 237, 249, 0.9); border-color: var(--glass-border); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
   .kitchen-bottom-nav__item--active:hover, .kitchen-bottom-nav__item--active:focus-visible { background: rgba(228, 237, 249, 0.9); }
-  .kitchen-bottom-nav__icon-wrap { flex: 0 0 24px; min-width: 0; padding: 0; }
-  .kitchen-bottom-nav__item--active .kitchen-bottom-nav__icon-wrap,
-  .kitchen-bottom-nav__item--primary .kitchen-bottom-nav__icon-wrap { color: inherit; background: transparent; }
+  .kitchen-bottom-nav__icon-wrap { flex: 0 0 24px; }
   .kitchen-bottom-nav__badge { position: static; margin-left: auto; min-width: 22px; height: 22px; font-size: 11px; border: 0; }
-  .kitchen-bottom-nav__item { position: relative; }
+  .kitchen-bottom-nav__badge--alert { font-size: 12px; }
   .kitchen-bottom-nav__item .kitchen-bottom-nav__icon-wrap:has(.kitchen-bottom-nav__badge) { flex: 1 1 auto; display: flex; justify-content: flex-start; gap: 12px; }
   .kitchen-bottom-nav__label { font-size: 14px; }
-  .kitchen-bottom-nav__item--active::after { top: 50%; right: 14px; bottom: auto; left: auto; margin: -3px 0 0; }
+  /* The blue dot marks the current tab; it scales in once when the tab changes and then sits still. */
+  .kitchen-bottom-nav__item--active::after { content: ""; position: absolute; top: 50%; right: 14px; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8); animation: kitchen-dot-in var(--dur-glass) var(--ease-glass); }
+  .kitchen-bottom-nav__item:focus-visible { background: var(--blue-soft); }
+  .kitchen-bottom-nav__item:focus-visible .kitchen-bottom-nav__icon-wrap { outline: none; }
   .kitchen-builder-review, .ktb-submit, .kss-submit { left: 232px; bottom: 0; }
   .kitchen-more { max-width: 900px !important; padding: 32px !important; }
   .kitchen-builder-review > div { width: min(100%, 1208px); max-width: 1208px !important; }
 }
 
+@keyframes kitchen-dot-in {
+  from { transform: scale(0.3); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .kitchen-header__action,
-  .kitchen-bottom-nav__item,
+  .kitchen-bottom-nav__item {
+    transition: color 160ms ease, background-color 160ms ease;
+  }
+
+  .kitchen-bottom-nav__bubble {
+    transition: transform var(--dur-glass) var(--ease-glass), width var(--dur-glass) var(--ease-glass);
+  }
+
   .kitchen-bottom-nav__icon-wrap {
-    transition: color 160ms ease, background-color 160ms ease,
-      transform 160ms ease;
+    transition: transform 160ms ease;
   }
 
   .kitchen-bottom-nav__item:active:not(:disabled) .kitchen-bottom-nav__icon-wrap {
