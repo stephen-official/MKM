@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, Clock, History, Lock, Minus, Plus, Search, Truck, Users, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, ChevronUp, Clock, History, Lock, Minus, Plus, Search, Truck, Users, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
@@ -8,6 +8,7 @@ import { canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving,
 import { arrivingLines } from "../../features/kitchen/receiving";
 import KitchenReceiveItems from "./KitchenReceiveItems";
 import OrderTicket from "./OrderTicket";
+import { useWide } from "./useWide";
 import { useConfirm } from "../ui/ConfirmDialog";
 import "./KitchenOrders.css";
 
@@ -105,6 +106,8 @@ const ticketRows = (cart, products, locked) => Object.entries(cart).flatMap(([id
 function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeededIn, emergency, setEmergency, busy, onBack, onSubmit, now }) {
   const [search, setSearch] = useState("");
   const [ticketOpen, setTicketOpen] = useState(true);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const wide = useWide();
   const [confirm, confirmDialog] = useConfirm();
   const share = mode.order ? myShare(mode.order, mode.godownId) : null;
   const locked = new Set((share?.items || []).filter((line) => line.approvedAt).map((line) => String(line.stockItemId?._id || line.stockItemId)));
@@ -124,10 +127,26 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
     const ok = await confirm({ title: "Remove all items from the ticket?", message: locked.size ? "Items the central store has already approved stay." : "You can add them again afterwards.", confirmLabel: "Remove all", danger: true });
     if (ok) setCart((previous) => Object.fromEntries(Object.entries(previous).filter(([id]) => locked.has(id))));
   };
-  const showTicket = () => {
-    setTicketOpen(true);
-    document.getElementById("kitchen-ticket")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  // Phone: the sheet closes itself once the ticket is empty; Escape closes it and the page behind does not scroll meanwhile.
+  const [seenCount, setSeenCount] = useState(count);
+  if (seenCount !== count) {
+    setSeenCount(count);
+    if (count === 0) setSheetOpen(false);
+  }
+  useEffect(() => {
+    if (!sheetOpen) return undefined;
+    const onKey = (event) => { if (event.key === "Escape") setSheetOpen(false); };
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKey);
+    return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", onKey); };
+  }, [sheetOpen]);
+  const submitLabel = mode.type === "edit" ? "Save changes" : "Place request";
+  const note = missing ? `${missing} ${missing === 1 ? "item needs" : "items need"} a quantity before you can send` : "";
+  // Same ticket on both layouts: the sticky column beside the list from 900px, the sheet on a phone; the action lives inside it.
+  const ticket = <OrderTicket rows={rows} meta={[{ label: "Delivery", value: when }]} emptyText="Tap “Add” on a supply below and it will be listed here."
+    open={wide ? ticketOpen : true} onToggle={wide ? () => setTicketOpen((value) => !value) : undefined} onChange={setAmount} onClear={clearTicket}
+    onSubmit={onSubmit} submitLabel={submitLabel} submittingLabel="Placing…" submitting={busy} submitDisabled={missing > 0} note={note} />;
 
   return <main className="ko-shell ko-picker">
     {confirmDialog}
@@ -136,7 +155,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
       <span>{mode.type === "new" ? "Choose what your kitchen needs and when." : `Delivery by ${deliveryDateText(mode.order.neededBy, { withTime: mode.order.emergency })}.`}</span></div></header>
 
     <div className="ko-picker__layout">
-      <OrderTicket rows={rows} meta={[{ label: "Delivery", value: when }]} emptyText="Tap “Add” on a supply below and it will be listed here." open={ticketOpen} onToggle={() => setTicketOpen((value) => !value)} onChange={setAmount} onClear={clearTicket} />
+      {wide && ticket}
 
       <div className="ko-picker__main">
         {mode.type === "new" && <section className="kg-glass ko-when" aria-label="When do you need it">
@@ -182,9 +201,26 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
       </div>
     </div>
 
-    <footer className="ko-submit">
-      <button type="button" className="ko-submit__count" onClick={showTicket} aria-label={`${count} ${count === 1 ? "item" : "items"} on the ticket. Show the ticket.`}><strong>{count}</strong><span>{missing ? `${missing} ${missing === 1 ? "needs" : "need"} a quantity` : `${count === 1 ? "item" : "items"} · view ticket`}</span></button>
-      <button type="button" className="kg-btn" disabled={busy || count === 0 || missing > 0} onClick={onSubmit}>{busy ? "Placing…" : mode.type === "edit" ? "Save changes" : "Place request"}</button></footer>
+    {!wide && (
+      <button type="button" className="ko-bar" onClick={() => setSheetOpen(true)} aria-haspopup="dialog" aria-expanded={sheetOpen}
+        aria-label={`${count} ${count === 1 ? "item" : "items"} on the order ticket. Open the ticket.`}>
+        <span className="ko-bar__count" aria-hidden="true">{count}</span>
+        <span className="ko-bar__text" aria-hidden="true"><strong>Order ticket</strong> · {missing ? `${missing} ${missing === 1 ? "needs" : "need"} a quantity` : "Review"}</span>
+        <ChevronUp size={20} aria-hidden="true" />
+      </button>
+    )}
+    {!wide && sheetOpen && (
+      <div className="ko-sheet" role="presentation">
+        <button type="button" className="ko-sheet__backdrop" onClick={() => setSheetOpen(false)} aria-label="Close the ticket" />
+        <section className="ko-sheet__panel" role="dialog" aria-modal="true" aria-label="Order ticket">
+          <header className="ko-sheet__head">
+            <p className="kg-label">{title}</p>
+            <button type="button" className="kg-chip ko-sheet__close" onClick={() => setSheetOpen(false)} aria-label="Close the ticket"><X size={18} /></button>
+          </header>
+          <div className="ko-sheet__body">{ticket}</div>
+        </section>
+      </div>
+    )}
   </main>;
 }
 

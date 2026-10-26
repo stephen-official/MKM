@@ -81,7 +81,6 @@
 .ko-empty p { max-width: 320px; margin: 0 0 8px; font-size: 13px; font-weight: 300; line-height: 1.5; }
 
 /* ---- Picker (new order / add my items / edit my items) ---- */
-.ko-picker { padding-bottom: 120px; }
 .ko-back { margin-bottom: 14px; }
 .ko-picker__layout { display: grid; gap: 18px; }
 .ko-picker__main { min-width: 0; }
@@ -123,19 +122,31 @@
 .ko-stepper input:disabled { color: var(--muted-2); }
 .ko-stepper span { max-width: 80px; padding-right: 6px; overflow: hidden; color: var(--muted-2); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Sticky footer: a glass bar with the count and the submit pill */
-.ko-submit { position: fixed; z-index: 30; right: 0; bottom: calc(82px + env(safe-area-inset-bottom, 0px)); left: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px max(16px, calc((100vw - 720px) / 2)); background: var(--nav-glass-bg); border-top: 1px solid var(--glass-border); box-shadow: 0 0 0 1px var(--glass-outline), 0 -8px 24px rgba(30,52,92,.07); -webkit-backdrop-filter: var(--nav-glass-blur); backdrop-filter: var(--nav-glass-blur); font-family: var(--font-kitchen); }
-.ko-submit__count { display: flex; flex-direction: column; align-items: flex-start; padding: 0; color: var(--ink-2); background: none; border: 0; text-align: left; }
-.ko-submit__count strong { font-size: 20px; font-weight: 300; line-height: 1; }
-.ko-submit__count span { margin-top: 3px; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
-.ko-submit .kg-btn:disabled { color: var(--muted-2); background: rgba(255,255,255,.5); box-shadow: 0 0 0 1px rgba(170,186,210,.3), inset 0 1px 0 #fff; opacity: 1; }
+/* Phone: the ticket bar floats above the nav (count badge · "Order ticket · Review"); tapping it lifts the ticket in a sheet,
+   the same as the usage ticket on Use. From 900px (see .ko-picker__layout) the ticket is a column beside the list and carries
+   the Place request button itself. */
+.ko-bar { position: fixed; z-index: 20; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); left: 16px; display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 8px 16px 8px 9px; color: var(--ink-2); background: var(--nav-glass-bg); border: 1px solid var(--glass-border); border-radius: 22px; box-shadow: 0 0 0 1px var(--glass-outline), inset 0 1px 0 #fff, 0 12px 30px rgba(30,52,92,.16); -webkit-backdrop-filter: var(--nav-glass-blur); backdrop-filter: var(--nav-glass-blur); font-family: var(--font-kitchen); text-align: left; transition: transform var(--dur-glass) var(--ease-glass); }
+.ko-bar:active { transform: scale(.98); }
+.ko-bar__count { display: grid; flex: none; width: 40px; height: 40px; place-items: center; color: #fff; background: var(--blue); border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,255,255,.85); font-size: 15px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.ko-bar__text { flex: 1; min-width: 0; overflow: hidden; color: var(--muted-2); font-size: 12px; font-weight: 500; letter-spacing: .08em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.ko-bar__text strong { color: var(--ink-2); font-weight: 600; }
+.ko-bar > svg { flex: none; color: var(--blue-deep); }
+.ko-sheet { position: fixed; z-index: 110; inset: 0; font-family: var(--font-kitchen); }
+.ko-sheet__backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(28,42,67,.35); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.ko-sheet__panel { position: absolute; right: 0; bottom: 0; left: 0; display: flex; max-height: 92dvh; flex-direction: column; padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); background: linear-gradient(160deg, rgba(255,255,255,.97), rgba(241,244,248,.97)); border-top: 1px solid var(--glass-border); border-radius: var(--radius-glass) var(--radius-glass) 0 0; box-shadow: inset 0 1px 0 #fff, 0 -20px 50px rgba(30,52,92,.18); animation: ko-rise var(--dur-glass) var(--ease-glass); }
+.ko-sheet__head { display: flex; flex: none; align-items: center; justify-content: space-between; padding: 14px 18px 8px; }
+.ko-sheet__close { width: 40px; height: 40px; padding: 0; border-radius: 50%; }
+.ko-sheet__body { overflow-y: auto; overscroll-behavior: contain; padding: 4px 12px 8px; }
+@keyframes ko-rise { from { transform: translateY(24px); opacity: 0; } }
+/* Room under the list for the ticket bar on top of the nav. */
+@media (max-width: 899px) { .ko-picker { padding-bottom: calc(var(--page-bottom-space) + 64px); } }
 
-@media (max-width: 420px) { .ko-submit { gap: 8px; } .ko-submit .kg-btn { padding: 0 14px; } }
 @media (min-width: 700px) {
   .ko-shell { padding-inline: 24px; }
   .ko-list, .ko-products { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ko-create { max-width: 520px; }
-  .ko-submit { right: 50%; left: 50%; width: 760px; max-width: 100%; padding-right: 24px; padding-left: 24px; transform: translateX(-50%); }
+  .ko-bar { right: 50%; left: 50%; width: 712px; max-width: calc(100% - 48px); transform: translateX(-50%); }
+  .ko-bar:active { transform: translateX(-50%) scale(.98); }
 }
 @media (min-width: 900px) {
   .ko-picker__layout { align-items: start; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; }
@@ -144,10 +155,8 @@
 }
 @media (min-width: 1024px) {
   .ko-shell { padding: 34px 28px 56px; }
-  .ko-picker { padding-bottom: 120px; }
   .ko-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
   .ko-products { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
   .ko-card, .ko-product { padding: 18px; }
-  .ko-submit { right: 0; bottom: 0; left: 232px; width: auto; max-width: none; margin: 0 28px; padding: 12px max(28px, calc((100vw - 232px - 1240px) / 2 + 28px)); transform: none; border-top: 0; border-radius: var(--radius-glass) var(--radius-glass) 0 0; }
 }
-@media (prefers-reduced-motion: reduce) { .ko-spinner { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ko-spinner { animation: none; } .ko-bar { transition: none; } .ko-sheet__panel { animation: none; } }
