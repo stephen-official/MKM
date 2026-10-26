@@ -3,7 +3,6 @@ import { PackagePlus, X } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import Select from "../ui/Select";
-import "./KitchenTransactions.css";
 import "./ProductRequestSheet.css";
 
 // Keep in step with backend/src/catalog/units.js.
@@ -12,6 +11,8 @@ const UNITS = [
   ["pcs", "Pieces (pcs)"], ["dozen", "Dozen"], ["packet", "Packet"]
 ];
 const STATUS = { pending: "Waiting for review", approved: "Added", rejected: "Not added" };
+// Status pill tones: waiting = amber, added = green, not added = rose (the same pills as Stock and Home).
+const TONE = { pending: "soon", approved: "routine", rejected: "expired" };
 const EMPTY = { name: "", unitSymbol: "", brand: "", note: "" };
 
 /** Lets a kitchen ask for a product that is not in the catalog yet, and see what happened to earlier asks. */
@@ -22,6 +23,14 @@ export default function ProductRequestSheet({ onClose }) {
 
   const loadHistory = () => api.get("/product-requests/me").then(({ data }) => setHistory(data)).catch(() => setHistory([]));
   useEffect(() => { loadHistory(); }, []);
+  // Escape closes the sheet (unless the unit menu just used it to close itself); the page behind does not scroll while it is open.
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape" && !event.defaultPrevented) onClose(); };
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKey);
+    return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", onKey); };
+  }, [onClose]);
 
   const set = (patch) => setForm((prev) => ({ ...prev, ...patch }));
 
@@ -41,62 +50,60 @@ export default function ProductRequestSheet({ onClose }) {
   };
 
   return (
-    <div className="ktr-layer" role="presentation">
-      <button type="button" className="ktr-backdrop" onClick={onClose} aria-label="Close" />
-      <section className="ktr-panel" role="dialog" aria-modal="true" aria-labelledby="product-request-title">
-        <header>
-          <div><p>Not in the list?</p><h2 id="product-request-title">Request a new product</h2></div>
-          <button type="button" onClick={onClose} aria-label="Close"><X size={22} /></button>
+    <div className="kpr-layer" role="presentation">
+      <button type="button" className="kpr-backdrop" onClick={onClose} aria-label="Close" />
+      <section className="kpr-panel" role="dialog" aria-modal="true" aria-labelledby="product-request-title">
+        <header className="kpr-head">
+          <div><p className="kg-label">Not in the list?</p><h2 id="product-request-title">Request a new product</h2></div>
+          <button type="button" className="kg-chip kpr-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
         </header>
-        <div className="ktr-content">
-          <section className="ktr-details" aria-label="Product details">
-            <label className="ktr-note">
+        <div className="kpr-body">
+          <section className="kg-glass kpr-form" aria-label="Product details">
+            <label className="kpr-field kpr-field--wide">
               <span>Product name</span>
               <input value={form.name} maxLength={120} placeholder="e.g. Basmati rice" onChange={(e) => set({ name: e.target.value })} />
             </label>
-            <label>
+            <label className="kpr-field">
               <span>Unit (optional)</span>
-              <Select value={form.unitSymbol} onChange={(e) => set({ unitSymbol: e.target.value })}>
+              <Select value={form.unitSymbol} onChange={(e) => set({ unitSymbol: e.target.value })} aria-label="Unit">
                 <option value="">Not sure</option>
                 {UNITS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </Select>
             </label>
-            <label>
+            <label className="kpr-field">
               <span>Brand (optional)</span>
-              <input value={form.brand} maxLength={80} onChange={(e) => set({ brand: e.target.value })} />
+              <input value={form.brand} maxLength={80} placeholder="Any brand" onChange={(e) => set({ brand: e.target.value })} />
             </label>
-            <label className="ktr-note">
+            <label className="kpr-field kpr-field--wide">
               <span>Why do you need it? (optional)</span>
               <textarea rows="3" value={form.note} maxLength={500} placeholder="What it is for, how much you use" onChange={(e) => set({ note: e.target.value })} />
             </label>
+            <button type="button" className="kg-btn kpr-submit" onClick={submit} disabled={!form.name.trim() || saving}>
+              <PackagePlus size={16} aria-hidden="true" />{saving ? "Sending…" : "Send request"}
+            </button>
+            <p className="kpr-hint">An admin reviews each request before the product is added.</p>
           </section>
 
           <section className="kpr-history" aria-labelledby="product-request-history">
-            <h3 id="product-request-history">Your requests</h3>
-            {history === null ? <p className="kpr-muted">Loading…</p> : history.length === 0 ? (
-              <p className="kpr-muted">Nothing requested yet.</p>
+            <div className="kpr-history__head"><h3 id="product-request-history">Your requests</h3>{Array.isArray(history) && history.length > 0 && <span>{history.length}</span>}</div>
+            {history === null ? <p className="kg-glass kpr-empty">Loading…</p> : history.length === 0 ? (
+              <p className="kg-glass kpr-empty">Nothing requested yet.</p>
             ) : (
-              <ul>
+              <ul className="kpr-rows">
                 {history.map((row) => (
-                  <li key={row._id}>
+                  <li key={row._id} className="kg-row">
                     <div>
                       <strong>{row.name}</strong>
                       {row.status === "rejected" && row.decisionNote && <small>{row.decisionNote}</small>}
                       {row.status === "approved" && row.product && <small>Listed as {row.product.name}</small>}
                     </div>
-                    <span className={`kpr-status kpr-status--${row.status}`}>{STATUS[row.status]}</span>
+                    <span className={`kg-pill kg-pill--${TONE[row.status] || "routine"}`}>{STATUS[row.status] || row.status}</span>
                   </li>
                 ))}
               </ul>
             )}
           </section>
         </div>
-        <footer>
-          <div><span>An admin reviews each request before the product is added.</span></div>
-          <button type="button" onClick={submit} disabled={!form.name.trim() || saving}>
-            <PackagePlus size={16} aria-hidden="true" style={{ verticalAlign: "-3px", marginRight: 6 }} />{saving ? "Sending…" : "Send request"}
-          </button>
-        </footer>
       </section>
     </div>
   );
