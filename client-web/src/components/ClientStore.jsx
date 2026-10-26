@@ -61,6 +61,22 @@ const DISCARD_DRAFT = Object.freeze({
 });
 const DELETE_REQUEST = Object.freeze({ title: "Delete this request?", message: "This can’t be undone.", confirmLabel: "Delete", danger: true });
 
+// The supply-order draft is kept on the phone (per kitchen, so another kitchen logging in here never sees it) until the order
+// is placed or the ticket is cleared. Storage can be missing or full: then the draft simply lives in memory for this visit.
+const orderDraftKey = () => `mkm.orderDraft.${localStorage.getItem("godownId") || "kitchen"}`;
+const loadOrderDraft = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(orderDraftKey()) || "null");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch { return {}; }
+};
+const saveOrderDraft = (draft) => {
+  try {
+    if (Object.keys(draft).length) localStorage.setItem(orderDraftKey(), JSON.stringify(draft));
+    else localStorage.removeItem(orderDraftKey());
+  } catch { /* nothing to do: the draft stays in memory */ }
+};
+
 const viewFromLocation = () => {
   const view = window.location.hash.replace(/^#\/?/, "");
   return KITCHEN_VIEWS.has(view) ? view : "home";
@@ -74,8 +90,9 @@ const ClientStore = () => {
   const [items, setItems] = useState([]);
   const [cart, setCart] = useState([]);
   // Supply-order draft ({ [productId]: { qty, packId, needsQty? } }): Home's "Add" puts items here; Requests' new order edits it.
-  const [orderDraft, setOrderDraft] = useState({});
+  const [orderDraft, setOrderDraft] = useState(loadOrderDraft);
   const [openOrderDraft, setOpenOrderDraft] = useState(false);
+  useEffect(() => { saveOrderDraft(orderDraft); }, [orderDraft]);
   const [orders, setOrders] = useState([]); 
   // Day-by-day usage account from GET /usage-days (today, missed, days); null while loading or when usage is off.
   const [usageDays, setUsageDays] = useState(null);
