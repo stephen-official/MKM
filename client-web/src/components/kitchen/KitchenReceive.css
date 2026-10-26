@@ -18,7 +18,10 @@
 .kr-supplier strong { font-size: 14.5px; font-weight: 500; }
 .kr-supplier small { color: var(--muted-2); font-size: 12.5px; font-weight: 300; line-height: 1.35; }
 .kr-group + .kr-group { margin-top: 22px; }
-.kr-items { display: grid; gap: 18px; }
+/* The cards size themselves to the screen: one column on a phone, as many 380px-or-wider columns as fit on a laptop,
+   and a lone card never stretches past a comfortable form width. */
+.kr-items { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); }
+.kr-item { width: 100%; max-width: 680px; }
 
 /* Item card: name and amount, a status pill; ready = cool tint, problem raised = warm tint. */
 .kr-item { display: grid; gap: 14px; padding: 16px; }
@@ -92,10 +95,9 @@
 .kr-submit .kg-btn:disabled { color: var(--muted-2); background: rgba(255,255,255,.5); box-shadow: 0 0 0 1px rgba(170,186,210,.3), inset 0 1px 0 #fff; opacity: 1; }
 @media (max-width: 420px) { .kr-submit { gap: 8px; } .kr-submit .kg-btn { padding: 0 14px; } }
 
-@media (min-width: 700px) { .kr-shell { padding-inline: 24px; } .kr-items { grid-template-columns: repeat(2, minmax(0, 1fr)); } .kr-submit { right: 50%; left: 50%; width: 760px; max-width: 100%; padding-right: 24px; padding-left: 24px; transform: translateX(-50%); } }
+@media (min-width: 700px) { .kr-shell { padding-inline: 24px; } .kr-items { gap: 22px; } .kr-submit { right: 50%; left: 50%; width: 760px; max-width: 100%; padding-right: 24px; padding-left: 24px; transform: translateX(-50%); } }
 @media (min-width: 1024px) {
   .kr-shell { padding: 34px 28px 120px; }
-  .kr-items { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
   .kr-item { padding: 18px; }
   .kr-submit { right: 0; bottom: 0; left: 232px; width: auto; max-width: none; margin: 0 28px; padding: 12px 28px; transform: none; border-top: 0; border-radius: var(--radius-glass) var(--radius-glass) 0 0; }
 }
