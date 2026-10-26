@@ -80,14 +80,17 @@ button { -webkit-tap-highlight-color: transparent; }
 .custom-select__placeholder { color:#8fa198; }
 .custom-select__chevron { flex:none; color:var(--color-muted); transition:transform .18s ease; }
 .custom-select__chevron--open { transform:rotate(180deg); }
-.custom-select__menu { position:fixed; z-index:220; max-height:min(320px,calc(100vh - 20px)); margin:0; padding:5px; overflow-y:auto; overscroll-behavior:contain; list-style:none; background:var(--color-surface); border:1px solid var(--color-border); border-radius:14px; box-shadow:0 18px 45px -18px rgba(8,24,21,.42); }
-.custom-select__group { padding:9px 10px 5px; color:var(--color-muted); font-size:10px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
-.custom-select__option { display:flex; min-height:40px; align-items:center; justify-content:space-between; gap:12px; padding:8px 10px; color:#3f544c; border-radius:9px; font-size:13px; font-weight:550; cursor:pointer; }
-.custom-select__option--active { color:var(--color-ink); background:var(--color-brand-soft); }
-.custom-select__option--selected { color:var(--color-brand-strong); font-weight:750; }
-.custom-select__option--selected svg { flex:none; color:var(--color-brand); }
-.custom-select__option--disabled { color:#8fa198; opacity:.65; cursor:not-allowed; }
-@media(prefers-reduced-motion:reduce){.custom-select__chevron{transition:none}}
+/* The dropdown list is frosted glass like the kitchen cards: blurred white, hairline rim, blue tint on the hovered row and a blue tick on the chosen one. */
+.custom-select__menu { position:fixed; z-index:220; max-height:min(320px,calc(100vh - 20px)); margin:0; padding:6px; overflow-y:auto; overscroll-behavior:contain; list-style:none; color:var(--ink-2); background:var(--nav-glass-bg); border:1px solid var(--glass-border); border-radius:18px; box-shadow:0 0 0 1px var(--glass-outline), inset 0 1px 0 #fff, 0 18px 44px rgba(30,52,92,.18); -webkit-backdrop-filter:var(--nav-glass-blur); backdrop-filter:var(--nav-glass-blur); font-family:var(--font-kitchen); animation:custom-select-rise var(--dur-glass) var(--ease-glass); }
+.custom-select__group { padding:10px 12px 4px; color:var(--muted-2); font-size:11px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; }
+.custom-select__option { display:flex; min-height:42px; align-items:center; justify-content:space-between; gap:12px; padding:8px 12px; color:var(--ink-2); border-radius:12px; font-size:14px; font-weight:400; cursor:pointer; }
+.custom-select__option--active { color:var(--blue-deep); background:var(--blue-soft); }
+.custom-select__option--selected { color:var(--blue-deep); font-weight:500; }
+.custom-select__option--selected svg { flex:none; color:var(--blue); }
+.custom-select__option--disabled { color:var(--muted-2); opacity:.55; cursor:not-allowed; }
+@keyframes custom-select-rise { from { transform:translateY(6px); opacity:0; } }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .custom-select__menu { background:#fff; } }
+@media(prefers-reduced-motion:reduce){.custom-select__chevron{transition:none}.custom-select__menu{animation:none}}
 
 .kitchen-auth { padding: max(32px, env(safe-area-inset-top)) var(--page-gutter) max(32px, env(safe-area-inset-bottom)); }
 .kitchen-auth__card { padding: clamp(22px, 5vw, 32px); }
