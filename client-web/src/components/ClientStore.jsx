@@ -825,7 +825,7 @@ setEditIndentId(indent._id);
           usageDays={usageDays}
           onUndoNoUsage={undoNoUsage}
           onViewStock={openStock}
-          onRequestSupplies={openOrders}
+          onRequestSupplies={() => openOrders()}
           sharedToReceive={sharedToReceive}
           hidden={hidden}
           orderDraft={orderDraft}

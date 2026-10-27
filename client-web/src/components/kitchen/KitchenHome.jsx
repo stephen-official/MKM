@@ -304,7 +304,7 @@ export default function KitchenHome({
           <Section id="incoming" title="Orders" groupTitle="Open orders" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0} wide={wide} onOpen={onRequestSupplies}
             summary={toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} arriving</span> : <span className="kh-count">{inProgressOrders.length}</span>}
             open={isOpen("incoming")} onToggle={() => toggle("incoming")}>
-            {inProgressOrders.length === 0 && <Row name="No open requests" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
+            {inProgressOrders.length === 0 && <Row name="No open orders" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
             {inProgressOrders.slice(0, 3).map((order) => (
               <button type="button" key={order._id} className="kg-row kh-order" onClick={onRequestSupplies}>
                 <span className="kh-order__head">
@@ -315,7 +315,7 @@ export default function KitchenHome({
                   <span className="kh-order__open">Open<ArrowUpRight size={15} strokeWidth={2} aria-hidden="true" /></span>
                 </span>
                 <span className="kh-steps">
-                  <ol aria-label="Request status">
+                  <ol aria-label="Order status">
                     {orderTimeline(order, godownId).map((step) => <li key={step.key} className={step.done ? "is-done" : ""} aria-label={`${step.label}${step.done ? ", done" : ""}`} />)}
                   </ol>
                   <small>{orderTimeline(order, godownId).find((step) => step.current)?.label || "Requested"}</small>
