@@ -35,6 +35,8 @@
 .kl-create > svg:last-child { flex: none; color: var(--blue-deep); }
 
 /* Record cards */
+/* Grouped lists (Transfers: Sent to you / Sent by you), headed like the Ongoing orders sections. */
+.kl-group > h2 { margin: 0 0 12px; padding-inline: 4px; font-size: 18px; font-weight: 300; letter-spacing: -.01em; }
 .kl-list { display: grid; gap: 14px; }
 .kl-card { padding: 14px 16px 16px; }
 .kl-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
