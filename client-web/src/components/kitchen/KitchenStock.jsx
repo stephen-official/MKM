@@ -77,7 +77,7 @@ export default function KitchenStock({
           {canRequestProduct && (
             <button type="button" className="kg-chip ks-refresh" onClick={() => setRequesting(true)} aria-label="Request a new product">
               <PackagePlus size={20} aria-hidden="true" />
-              <span>Request product</span>
+              <span>Request new product</span>
             </button>
           )}
         </div>
