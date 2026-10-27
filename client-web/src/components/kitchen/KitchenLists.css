@@ -13,6 +13,12 @@
 .kl-intro div > span { color: var(--muted-2); font-size: 13px; font-weight: 300; }
 
 /* Date filter: a glass pill with the date field sitting transparent inside it */
+/* History search: floats under the top edge (.kg-float) and filters the records by item name. */
+.kl-search { display: flex; height: 44px; padding: 0 12px; align-items: center; gap: 9px; color: var(--muted-2); background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
+.kl-search:focus-within { box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
+.kl-search input { min-width: 0; flex: 1; color: var(--ink-2); background: transparent; border: 0; outline: 0; font: inherit; font-size: 14px; }
+.kl-search input::placeholder { color: var(--muted-2); font-weight: 300; }
+.kl-search button { display: grid; width: 32px; height: 32px; padding: 0; place-items: center; color: var(--muted-2); background: transparent; border: 0; border-radius: 50%; }
 .kl-filter { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 8px 0 14px; color: var(--muted-2); }
 .kl-filter > svg { flex: none; color: var(--blue); }
 .kl-filter > span { font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
