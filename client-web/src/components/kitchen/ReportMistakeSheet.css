@@ -1,0 +1,38 @@
+/* "Report a mistake" (a "no usage" day marked by mistake): a glass sheet on the phone, a centred glass dialog from 700px.
+   Same shell as ProductRequestSheet.css; primitives (.kg-*) and tokens come from kitchen-ui.css / index.css. */
+.krm-layer { position: fixed; z-index: 110; inset: 0; color: var(--ink-2); font-family: var(--font-kitchen); font-size: 14px; line-height: 1.45; }
+.krm-layer *, .krm-layer *::before, .krm-layer *::after { box-sizing: border-box; }
+.krm-layer button { font: inherit; cursor: pointer; }
+.krm-backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(28,42,67,.35); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.krm-panel { position: absolute; right: 0; bottom: 0; left: 0; display: flex; max-height: 92dvh; flex-direction: column; padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)); background: linear-gradient(160deg, rgba(255,255,255,.97), rgba(241,244,248,.97)); border-top: 1px solid var(--glass-border); border-radius: var(--radius-glass) var(--radius-glass) 0 0; box-shadow: inset 0 1px 0 #fff, 0 -20px 50px rgba(30,52,92,.18); animation: krm-rise var(--dur-glass) var(--ease-glass); }
+@keyframes krm-rise { from { transform: translateY(24px); opacity: 0; } }
+
+.krm-head { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 10px; }
+.krm-head h2 { margin: 2px 0 0; font-size: 20px; font-weight: 300; letter-spacing: -.01em; line-height: 1.2; }
+.krm-close { width: 40px; height: 40px; padding: 0; border-radius: 50%; }
+.krm-body { display: grid; gap: 18px; overflow-y: auto; overscroll-behavior: contain; padding: 4px 16px 8px; }
+
+/* One glass card: reason chips, an optional note, the send button (like the "No usage" ticket on Record). */
+.krm-form { display: grid; gap: 10px; padding: 14px; }
+.krm-label { margin: 0 0 2px; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
+.krm-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.krm-chips button { min-height: 36px; padding: 0 12px; border: 1px solid var(--glass-border); border-radius: 999px; background: rgba(255,255,255,.55); color: var(--muted-2); box-shadow: 0 0 0 1px rgba(170,186,210,.28), inset 0 1px 0 #fff; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.krm-chips button.is-on { color: var(--blue-deep); background: rgba(228,237,249,.9); box-shadow: 0 0 0 1px rgba(120,152,198,.55), inset 0 1px 0 #fff; }
+.krm-note { width: 100%; min-height: 44px; padding: 0 14px; border: 1px solid var(--glass-border); border-radius: 999px; background: rgba(255,255,255,.6); color: var(--ink-2); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; font: inherit; font-size: 14px; outline: none; }
+.krm-note:focus { box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
+.krm-note::placeholder { color: var(--muted-2); font-weight: 300; }
+.krm-submit { width: 100%; height: 46px; margin-top: 4px; }
+.krm-submit:disabled { color: var(--muted-2); background: rgba(255,255,255,.5); box-shadow: 0 0 0 1px rgba(170,186,210,.3), inset 0 1px 0 #fff; opacity: 1; }
+.krm-hint { margin: 0; color: var(--muted-2); font-size: 12.5px; font-weight: 300; text-align: center; }
+
+.krm-layer button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.krm-close:focus-visible { outline: none; }
+
+@media (min-width: 700px) {
+  .krm-panel { top: 50%; right: auto; bottom: auto; left: 50%; width: min(520px, calc(100% - 48px)); max-height: 86vh; padding-bottom: 12px; border: 1px solid var(--glass-border); border-radius: var(--radius-glass); box-shadow: inset 0 1px 0 #fff, 0 0 0 1px var(--glass-outline), 0 24px 60px rgba(30,52,92,.22); transform: translate(-50%, -50%); animation: krm-pop var(--dur-glass) var(--ease-glass); }
+  .krm-head { padding: 20px 22px 12px; }
+  .krm-body { padding: 4px 20px 10px; }
+  .krm-form { padding: 16px; }
+}
+@keyframes krm-pop { from { transform: translate(-50%, -50%) scale(.97); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .krm-panel { animation: none; } }

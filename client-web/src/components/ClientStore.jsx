@@ -15,6 +15,7 @@ import KitchenUsageScreen from "./kitchen/KitchenUsageScreen";
 import SupplyRequestsDeliveries from "./kitchen/SupplyRequestsDeliveries";
 import KitchenOrders from "./kitchen/KitchenOrders";
 import KitchenActivity from "./kitchen/KitchenActivity";
+import ReportMistakeSheet from "./kitchen/ReportMistakeSheet";
 import KitchenTransfers from "./kitchen/KitchenTransfers";
 import KitchenReceiveDelivery from "./kitchen/KitchenReceiveDelivery";
 import KitchenItemBuilder from "./kitchen/KitchenItemBuilder";
@@ -22,6 +23,7 @@ import KitchenReviewPanel from "./kitchen/KitchenReviewPanel";
 import KitchenSectionNav from "./kitchen/KitchenSectionNav";
 import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../utils/date";
 import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../features/kitchen/workflows";
+import { historyEntries } from "../features/kitchen/corrections";
 import { withPackaging } from "../features/kitchen";
 import { clearSession } from "../utils/session";
 import { FEATURE_DISABLED_EVENT, canOpenView, draftFeature, featureForView, fetchKitchenFlags, hiddenTabs as computeHidden, isDraftBlocked, isFeatureOn, isViewHidden, sameFlags, tabTarget } from "../features.js";
@@ -95,6 +97,10 @@ const ClientStore = () => {
   const [orders, setOrders] = useState([]); 
   // Day-by-day usage account from GET /usage-days (today, missed, days); null while loading or when usage is off.
   const [usageDays, setUsageDays] = useState(null);
+  // Corrections this kitchen asked for (GET /usage-corrections/me): today only "reopen a no-usage day".
+  const [corrections, setCorrections] = useState([]);
+  // { date, reason } while the "Report a mistake" sheet is open for a no-usage day.
+  const [mistakeDay, setMistakeDay] = useState(null);
   const [requests, setRequests] = useState([]); 
   const [indents, setIndents] = useState([]);
   // Shared orders, kept here only to count deliveries waiting on the header bell and the home screen.
@@ -252,6 +258,12 @@ setItems(formatted);
       setUsageDays(res.data);
     } catch { setUsageDays(null); }
   };
+  const fetchCorrections = async () => {
+    try {
+      const res = await api.get("/usage-corrections/me");
+      setCorrections(res.data);
+    } catch { setCorrections([]); }
+  };
   const fetchSharedOrders = async () => {
     try {
       const res = await api.get("/procurement/collaborative-purchase-orders", { params: { limit: 100 } });
@@ -271,6 +283,7 @@ setItems(formatted);
     return Promise.all([
       wants("consumption") && fetchMyOrders(),
       wants("consumption") && fetchUsageDays(),
+      wants("consumption") && fetchCorrections(),
       wants("requests") && fetchMyRequests(),
       wants("indent") && fetchIndents(),
       wants("purchase-orders") && fetchSharedOrders()
@@ -285,7 +298,7 @@ setItems(formatted);
     setFlags(nextFlags);
     const newlyOff = (key) => isFeatureOn(previous, key) && !isFeatureOn(nextFlags, key);
     const newlyOn = ["consumption", "requests", "indent", "purchase-orders"].filter((key) => !isFeatureOn(previous, key) && isFeatureOn(nextFlags, key));
-    if (newlyOff("consumption")) { setOrders([]); setUsageDays(null); }
+    if (newlyOff("consumption")) { setOrders([]); setUsageDays(null); setCorrections([]); }
     if (newlyOff("requests")) setRequests([]);
     if (newlyOff("indent")) setIndents([]);
     if (newlyOff("purchase-orders")) setSharedOrders([]);
@@ -298,7 +311,7 @@ setItems(formatted);
     stock: () => fetchItems(false),
     orders: () => isFeatureOn(flagsRef.current, "purchase-orders") && fetchSharedOrders(),
     requests: () => isFeatureOn(flagsRef.current, "requests") && fetchMyRequests(),
-    usage: () => isFeatureOn(flagsRef.current, "consumption") && Promise.all([fetchMyOrders(), fetchUsageDays()]),
+    usage: () => isFeatureOn(flagsRef.current, "consumption") && Promise.all([fetchMyOrders(), fetchUsageDays(), fetchCorrections()]),
     indents: () => isFeatureOn(flagsRef.current, "indent") && fetchIndents(),
     flags: () => fetchKitchenFlags().then(applyFlags).catch(() => {}),
   };
@@ -415,24 +428,16 @@ setItems(formatted);
 ]);
 
 
+// Usage records plus the days marked "no usage", newest recorded first (History shows both).
 const usageHistory = useMemo(() => {
-  return orders.map(order => ({
-    ...order,
-    type: "consumption",
-    historyTime: order.createdAt
-  }))
+  return historyEntries(orders, usageDays?.marks)
     .filter(row =>
       isSameLocalDate(
         row.date || row.createdAt,
         selectedHistoryDate
       )
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.historyTime) -
-        new Date(a.historyTime)
     );
-}, [orders, selectedHistoryDate]);
+}, [orders, usageDays, selectedHistoryDate]);
 
   const addToCart = (product, newQty) => {
     // Prevent empty or partial decimal issues
@@ -698,7 +703,7 @@ setEditIndentId(indent._id);
     return skipDraftCheck === true || activeTab === "usage" ? go() : leaveDraft(go);
   };
 
-  // "No usage today" (or on a missed day): the day counts as accounted for. Recording usage later replaces the mark.
+  // "No usage today" (or on a missed day): the day counts as accounted for and stays closed until an admin reopens it.
   const markNoUsage = async (date, reason, note = "") => {
     try {
       await api.post("/usage-days/none", { date, reason, note });
@@ -710,16 +715,19 @@ setEditIndentId(indent._id);
       return false;
     }
   };
-  const undoNoUsage = async (date) => {
+  // A "no usage" mark is not undone on the phone: the kitchen reports the mistake and an admin reopens the day.
+  const requestReopen = async (date, reason, note = "") => {
     try {
-      await api.delete(`/usage-days/none/${date}`);
-      await fetchUsageDays();
+      await api.post("/usage-corrections", { kind: "reopen_day", date, reason, note });
+      toast.success("Sent to the admin. You can record usage once they reopen the day.");
+      await fetchCorrections();
       return true;
     } catch (error) {
-      toast.error(error.response?.data?.message || "Could not undo. Try again.");
+      toast.error(error.response?.data?.message || "Could not send. Try again.");
       return false;
     }
   };
+  const openMistake = (date, reason = "") => setMistakeDay({ date, reason });
 
   const openDeliveries = () => {
     if (isBlocked("past-requests")) return false;
@@ -808,6 +816,10 @@ setEditIndentId(indent._id);
   return (
     <div className="kitchen-app-shell min-h-screen bg-[#F8F9FA] pb-24 font-sans text-slate-900">
       {confirmDialog}
+      {mistakeDay && (
+        <ReportMistakeSheet date={mistakeDay.date} markReason={mistakeDay.reason} onClose={() => setMistakeDay(null)}
+          onSubmit={(reason, note) => requestReopen(mistakeDay.date, reason, note)} />
+      )}
       <KitchenHeader
         kitchenName={userInfo?.godown?.name || "Kitchen"}
         onLogout={handleLogout}
@@ -823,7 +835,8 @@ setEditIndentId(indent._id);
           onRecordUsage={openUsage}
           onRecordUsageOn={(date) => openUsage(false, date)}
           usageDays={usageDays}
-          onUndoNoUsage={undoNoUsage}
+          corrections={corrections}
+          onReportMistake={openMistake}
           onViewStock={openStock}
           onRequestSupplies={() => openOrders()}
           sharedToReceive={sharedToReceive}
@@ -862,6 +875,8 @@ setEditIndentId(indent._id);
             onReview={() => setIsCartOpen(true)}
             usageDays={usageDays}
             onNoUsage={markNoUsage}
+            corrections={corrections}
+            onReportMistake={openMistake}
           />
         </>
       ) : ["requests", "new-order", "orders-history"].includes(activeTab) ? (
@@ -895,7 +910,7 @@ setEditIndentId(indent._id);
       ) : activeTab === "activity" ? (
         <>
           <KitchenSectionNav label="History sections" value="activity" items={historySections} onChange={(view) => setActiveTab(view)} />
-          <KitchenActivity entries={usageHistory} />
+          <KitchenActivity entries={usageHistory} corrections={corrections} onReportMistake={openMistake} />
         </>
       ) : activeTab === "transfers" ? (
         <>

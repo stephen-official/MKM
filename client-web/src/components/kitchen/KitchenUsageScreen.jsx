@@ -1,8 +1,9 @@
-import { AlertTriangle, Check, ChevronUp, Plus, Search, Utensils, X } from "lucide-react";
+import { AlertTriangle, CalendarOff, Check, ChevronUp, Plus, Search, Utensils, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import { expiryStatus, formatStockQuantity, getStockHealth, productPacks, sortByExpiry, withPackaging } from "../../features/kitchen";
+import { correctionForDay } from "../../features/kitchen/corrections";
 import DateField from "../ui/DateField";
 import { useConfirm } from "../ui/ConfirmDialog";
 import OrderTicket from "./OrderTicket";
@@ -85,6 +86,8 @@ export default function KitchenUsageScreen({
   submitting = false,
   usageDays = null,
   onNoUsage,
+  corrections = [],
+  onReportMistake,
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -209,7 +212,9 @@ export default function KitchenUsageScreen({
   }, [sheetOpen]);
 
   const dayStatus = usageDays?.days?.find((day) => day.date === selectedDate) || null;
+  // A day already marked "no usage" is closed: no list, no ticket, one card that says so and offers "Report a mistake".
   const alreadyNone = dayStatus?.status === "none";
+  const dayCorrection = alreadyNone ? correctionForDay(corrections, selectedDate) : null;
   const toggleNoUsage = (checked) => {
     setNoUsage(checked);
     if (checked && !wide) setSheetOpen(true);
@@ -251,6 +256,23 @@ export default function KitchenUsageScreen({
     onSubmit={onSubmit} submitLabel="Record" submitting={submitting} submitDisabled={!selectedDate} />;
 
   const ticketPanel = noUsage ? noUsageTicket : ticket;
+  const closedDay = alreadyNone && (
+    <section className="kg-glass kus-closed" aria-labelledby="kus-closed-title">
+      <span className="kg-orb kus-closed__icon" aria-hidden="true"><CalendarOff size={22} strokeWidth={1.6} /></span>
+      <div className="kus-closed__text">
+        <p className="kg-label">{REASON_LABEL[dayStatus.reason] || "No usage"}{dayStatus.note ? ` · ${dayStatus.note}` : ""}</p>
+        <h2 id="kus-closed-title">No usage recorded for {formatDateKey(selectedDate)}</h2>
+        {dayCorrection?.status === "pending"
+          ? <span>Reopen request sent. Nothing can be recorded until the admin approves.</span>
+          : dayCorrection?.status === "rejected"
+            ? <span>The admin did not reopen this day{dayCorrection.decisionNote ? `: ${dayCorrection.decisionNote}` : ""}.</span>
+            : <span>Made a mistake? Ask the admin to reopen this day.</span>}
+      </div>
+      {dayCorrection?.status === "pending"
+        ? <span className="kg-pill kg-pill--soon">Waiting for the admin</span>
+        : onReportMistake && <button type="button" className="kg-btn" onClick={() => onReportMistake(selectedDate, dayStatus.reason)}>Report a mistake</button>}
+    </section>
+  );
 
   return (
     <main className="kus-screen">
@@ -265,9 +287,9 @@ export default function KitchenUsageScreen({
       </header>
 
       <div className="kus-layout">
-      {wide && ticketPanel}
+      {wide && !alreadyNone && ticketPanel}
       <div className="kus-main">
-      <label className="kus-search kg-float">
+      {!alreadyNone && <label className="kus-search kg-float">
         <span className="kus-visually-hidden">Search kitchen stock</span>
         <Search size={19} aria-hidden="true" />
         <input
@@ -278,34 +300,36 @@ export default function KitchenUsageScreen({
           autoComplete="off"
         />
         {search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search">Clear</button>}
-      </label>
+      </label>}
       <section className="kg-glass kus-controls" aria-label="Usage details">
         <label className="kus-date">
           <span>Usage date</span>
           <DateField value={selectedDate} max={today} required label="Usage date"
             onChange={(value) => onDateChange?.(value)} disabled={submitting} />
         </label>
-        <div className="kus-filters" role="group" aria-label="Show only">
+        {!alreadyNone && <div className="kus-filters" role="group" aria-label="Show only">
           {FILTERS.map(({ key, label }) => (
             <button type="button" key={key} className={filter === key ? "kus-filter is-on" : "kus-filter"} aria-pressed={filter === key} onClick={() => setFilter(key)}>
               {label}<span>{counts[key]}</span>
             </button>
           ))}
-        </div>
+        </div>}
       </section>
 
-      {onNoUsage && (
+      {closedDay}
+
+      {onNoUsage && !alreadyNone && (
         <label className={`kg-glass kus-none${noUsage ? " is-on" : ""}`}>
-          <input type="checkbox" checked={noUsage} disabled={submitting || rowCount > 0 || alreadyNone} onChange={(event) => toggleNoUsage(event.target.checked)} />
+          <input type="checkbox" checked={noUsage} disabled={submitting || rowCount > 0} onChange={(event) => toggleNoUsage(event.target.checked)} />
           <span>
             <strong>{selectedDate === today ? "No usage is recorded today" : `No usage was recorded on ${formatDateKey(selectedDate)}`}</strong>
-            <small>{alreadyNone ? `Already marked · ${REASON_LABEL[dayStatus.reason] || "No usage"}` : rowCount > 0 ? "Remove the items on the ticket first" : "Tick this if the kitchen used nothing, then confirm on the ticket"}</small>
+            <small>{rowCount > 0 ? "Remove the items on the ticket first" : "Tick this if the kitchen used nothing, then confirm on the ticket"}</small>
           </span>
         </label>
       )}
 
       {/* While "no usage" is ticked the list is out of the way: nothing is being counted. */}
-      {!noUsage && <section className="kus-stock" aria-labelledby="kus-stock-title" aria-busy={loading}>
+      {!noUsage && !alreadyNone && <section className="kus-stock" aria-labelledby="kus-stock-title" aria-busy={loading}>
         <div className="kus-section-heading">
           <div><p>Kitchen stock</p><h2 id="kus-stock-title">What did you use?</h2></div>
           {!loading && <span>{visibleItems.length} {visibleItems.length === 1 ? "item" : "items"}</span>}
@@ -436,7 +460,7 @@ export default function KitchenUsageScreen({
       </div>
       </div>
 
-      {!wide && (
+      {!wide && !alreadyNone && (
         <button type="button" className="kus-bar" onClick={() => setSheetOpen(true)} aria-haspopup="dialog" aria-expanded={sheetOpen}
           aria-label={`${rowCount} ${rowCount === 1 ? "item" : "items"} on the usage ticket. Open the ticket.`}>
           <span className="kus-bar__count" aria-hidden="true">{noUsage ? "!" : rowCount}</span>
@@ -444,7 +468,7 @@ export default function KitchenUsageScreen({
           <ChevronUp size={20} aria-hidden="true" />
         </button>
       )}
-      {!wide && sheetOpen && (
+      {!wide && !alreadyNone && sheetOpen && (
         <div className="kus-sheet" role="presentation">
           <button type="button" className="kus-sheet__backdrop" onClick={closeSheet} aria-label="Close the ticket" />
           <section className="kus-sheet__panel" role="dialog" aria-modal="true" aria-label="Usage ticket">

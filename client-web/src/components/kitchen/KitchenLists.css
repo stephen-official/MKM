@@ -44,10 +44,12 @@
 .kl-card__head h2 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 15px; font-weight: 500; line-height: 1.25; }
 .kl-card__head h2 svg { color: var(--muted-2); }
 .kl-card__head .kg-pill { flex: none; text-transform: capitalize; }
+.kl-card__head .kl-pill--plain { text-transform: none; } /* "Waiting for the admin" reads as a sentence, not a title */
 .kl-card ul { list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid rgba(170,186,210,.28); }
 .kl-card li { display: flex; justify-content: space-between; gap: 16px; padding: 7px 0; font-size: 13.5px; }
 .kl-card li + li { border-top: 1px solid rgba(170,186,210,.18); }
 .kl-card li strong { font-weight: 500; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kl-card__note { margin: 10px 0 0; color: var(--muted-2); font-size: 13px; font-weight: 300; }
 .kl-card__foot { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(170,186,210,.28); }
 .kl-card__foot .kg-btn { flex: 1; }
 .kl-reject { color: var(--st-expired-fg); }

@@ -5,6 +5,7 @@ import { useWide } from "./useWide";
 import { toLocalDateKey, localDateFromKey } from "../../utils/date";
 import { expiryStatus, itemsToUseFirst } from "../../features/kitchen";
 import { closesInText, deliveryDateText, kitchenStage, myOrders, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
+import { correctionForDay } from "../../features/kitchen/corrections";
 import "./KitchenHome.css";
 
 const RECEIVABLE_STATUSES = new Set([
@@ -16,6 +17,7 @@ const RECEIVABLE_STATUSES = new Set([
 
 const NO_HIDDEN = new Set();
 const NO_ORDERS = [];
+const NO_CORRECTIONS = [];
 
 const asNumber = (value) => {
   const number = Number(value);
@@ -174,7 +176,8 @@ export default function KitchenHome({
   onRecordUsage,
   onRecordUsageOn,
   usageDays = null,
-  onUndoNoUsage,
+  corrections = NO_CORRECTIONS,
+  onReportMistake,
   onViewStock,
   onRequestSupplies,
   sharedToReceive = 0,
@@ -232,6 +235,8 @@ export default function KitchenHome({
   const todayRow = usageDays?.days?.find((day) => day.date === today) || null;
   const usageComplete = todayRow ? todayRow.status === "recorded" : todaysEntries.length > 0;
   const todayNone = todayRow?.status === "none";
+  // A marked day stays closed until an admin reopens it; the kitchen can only report the mistake.
+  const todayCorrection = todayNone ? correctionForDay(corrections, today) : null;
   const entryCount = todayRow ? todayRow.entries : todaysEntries.length;
   const missedDays = (usageDays?.days || []).filter((day) => day.status === "missed" && day.date !== today);
 
@@ -245,10 +250,15 @@ export default function KitchenHome({
             <p className="kh-day__date"><DayLine dateKey={today} today={today} suffix={usageComplete ? ` · ${entryCount} ${entryCount === 1 ? "entry" : "entries"} recorded` : todayNone ? ` · No usage (${REASON_LABEL[todayRow.reason] || "other"})` : ""} /></p>
           </div>
           <div className="kh-day__actions">
-            <button type="button" className="kg-btn" onClick={onRecordUsage}>
-              {usageComplete ? "Add more" : todayNone ? "Record anyway" : "Record"}<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" />
-            </button>
-            {todayNone && onUndoNoUsage && <button type="button" className="kg-chip" onClick={() => onUndoNoUsage(today)}>Undo</button>}
+            {todayNone ? (
+              todayCorrection?.status === "pending"
+                ? <span className="kg-pill kg-pill--soon">Reopen request sent</span>
+                : onReportMistake && <button type="button" className="kg-btn" onClick={() => onReportMistake(today, todayRow.reason)}>Report a mistake<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" /></button>
+            ) : (
+              <button type="button" className="kg-btn" onClick={onRecordUsage}>
+                {usageComplete ? "Add more" : "Record"}<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" />
+              </button>
+            )}
           </div>
           {/* Days in the last month with neither usage nor a "no usage" mark: a red row that drops the list open in place. */}
           {missedDays.length > 0 && <div className="kh-missed">
