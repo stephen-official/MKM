@@ -74,7 +74,7 @@
 .kh-row { display: grid; grid-template-columns: minmax(0, 1fr) 146px 76px; align-items: center; gap: 12px; width: 100%; padding: 10px 14px; text-align: left; }
 .kh-row .kg-pill { justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .kh-row__text { min-width: 0; display: grid; gap: 1px; }
-.kh-row__text strong { font-size: 14.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kh-row__text strong { font-size: 14.5px; font-weight: 500; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.25; } /* long names ("New order by Montessori Junior Kitchen") wrap to two lines instead of cutting off */
 .kh-row__text small { font-size: 12.5px; font-weight: 300; color: var(--muted-2); }
 .kh-row__qty { font-size: 17px; font-weight: 300; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* Row with an "Add" chip: the glass row wraps the item button and the chip side by side. */

@@ -70,7 +70,7 @@ const qtyText = (value, item) => `${asNumber(value).toLocaleString("en-IN", { ma
 
 /** One item line: name and hint on the left, a status pill, the quantity on the right.
  *  With onAdd, an "Add" chip sits at the end of the row and puts the item on the supply-order ticket ("Added" once it is there). */
-const Row = ({ name, hint, tone, status, qty, onClick, onAdd, added = false, addLabel = "Add", addAria = "" }) => {
+const Row = ({ name, hint, tone, status, qty, onClick, onAdd, added = false }) => {
   const main = (
     <button type="button" className={onAdd ? "kh-row kh-row__main" : "kg-row kh-row"} onClick={onClick}>
       <span className="kh-row__text"><strong>{name}</strong><small>{hint}</small></span>
@@ -83,8 +83,8 @@ const Row = ({ name, hint, tone, status, qty, onClick, onAdd, added = false, add
     <div className="kg-row kh-row--add">
       {main}
       <button type="button" className={`kg-chip kh-row__add${added ? " is-added" : ""}`} onClick={onAdd} disabled={added}
-        aria-label={addAria || (added ? `${name} is on the order ticket` : `Add ${name} to the order ticket`)}>
-        {added ? <><Check size={15} aria-hidden="true" /> Added</> : <><Plus size={15} aria-hidden="true" /> {addLabel}</>}
+        aria-label={added ? `${name} is on the order ticket` : `Add ${name} to the order ticket`}>
+        {added ? <><Check size={15} aria-hidden="true" /> Added</> : <><Plus size={15} aria-hidden="true" /> Add</>}
       </button>
     </div>
   );
@@ -182,7 +182,6 @@ export default function KitchenHome({
   orderDraft = {},
   onAddToOrder,
   onOpenOrderDraft,
-  onJoinOrder,
 }) {
   // Views whose feature is off for this kitchen are not offered at all (rather than toasting on tap).
   const canRecordUsage = !hidden.has("usage");
@@ -310,9 +309,8 @@ export default function KitchenHome({
             open={isOpen("incoming")} onToggle={() => toggle("incoming")}>
             {joinableOrders.slice(0, 3).map((order) => {
               const names = [...new Set(order.contributions.flatMap((share) => share.items.map((line) => line.stockItemId?.name || "Item")))];
-              return <Row key={order._id} name={`Order started by ${startedBy(order)}`} hint={`${names.join(", ")} · ${closesInText(order.closesAt, new Date())}`}
-                tone={order.emergency ? "expired" : "low"} status={order.emergency ? "Urgent" : "Open"} onClick={onRequestSupplies}
-                {...(onJoinOrder ? { onAdd: () => onJoinOrder(order._id), addLabel: "Add items", addAria: `Add your items to the order started by ${startedBy(order)}` } : {})} />;
+              return <Row key={order._id} name={`New order by ${startedBy(order)}`} hint={`${names.join(", ")} · ${closesInText(order.closesAt, new Date())}`}
+                tone={order.emergency ? "expired" : "low"} status={order.emergency ? "Urgent" : "Open"} onClick={onRequestSupplies} />;
             })}
             {inProgressOrders.length === 0 && joinableOrders.length === 0 && <Row name="No open orders" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
             {inProgressOrders.slice(0, 3).map((order) => (

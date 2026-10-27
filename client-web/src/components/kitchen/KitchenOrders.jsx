@@ -345,9 +345,9 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
 /**
  * draft / onDraftChange: the new-order cart, held by the parent so items added from Home stay put while the cook is elsewhere.
  * section: "ongoing" (orders in progress, plus transfers waiting for Accept / Reject when canTransfer), "new" (the new-order picker) or "history" (delivered and cancelled orders).
- * onNewOrder / onLeaveNewOrder switch the "New order" section tab on and off. joinOrderId: an order to open the join picker for ("Add items" on Home); onJoinOrderOpened resets it.
+ * onNewOrder / onLeaveNewOrder switch the "New order" section tab on and off.
  */
-export default function KitchenOrders({ products = [], godownId, onOrdersLoaded, draft = {}, onDraftChange, section = "ongoing", canTransfer = false, onNewOrder, onLeaveNewOrder, joinOrderId = null, onJoinOrderOpened }) {
+export default function KitchenOrders({ products = [], godownId, onOrdersLoaded, draft = {}, onDraftChange, section = "ongoing", canTransfer = false, onNewOrder, onLeaveNewOrder }) {
   const [orders, setOrders] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -404,13 +404,6 @@ export default function KitchenOrders({ products = [], godownId, onOrdersLoaded,
   const ongoing = mine.filter((order) => !finished(order));
   const done = mine.filter(finished);
   const waiting = draftCounts(draft);
-  // "Add items" on a Home row: open that order's picker once the list and settings are in; an order that closed meanwhile gets a message instead.
-  useEffect(() => {
-    if (!joinOrderId || !settings || loading) return;
-    const order = joinable.find((candidate) => String(candidate._id) === String(joinOrderId));
-    if (order) start("join", order); else toast.error("That order is no longer open.");
-    onJoinOrderOpened?.();
-  }, [joinOrderId, settings, loading, joinable]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const start = (type, order) => {
     const share = order ? myShare(order, godownId) : null;
