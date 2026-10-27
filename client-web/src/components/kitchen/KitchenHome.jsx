@@ -4,7 +4,7 @@ import { useConfirm } from "../ui/ConfirmDialog";
 import { useWide } from "./useWide";
 import { toLocalDateKey, localDateFromKey } from "../../utils/date";
 import { expiryStatus, itemsToUseFirst } from "../../features/kitchen";
-import { deliveryDateText, kitchenStage, myOrders, orderTimeline } from "../../features/kitchen/orders";
+import { closesInText, deliveryDateText, kitchenStage, myOrders, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
 import "./KitchenHome.css";
 
 const RECEIVABLE_STATUSES = new Set([
@@ -70,7 +70,7 @@ const qtyText = (value, item) => `${asNumber(value).toLocaleString("en-IN", { ma
 
 /** One item line: name and hint on the left, a status pill, the quantity on the right.
  *  With onAdd, an "Add" chip sits at the end of the row and puts the item on the supply-order ticket ("Added" once it is there). */
-const Row = ({ name, hint, tone, status, qty, onClick, onAdd, added = false }) => {
+const Row = ({ name, hint, tone, status, qty, onClick, onAdd, added = false, addLabel = "Add", addAria = "" }) => {
   const main = (
     <button type="button" className={onAdd ? "kh-row kh-row__main" : "kg-row kh-row"} onClick={onClick}>
       <span className="kh-row__text"><strong>{name}</strong><small>{hint}</small></span>
@@ -83,8 +83,8 @@ const Row = ({ name, hint, tone, status, qty, onClick, onAdd, added = false }) =
     <div className="kg-row kh-row--add">
       {main}
       <button type="button" className={`kg-chip kh-row__add${added ? " is-added" : ""}`} onClick={onAdd} disabled={added}
-        aria-label={added ? `${name} is on the order ticket` : `Add ${name} to the order ticket`}>
-        {added ? <><Check size={15} aria-hidden="true" /> Added</> : <><Plus size={15} aria-hidden="true" /> Add</>}
+        aria-label={addAria || (added ? `${name} is on the order ticket` : `Add ${name} to the order ticket`)}>
+        {added ? <><Check size={15} aria-hidden="true" /> Added</> : <><Plus size={15} aria-hidden="true" /> {addLabel}</>}
       </button>
     </div>
   );
@@ -182,6 +182,7 @@ export default function KitchenHome({
   orderDraft = {},
   onAddToOrder,
   onOpenOrderDraft,
+  onJoinOrder,
 }) {
   // Views whose feature is off for this kitchen are not offered at all (rather than toasting on tap).
   const canRecordUsage = !hidden.has("usage");
@@ -220,6 +221,9 @@ export default function KitchenHome({
   const inProgressOrders = myOrders(sharedOrders, godownId)
     .filter((order) => !["delivered", "cancelled"].includes(kitchenStage(order, godownId)))
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  // Orders other kitchens started that are still open for this kitchen to add its items to.
+  const joinableOrders = canUseRequests ? otherOpenOrders(sharedOrders, godownId, new Date()) : [];
+  const startedBy = (order) => order.createdByGodown?.name || "another kitchen";
   // Old-style deliveries plus shares of shared orders that have been dispatched to this kitchen.
   const toReceive = indents.filter(isReceivable).length + sharedToReceive;
   const todaysEntries = orders.filter(
@@ -301,10 +305,16 @@ export default function KitchenHome({
         </div>
 
         {canUseRequests && <div className="kh-col kh-col--side">
-          <Section id="incoming" title="Orders" groupTitle="Open orders" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0} wide={wide} onOpen={onRequestSupplies}
-            summary={toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} arriving</span> : <span className="kh-count">{inProgressOrders.length}</span>}
+          <Section id="incoming" title="Orders" groupTitle="Open orders" tint={toReceive > 0 || joinableOrders.length > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0 || joinableOrders.length > 0} wide={wide} onOpen={onRequestSupplies}
+            summary={toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} arriving</span> : joinableOrders.length > 0 ? <span className="kg-pill kg-pill--low">{joinableOrders.length} open to join</span> : <span className="kh-count">{inProgressOrders.length}</span>}
             open={isOpen("incoming")} onToggle={() => toggle("incoming")}>
-            {inProgressOrders.length === 0 && <Row name="No open orders" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
+            {joinableOrders.slice(0, 3).map((order) => {
+              const names = [...new Set(order.contributions.flatMap((share) => share.items.map((line) => line.stockItemId?.name || "Item")))];
+              return <Row key={order._id} name={`Order started by ${startedBy(order)}`} hint={`${names.join(", ")} · ${closesInText(order.closesAt, new Date())}`}
+                tone={order.emergency ? "expired" : "low"} status={order.emergency ? "Urgent" : "Open"} onClick={onRequestSupplies}
+                {...(onJoinOrder ? { onAdd: () => onJoinOrder(order._id), addLabel: "Add items", addAria: `Add your items to the order started by ${startedBy(order)}` } : {})} />;
+            })}
+            {inProgressOrders.length === 0 && joinableOrders.length === 0 && <Row name="No open orders" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
             {inProgressOrders.slice(0, 3).map((order) => (
               <button type="button" key={order._id} className="kg-row kh-order" onClick={onRequestSupplies}>
                 <span className="kh-order__head">

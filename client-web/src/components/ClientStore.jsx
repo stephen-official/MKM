@@ -91,6 +91,8 @@ const ClientStore = () => {
   const [cart, setCart] = useState([]);
   // Supply-order draft ({ [productId]: { qty, packId, needsQty? } }): Home's "Add" puts items here; Requests' new order edits it.
   const [orderDraft, setOrderDraft] = useState(loadOrderDraft);
+  // An order another kitchen started that the cook chose "Add items" on from Home; Orders opens its picker and clears this.
+  const [joinOrderId, setJoinOrderId] = useState(null);
   useEffect(() => { saveOrderDraft(orderDraft); }, [orderDraft]);
   const [orders, setOrders] = useState([]); 
   // Day-by-day usage account from GET /usage-days (today, missed, days); null while loading or when usage is off.
@@ -749,6 +751,8 @@ setEditIndentId(indent._id);
   };
   // "Enter quantity" on Home: open the new order under Requests (only if leaving the usage draft was allowed).
   const goToOrderDraft = () => openOrders("new-order");
+  // "Add items" on a Home row: go to Orders and open that order's picker there (only if leaving the usage draft was allowed).
+  const goToJoinOrder = async (orderId) => { if (await openOrders()) setJoinOrderId(orderId); };
 
   // The bottom tab that stands for the current view: Record under Stock; new orders, new transfers and the older request screens under Orders; the records under History.
   const bottomTab =
@@ -831,6 +835,7 @@ setEditIndentId(indent._id);
           orderDraft={orderDraft}
           onAddToOrder={addToOrderDraft}
           onOpenOrderDraft={goToOrderDraft}
+          onJoinOrder={goToJoinOrder}
         />
       ) : activeTab === "stock" ? (
         <>
@@ -879,6 +884,8 @@ setEditIndentId(indent._id);
             canTransfer={!hidden.has("transfers")}
             onNewOrder={() => setActiveTab("new-order")}
             onLeaveNewOrder={() => setActiveTab("requests")}
+            joinOrderId={joinOrderId}
+            onJoinOrderOpened={() => setJoinOrderId(null)}
           />
         </>
       ) : activeTab === "past-requests" ? (
