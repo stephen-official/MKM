@@ -312,8 +312,8 @@ export default function KitchenHome({
               // Same shape as the in-progress rows below (full-width title, pill at the right), so a long kitchen name has room in the narrow desktop column.
               return <button type="button" key={order._id} className="kg-row kh-order" onClick={onRequestSupplies}>
                 <span className="kh-order__head">
-                  <span className="kh-row__text"><strong>New order by {startedBy(order)}</strong><small>{names.join(", ")} · {closesInText(order.closesAt, new Date())}</small></span>
-                  <span className={`kg-pill kg-pill--${order.emergency ? "expired" : "low"}`}>{order.emergency ? "Urgent" : "Open"}</span>
+                  <span className="kh-row__text"><strong>New order by {startedBy(order)}</strong><small>{order.emergency ? "Urgent · " : ""}{names.join(", ")} · {closesInText(order.closesAt, new Date())}</small></span>
+                  <span className="kh-order__open">Open<ArrowUpRight size={15} strokeWidth={2} aria-hidden="true" /></span>
                 </span>
               </button>;
             })}
