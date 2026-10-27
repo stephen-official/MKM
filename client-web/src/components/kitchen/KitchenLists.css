@@ -28,8 +28,8 @@
 
 /* "New stock transfer": a full-width glass row that opens the picker */
 .kl-create { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 16px; text-align: left; color: var(--ink-2); }
-.kl-create .kg-orb { color: var(--blue-deep); }
-.kl-create > span { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.kl-create .kg-orb { flex: none; color: var(--blue-deep); }
+.kl-create > span:not(.kg-orb) { flex: 1; min-width: 0; display: grid; gap: 2px; } /* the orb is a span too; only the text block may grow */
 .kl-create strong { font-size: 14.5px; font-weight: 500; }
 .kl-create small { color: var(--muted-2); font-size: 12.5px; font-weight: 300; }
 .kl-create > svg:last-child { flex: none; color: var(--blue-deep); }
