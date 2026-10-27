@@ -193,7 +193,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
   return <main className="ko-shell ko-picker">
     {confirmDialog}
     {mode.type !== "new" && <button type="button" className="kg-chip ko-back" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Back</button>}
-    <header className="ko-heading"><div><p>Ask for supplies</p><h1>{title}</h1>
+    <header className="ko-heading"><div><h1>{title}</h1>
       <span>{mode.type === "new" ? "Choose what your kitchen needs and when." : `Delivery by ${deliveryDateText(mode.order.neededBy, { withTime: mode.order.emergency })}.`}</span></div></header>
 
     <div className="ko-picker__layout">
@@ -429,10 +429,6 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
   }
 
   return <main className="ko-shell">
-    <header className="ko-heading">
-      <div><p>Kitchen supplies</p><h1>Ask for supplies</h1><span>Order from the central store, or add your items to another kitchen’s order.</span></div>
-    </header>
-
     {waiting.items > 0 && <button type="button" className="kg-glass kg-lift ko-create ko-create--waiting" onClick={onNewOrder} disabled={!settings}>
       <span className="kg-orb" aria-hidden="true"><AlertCircle size={20} /></span>
       <span><strong>Continue your order</strong>

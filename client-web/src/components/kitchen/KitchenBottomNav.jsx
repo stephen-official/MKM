@@ -11,7 +11,7 @@ const NO_HIDDEN_TABS = new Set();
 const TABS = [
   { id: "home", label: "Home", Icon: Home },
   { id: "stock", label: "Stock", Icon: Package },
-  { id: "requests", label: "Requests", Icon: ClipboardList },
+  { id: "requests", label: "Orders", Icon: ClipboardList },
 ];
 
 /**
@@ -20,7 +20,7 @@ const TABS = [
  * @param {object} props
  * @param {"home"|"stock"|"requests"} props.activeTab
  * @param {(tab: string) => void} props.onTabChange
- * @param {boolean} [props.requestAlert=false] An unsent supply order is waiting (items added from Home): the Requests tab shows a "!" badge.
+ * @param {boolean} [props.requestAlert=false] An unsent supply order is waiting (items added from Home): the Orders tab shows a "!" badge.
  * @param {Set<string>} [props.hiddenTabs] Tab ids to hide (features disabled for this kitchen).
  * @param {boolean} [props.disabled=false]
  * @param {string} [props.className=""]

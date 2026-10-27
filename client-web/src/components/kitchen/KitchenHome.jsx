@@ -198,7 +198,7 @@ export default function KitchenHome({
   const canAddToOrder = canUseRequests && Boolean(onAddToOrder);
   const addToOrder = async (item) => {
     if (!onAddToOrder(item)) return;
-    const go = await confirm({ title: "Added to your order ticket", message: `${item.name || "This item"} is on the ticket. Enter the quantity on the Requests page, then place the order.`, confirmLabel: "Enter quantity", cancelLabel: "Not now" });
+    const go = await confirm({ title: "Added to your order ticket", message: `${item.name || "This item"} is on the ticket. Enter the quantity on the Orders page, then place the order.`, confirmLabel: "Enter quantity", cancelLabel: "Not now" });
     if (go) onOpenOrderDraft?.();
   };
   const addProps = (item) => (canAddToOrder ? { onAdd: () => addToOrder(item), added: Boolean(orderDraft[String(item._id)]) } : {});
@@ -301,7 +301,7 @@ export default function KitchenHome({
         </div>
 
         {canUseRequests && <div className="kh-col kh-col--side">
-          <Section id="incoming" title="Requests" groupTitle="Open requests" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0} wide={wide} onOpen={onRequestSupplies}
+          <Section id="incoming" title="Orders" groupTitle="Open orders" tint={toReceive > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0} wide={wide} onOpen={onRequestSupplies}
             summary={toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} arriving</span> : <span className="kh-count">{inProgressOrders.length}</span>}
             open={isOpen("incoming")} onToggle={() => toggle("incoming")}>
             {inProgressOrders.length === 0 && <Row name="No open requests" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}

@@ -848,7 +848,7 @@ setEditIndentId(indent._id);
         </>
       ) : activeTab === "requests" || activeTab === "new-order" ? (
         <>
-          <KitchenSectionNav label="Request sections" value={activeTab} items={requestSections} onChange={(view) => setActiveTab(view)} />
+          <KitchenSectionNav label="Order sections" value={activeTab} items={requestSections} onChange={(view) => setActiveTab(view)} />
           <KitchenOrders
             products={usableItems}
             onOrdersLoaded={setSharedOrders}
@@ -880,7 +880,7 @@ setEditIndentId(indent._id);
         </>
       ) : activeTab === "transfers" ? (
         <>
-          <KitchenSectionNav label="Request sections" value="transfers" items={requestSections} onChange={(view) => setActiveTab(view)} />
+          <KitchenSectionNav label="Order sections" value="transfers" items={requestSections} onChange={(view) => setActiveTab(view)} />
           <KitchenTransfers
             onCreate={() => {
               setActiveTransactionType("transfer");
