@@ -85,6 +85,9 @@
 
 /* Delivery and order rows */
 .kh-order { width: 100%; padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
+/* Another kitchen's open order: the same tints as its card on Orders → Ongoing (cool to join, rose when urgent). */
+.kh-order--shared { background: var(--tint-cool); }
+.kh-order--urgent { background: var(--tint-rose); }
 .kh-order__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .kh-order__open { flex: none; display: inline-flex; align-items: center; gap: 2px; padding-top: 2px; color: var(--blue-deep); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 .kh-steps { display: grid; gap: 7px; }
