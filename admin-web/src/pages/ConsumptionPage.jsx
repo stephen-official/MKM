@@ -12,9 +12,11 @@ import {
   RailList,
   SplitView,
   Badge,
-  DateField } from "../components/ui/index.jsx";
+  DateField,
+  Tabs } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
 import { ConsumptionDetail } from "./consumption/ConsumptionDetail.jsx";
+import { CorrectionsPanel } from "./consumption/CorrectionsPanel.jsx";
 import { exportAllRecords, exportRecord } from "./consumption/exportExcel.js";
 import { deleteUsageMessage } from "./usageRecord.js";
 import {
@@ -48,6 +50,15 @@ export const ConsumptionPage = () => {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [limit, setLimit] = useState(PAGE_SIZE);
+  // "records" (the usage log) or "corrections" (kitchens asking to reopen a day they marked "no usage" by mistake).
+  const [view, setView] = useState("records");
+  const [openCorrections, setOpenCorrections] = useState(0);
+  // The tab label counts open corrections from the first paint; the panel keeps it current once opened.
+  useEffect(() => {
+    api.get("/usage-corrections", { params: { status: "pending" } })
+      .then((res) => setOpenCorrections((res.data || []).length))
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async (isCancelled = () => false) => {
     setLoading(true);
@@ -246,12 +257,17 @@ export const ConsumptionPage = () => {
       <PageHeader
         title="Usage Records"
         subtitle="Review, correct and export kitchen usage."
-        actions={
+        actions={view === "records" && (
           <Button variant="success" onClick={exportAll} disabled={loading || Boolean(loadError)}>
             <FileSpreadsheet size={16} /> Export all
           </Button>
-        }
+        )}
       >
+        <Tabs label="Usage sections" value={view} onChange={setView} items={[
+          { value: "records", label: "Usage records" },
+          { value: "corrections", label: openCorrections ? `Corrections (${openCorrections} new)` : "Corrections" }
+        ]} />
+        {view === "records" && <>
         <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
           <Search size={16} aria-hidden="true" style={{ position: "absolute", left: 12, color: "var(--muted)" }} />
           <input
@@ -290,8 +306,10 @@ export const ConsumptionPage = () => {
             Clear
           </Button>
         )}
+        </>}
       </PageHeader>
 
+      {view === "corrections" ? <CorrectionsPanel onCount={setOpenCorrections} /> : (
       <SplitView
         rail={
           <RailList
@@ -329,6 +347,7 @@ export const ConsumptionPage = () => {
       >
         {detail}
       </SplitView>
+      )}
       {dialog}
     </div>
   );
