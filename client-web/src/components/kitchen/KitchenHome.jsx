@@ -309,8 +309,13 @@ export default function KitchenHome({
             open={isOpen("incoming")} onToggle={() => toggle("incoming")}>
             {joinableOrders.slice(0, 3).map((order) => {
               const names = [...new Set(order.contributions.flatMap((share) => share.items.map((line) => line.stockItemId?.name || "Item")))];
-              return <Row key={order._id} name={`New order by ${startedBy(order)}`} hint={`${names.join(", ")} · ${closesInText(order.closesAt, new Date())}`}
-                tone={order.emergency ? "expired" : "low"} status={order.emergency ? "Urgent" : "Open"} onClick={onRequestSupplies} />;
+              // Same shape as the in-progress rows below (full-width title, pill at the right), so a long kitchen name has room in the narrow desktop column.
+              return <button type="button" key={order._id} className="kg-row kh-order" onClick={onRequestSupplies}>
+                <span className="kh-order__head">
+                  <span className="kh-row__text"><strong>New order by {startedBy(order)}</strong><small>{names.join(", ")} · {closesInText(order.closesAt, new Date())}</small></span>
+                  <span className={`kg-pill kg-pill--${order.emergency ? "expired" : "low"}`}>{order.emergency ? "Urgent" : "Open"}</span>
+                </span>
+              </button>;
             })}
             {inProgressOrders.length === 0 && joinableOrders.length === 0 && <Row name="No open orders" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
             {inProgressOrders.slice(0, 3).map((order) => (
