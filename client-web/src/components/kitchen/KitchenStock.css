@@ -79,7 +79,7 @@
 .ks-search button:focus-visible, .ks-filter:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 @keyframes ks-spin { to { transform: rotate(360deg); } }
 
-@media (max-width: 430px) { .ks-refresh span { display: none; } .ks-refresh { width: 40px; padding: 0; justify-content: center; } .ks-facts > div { grid-template-columns: 84px minmax(0, 1fr); } }
+@media (max-width: 430px) { .ks-facts > div { grid-template-columns: 84px minmax(0, 1fr); } }
 @media (min-width: 700px) { .ks-shell { padding-inline: 24px; } .ks-controls { grid-template-columns: minmax(260px, 1fr) auto; align-items: center; } .ks-filters { min-width: 300px; } .ks-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (prefers-reduced-motion: reduce) { .ks-spin { animation: none; } .ks-filter { transition: none; } }
 @media (min-width: 1024px) { .ks-shell { padding: 34px 28px 56px; gap: 22px; } .ks-controls { position: sticky; top: 16px; z-index: 10; } .ks-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; } .ks-card__media { height: 158px; } /* body ≈ 210px → card ≈ 1.75× the text */ .ks-card__body { padding: 16px 18px 18px; } }
