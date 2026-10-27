@@ -50,7 +50,7 @@ const limitTo3Decimals = (value) => {
 
   return Number(num.toFixed(3));
 };
-const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "new-order", "past-requests", "activity", "transfers"]);
+const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "new-order", "new-transfer", "past-requests", "activity", "orders-history", "transfers"]);
 const legacyUiEnabled = import.meta.env.VITE_ENABLE_LEGACY_KITCHEN_UI === "true";
 const DISCARD_DRAFT = Object.freeze({
   title: "Discard your unfinished entry?",
@@ -124,15 +124,21 @@ const [godowns, setGodowns] = useState([]);
   // The Stock tab's section tabs: Record (usage) lands first, then the stock list and the usage history.
   const stockSections = [
     ...(!hidden.has("usage") ? [{ value: "usage", label: "Record" }] : []),
-    { value: "stock", label: "Stock levels" },
-    ...(!hidden.has("activity") ? [{ value: "activity", label: "History" }] : [])
+    { value: "stock", label: "Stock levels" }
   ];
-  // The Requests tab's section tabs: the ongoing shared orders land first, then a new order, then transfers between kitchens.
+  // The Orders tab's section tabs: the ongoing orders land first, then a new order, then a new transfer to another kitchen.
   const requestSections = [
     { value: "requests", label: "Ongoing" },
     { value: "new-order", label: "New order" },
-    ...(!hidden.has("transfers") ? [{ value: "transfers", label: "Transfer" }] : [])
+    ...(!hidden.has("new-transfer") ? [{ value: "new-transfer", label: "Transfer" }] : [])
   ];
+  // The History tab's section tabs: usage records, finished orders, transfers sent and received. The tab itself hides when all three are off.
+  const historySections = [
+    ...(!hidden.has("activity") ? [{ value: "activity", label: "Usage" }] : []),
+    ...(!hidden.has("orders-history") ? [{ value: "orders-history", label: "Orders" }] : []),
+    ...(!hidden.has("transfers") ? [{ value: "transfers", label: "Transfers" }] : [])
+  ];
+  const navHidden = historySections.length === 0 ? new Set([...hidden, "history"]) : hidden;
 
   const navigate = useNavigate();
   const [confirm, confirmDialog] = useConfirm();
@@ -525,7 +531,7 @@ if (isNaN(parsedQty)) return;
   setCart([]);
   setIsCartOpen(false);
   setActiveTransactionType("usage");
-  setActiveTab("more");
+  setActiveTab("transfers"); // Transfer history shows what was just sent, marked pending
 
   await fetchItems(false);
 
@@ -744,11 +750,21 @@ setEditIndentId(indent._id);
   // "Enter quantity" on Home: open the new order under Requests (only if leaving the usage draft was allowed).
   const goToOrderDraft = () => openOrders("new-order");
 
-  // The bottom tab that stands for the current view: Record and History sit under Stock; new orders, transfers and the older request screens under Requests.
+  // The bottom tab that stands for the current view: Record under Stock; new orders, new transfers and the older request screens under Orders; the records under History.
   const bottomTab =
-    ["usage", "activity"].includes(activeTab) ? "stock"
-    : ["new-order", "transfers", "request-builder", "receive-delivery", "past-requests"].includes(activeTab) ? "requests"
+    activeTab === "usage" ? "stock"
+    : ["new-order", "new-transfer", "request-builder", "receive-delivery", "past-requests"].includes(activeTab) ? "requests"
+    : ["activity", "orders-history", "transfers"].includes(activeTab) ? "history"
     : activeTab;
+
+  // The Transfer tab under Orders is the stock-transfer builder: entering it from another kind of draft starts a fresh transfer.
+  useEffect(() => {
+    if (activeTab !== "new-transfer" || activeTransactionType === "transfer") return;
+    setActiveTransactionType("transfer");
+    setCart([]);
+    setTransferDestination("");
+    fetchItems(false);
+  }, [activeTab, activeTransactionType]);
 
   const handleTabChange = (tab) => {
     if (tab === bottomTab) return;
@@ -758,6 +774,8 @@ setEditIndentId(indent._id);
       if (!target) return;
       // Stock lands on Record, or on the stock list when recording usage is switched off for this kitchen.
       if (target.view === "stock") return hidden.has("usage") ? openStock(true) : openUsage(true);
+      // History lands on usage records, or on the first of its sections that is switched on.
+      if (tab === "history") return setActiveTab(historySections[0]?.value || target.view);
       if (target.supplyTab) setSupplyInitialTab(target.supplyTab);
       setActiveTab(target.view);
     });
@@ -846,16 +864,19 @@ setEditIndentId(indent._id);
             onNoUsage={markNoUsage}
           />
         </>
-      ) : activeTab === "requests" || activeTab === "new-order" ? (
+      ) : ["requests", "new-order", "orders-history"].includes(activeTab) ? (
         <>
-          <KitchenSectionNav label="Order sections" value={activeTab} items={requestSections} onChange={(view) => setActiveTab(view)} />
+          {activeTab === "orders-history"
+            ? <KitchenSectionNav label="History sections" value="orders-history" items={historySections} onChange={(view) => setActiveTab(view)} />
+            : <KitchenSectionNav label="Order sections" value={activeTab} items={requestSections} onChange={(view) => setActiveTab(view)} />}
           <KitchenOrders
             products={usableItems}
             onOrdersLoaded={setSharedOrders}
             godownId={userInfo?.godown?._id}
             draft={orderDraft}
             onDraftChange={setOrderDraft}
-            newOrder={activeTab === "new-order"}
+            section={activeTab === "new-order" ? "new" : activeTab === "orders-history" ? "history" : "ongoing"}
+            canTransfer={!hidden.has("transfers")}
             onNewOrder={() => setActiveTab("new-order")}
             onLeaveNewOrder={() => setActiveTab("requests")}
             canShowPast={!hidden.has("past-requests")}
@@ -875,20 +896,32 @@ setEditIndentId(indent._id);
         />
       ) : activeTab === "activity" ? (
         <>
-          <KitchenSectionNav label="Stock sections" value="activity" items={stockSections} onChange={(view) => setActiveTab(view)} />
+          <KitchenSectionNav label="History sections" value="activity" items={historySections} onChange={(view) => setActiveTab(view)} />
           <KitchenActivity entries={usageHistory} />
         </>
       ) : activeTab === "transfers" ? (
         <>
-          <KitchenSectionNav label="Order sections" value="transfers" items={requestSections} onChange={(view) => setActiveTab(view)} />
-          <KitchenTransfers
-            onCreate={() => {
-              setActiveTransactionType("transfer");
-              setActiveTab("request-builder");
-              setCart([]);
-              setTransferDestination("");
-              fetchItems(false);
-            }}
+          <KitchenSectionNav label="History sections" value="transfers" items={historySections} onChange={(view) => setActiveTab(view)} />
+          <KitchenTransfers />
+        </>
+      ) : activeTab === "new-transfer" ? (
+        <>
+          <KitchenSectionNav label="Order sections" value="new-transfer" items={requestSections} onChange={(view) => setActiveTab(view)} />
+          <KitchenItemBuilder
+            type="transfer"
+            items={filteredItems}
+            cart={cart}
+            loading={loading}
+            search={searchQuery}
+            onSearch={setSearchQuery}
+            onQuantityChange={addToCart}
+            onPackagingChange={updateCartPackaging}
+            destination={transferDestination}
+            destinations={godowns}
+            currentGodownId={userInfo?.godown?._id}
+            onDestinationChange={setTransferDestination}
+            onClear={() => setCart([])}
+            onSubmit={handleSubmit}
           />
         </>
       ) : activeTab === "receive-delivery" ? (
@@ -1549,7 +1582,7 @@ activeTransactionType === "request"
         activeTab={bottomTab}
         onTabChange={handleTabChange}
         requestAlert={draftCounts(orderDraft).items > 0}
-        hiddenTabs={hidden}
+        hiddenTabs={navHidden}
       />
     </div>
   );

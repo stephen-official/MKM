@@ -5,7 +5,8 @@ import { canOpenView, draftFeature, featureForView, hiddenTabs, isDraftBlocked, 
 describe("kitchen features", () => {
   it("hides tabs whose feature is off; unknown flags mean on", () => {
     assert.deepEqual([...hiddenTabs({ consumption: false, indent: true })].sort(), ["activity", "usage"]);
-    assert.deepEqual([...hiddenTabs({ "purchase-orders": false })].sort(), ["new-order", "requests"]);
+    assert.deepEqual([...hiddenTabs({ "purchase-orders": false })].sort(), ["new-order", "orders-history", "requests"]);
+    assert.deepEqual([...hiddenTabs({ "transfer-stock": false })].sort(), ["new-transfer", "transfers"]);
     assert.equal(hiddenTabs(null).size, 0);
     assert.equal(isFeatureOn(undefined, "indent"), true);
   });
@@ -76,6 +77,7 @@ describe("bottom tab targets", () => {
   it("maps the other tabs to their own view and ignores unknown tabs", () => {
     for (const tab of ["home", "stock"]) assert.deepEqual(tabTarget(tab), { view: tab });
     assert.equal(tabTarget("usage"), null); // Record lives under the Stock tab now
+    assert.deepEqual(tabTarget("history"), { view: "activity" });
     assert.equal(tabTarget("more"), null);
     assert.equal(tabTarget("nope"), null);
   });

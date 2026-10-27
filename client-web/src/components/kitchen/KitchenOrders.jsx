@@ -7,6 +7,8 @@ import { formatStockQuantity, getStockHealth, productPacks } from "../../feature
 import { canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myOrders, myShare, needsQuantity, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
 import { arrivingLines } from "../../features/kitchen/receiving";
 import KitchenReceiveItems from "./KitchenReceiveItems";
+import { TransferCard } from "./KitchenTransfers";
+import { fetchWaitingTransfers, respondToTransfer } from "./transfersApi";
 import OrderTicket from "./OrderTicket";
 import { useWide } from "./useWide";
 import { useConfirm } from "../ui/ConfirmDialog";
@@ -342,9 +344,10 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
 
 /**
  * draft / onDraftChange: the new-order cart, held by the parent so items added from Home stay put while the cook is elsewhere.
- * newOrder: the "New order" section tab is active, so the new-order picker is shown; onNewOrder / onLeaveNewOrder switch that tab on and off.
+ * section: "ongoing" (orders in progress, plus transfers waiting for Accept / Reject when canTransfer), "new" (the new-order picker) or "history" (delivered and cancelled orders).
+ * onNewOrder / onLeaveNewOrder switch the "New order" section tab on and off.
  */
-export default function KitchenOrders({ products = [], godownId, onShowPast, canShowPast = true, onOrdersLoaded, draft = {}, onDraftChange, newOrder = false, onNewOrder, onLeaveNewOrder }) {
+export default function KitchenOrders({ products = [], godownId, onShowPast, canShowPast = true, onOrdersLoaded, draft = {}, onDraftChange, section = "ongoing", canTransfer = false, onNewOrder, onLeaveNewOrder }) {
   const [orders, setOrders] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -377,15 +380,29 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
 
   useEffect(() => { load(); }, [load]);
   useKitchenChanges(["orders"], load);
+  // Transfers other kitchens sent here that still need an answer; they sit with the ongoing orders because they need action.
+  const [waitingTransfers, setWaitingTransfers] = useState([]);
+  const loadWaiting = useCallback(async () => {
+    if (!canTransfer) return;
+    try { setWaitingTransfers(await fetchWaitingTransfers()); } catch { /* the orders list still works without them */ }
+  }, [canTransfer]);
+  useEffect(() => { loadWaiting(); }, [loadWaiting]);
+  useKitchenChanges(["transfers"], loadWaiting);
+  const respondWaiting = async (transfer, action) => { if (await respondToTransfer(transfer, action)) loadWaiting(); };
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
-  // The "New order" tab opens the picker once the ordering settings are in; leaving the tab closes it (the draft stays put).
+  // The "New order" tab opens the picker once the ordering settings are in; leaving it closes the picker (the draft stays put). History never shows one.
   useEffect(() => {
-    if (newOrder && settings && mode?.type !== "new") start("new");
-    if (!newOrder && mode?.type === "new") setMode(null);
-  }, [newOrder, settings, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (section === "new" && settings && mode?.type !== "new") start("new");
+    if (section !== "new" && mode?.type === "new") setMode(null);
+    if (section === "history" && mode) setMode(null);
+  }, [section, settings, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const joinable = useMemo(() => otherOpenOrders(orders, godownId, now), [orders, godownId, now]);
   const mine = useMemo(() => myOrders(orders, godownId), [orders, godownId]);
+  // Ongoing = still on its way; delivered and cancelled orders move to Orders history.
+  const finished = (order) => ["delivered", "cancelled"].includes(kitchenStage(order, godownId));
+  const ongoing = mine.filter((order) => !finished(order));
+  const done = mine.filter(finished);
   const waiting = draftCounts(draft);
 
   const start = (type, order) => {
@@ -418,6 +435,24 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
 
   const receive = (order, notSent) => setMode({ type: "receive", order, godownId, notSent });
 
+  const loadingState = <div className="ko-state" role="status"><span className="ko-spinner" aria-hidden="true" /><p>Loading orders…</p></div>;
+  const failedState = <div className="kg-glass ko-empty"><h2>Could not load orders</h2><p>Check your connection and try again.</p><button type="button" className="kg-btn" onClick={load}>Try again</button></div>;
+  const orderCard = (order) => <MyOrderCard key={order._id} order={order} godownId={godownId} now={now} onEdit={(picked) => start("edit", picked)} onReceive={receive} />;
+
+  // Orders history (under the History tab): delivered and cancelled orders, plus the older request screens.
+  if (section === "history") {
+    return <main className="ko-shell">
+      {loading && orders.length === 0 ? loadingState : failed ? failedState
+        : <section className="ko-section" aria-labelledby="ko-done-title">
+          <h2 id="ko-done-title">Finished orders</h2>
+          {done.length === 0
+            ? <div className="kg-glass ko-empty"><span className="kg-orb" aria-hidden="true"><Truck size={24} /></span><h2>Nothing finished yet</h2><p>Delivered and cancelled orders will be listed here.</p></div>
+            : <div className="ko-list">{done.map(orderCard)}</div>}
+        </section>}
+      {canShowPast && <button type="button" className="kg-chip ko-past" onClick={onShowPast}><History size={17} aria-hidden="true" /> Past requests</button>}
+    </main>;
+  }
+
   if (mode?.type === "receive") {
     return <KitchenReceiveItems order={mode.order} lines={arrivingLines(mode.order, godownId)} notSentCount={mode.notSent}
       onBack={() => setMode(null)} onDone={() => { setMode(null); load(); }} />;
@@ -436,8 +471,12 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
       <ChevronRight size={20} aria-hidden="true" />
     </button>}
 
-    {loading && orders.length === 0 ? <div className="ko-state" role="status"><span className="ko-spinner" aria-hidden="true" /><p>Loading orders…</p></div>
-      : failed ? <div className="kg-glass ko-empty"><h2>Could not load orders</h2><p>Check your connection and try again.</p><button type="button" className="kg-btn" onClick={load}>Try again</button></div>
+    {waitingTransfers.length > 0 && <section className="ko-section" aria-labelledby="ko-waiting-title">
+      <h2 id="ko-waiting-title">Transfers waiting for you</h2>
+      <div className="ko-list">{waitingTransfers.map((transfer) => <TransferCard key={transfer._id} transfer={transfer} onRespond={respondWaiting} />)}</div>
+    </section>}
+
+    {loading && orders.length === 0 ? loadingState : failed ? failedState
       : <>
         {joinable.length > 0 && <section className="ko-section" aria-labelledby="ko-join-title">
           <h2 id="ko-join-title">Open orders — add your items</h2>
@@ -445,12 +484,10 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
         </section>}
         <section className="ko-section" aria-labelledby="ko-mine-title">
           <h2 id="ko-mine-title">My orders</h2>
-          {mine.length === 0
-            ? <div className="kg-glass ko-empty"><span className="kg-orb" aria-hidden="true"><Truck size={24} /></span><h2>No orders yet</h2><p>Tap “New order” when your kitchen needs supplies.</p></div>
-            : <div className="ko-list">{mine.map((order) => <MyOrderCard key={order._id} order={order} godownId={godownId} now={now} onEdit={(picked) => start("edit", picked)} onReceive={receive} />)}</div>}
+          {ongoing.length === 0
+            ? <div className="kg-glass ko-empty"><span className="kg-orb" aria-hidden="true"><Truck size={24} /></span><h2>No orders in progress</h2><p>Tap “New order” when your kitchen needs supplies.</p></div>
+            : <div className="ko-list">{ongoing.map(orderCard)}</div>}
         </section>
       </>}
-
-    {canShowPast && <button type="button" className="kg-chip ko-past" onClick={onShowPast}><History size={17} aria-hidden="true" /> Past requests</button>}
   </main>;
 }

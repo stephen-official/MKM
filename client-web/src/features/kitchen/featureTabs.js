@@ -5,6 +5,8 @@ export const KITCHEN_TAB_FEATURES = Object.freeze({
   // "Ask for supplies" is the shared-order screen; the older single-kitchen requests live under "past-requests".
   requests: "purchase-orders",
   "new-order": "purchase-orders",
+  "orders-history": "purchase-orders",
+  "new-transfer": "transfer-stock",
   "past-requests": "indent",
   "receive-delivery": "indent",
   transfers: "transfer-stock"
@@ -48,7 +50,9 @@ export const sameFlags = (a, b) => {
 const BOTTOM_TAB_TARGETS = Object.freeze({
   home: Object.freeze({ view: "home" }),
   stock: Object.freeze({ view: "stock" }),
-  requests: Object.freeze({ view: "requests", supplyTab: "requests" })
+  requests: Object.freeze({ view: "requests", supplyTab: "requests" }),
+  // History lands on usage records; the store falls back to its first visible section when consumption is off.
+  history: Object.freeze({ view: "activity" })
 });
 
 /** The view (and requests sub-tab, if any) a bottom-nav tab opens, or null for an unknown tab. */

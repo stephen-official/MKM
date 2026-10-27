@@ -1,5 +1,6 @@
 import {
   ClipboardList,
+  History,
   Home,
   Package,
 } from "lucide-react";
@@ -12,13 +13,14 @@ const TABS = [
   { id: "home", label: "Home", Icon: Home },
   { id: "stock", label: "Stock", Icon: Package },
   { id: "requests", label: "Orders", Icon: ClipboardList },
+  { id: "history", label: "History", Icon: History },
 ];
 
 /**
  * Primary navigation for the kitchen mobile experience.
  *
  * @param {object} props
- * @param {"home"|"stock"|"requests"} props.activeTab
+ * @param {"home"|"stock"|"requests"|"history"} props.activeTab
  * @param {(tab: string) => void} props.onTabChange
  * @param {boolean} [props.requestAlert=false] An unsent supply order is waiting (items added from Home): the Orders tab shows a "!" badge.
  * @param {Set<string>} [props.hiddenTabs] Tab ids to hide (features disabled for this kitchen).

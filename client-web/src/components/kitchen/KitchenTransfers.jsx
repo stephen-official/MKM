@@ -1,16 +1,33 @@
-import { ArrowRight, Inbox, Plus, Send } from "lucide-react";
+import { ArrowRight, Inbox, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { useKitchenChanges } from "../../liveUpdates";
+import { isPendingTransfer, respondToTransfer } from "./transfersApi";
 import "./KitchenLists.css";
 
 const STATUS_TONE = { accepted: "low", rejected: "expired", pending: "soon" };
 const formatDateTime = (value) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
-const isPending = (transfer) => (transfer.status || "pending") === "pending";
+const isPending = isPendingTransfer;
 
-/** Transfers between kitchens: start one, and accept or reject the ones sent to this kitchen. */
-export default function KitchenTransfers({ onCreate }) {
+/** One transfer: when, from where to where, the items, and Accept / Reject while it waits for this kitchen. */
+export function TransferCard({ transfer, onRespond }) {
+  const status = transfer.status || "pending";
+  return <article className={`kg-glass kl-card${transfer.isIncoming && status === "pending" ? " kg-glass--cool" : ""}`}>
+    <header className="kl-card__head">
+      <div><p>{transfer.createdAt ? formatDateTime(transfer.createdAt) : "Transfer"}</p><h2>{transfer.fromGodownId?.name || "Kitchen"} <ArrowRight size={14} aria-hidden="true" /> {transfer.toGodownId?.name || "Kitchen"}</h2></div>
+      <span className={`kg-pill kg-pill--${STATUS_TONE[status] || "routine"}`}>{status}</span>
+    </header>
+    <ul>{(transfer.items || []).map((item, index) => <li key={item.stockItemId?._id || index}><span>{item.stockItemId?.name || "Unknown item"}</span><strong>{item.qtyBaseUnit} {item.stockItemId?.unitId?.symbol || item.unit || "units"}</strong></li>)}</ul>
+    {transfer.isIncoming && status === "pending" && onRespond && <footer className="kl-card__foot">
+      <button type="button" className="kg-btn" onClick={() => onRespond(transfer, "accept")}><Send size={16} aria-hidden="true" /> Accept transfer</button>
+      <button type="button" className="kg-chip kl-reject" onClick={() => onRespond(transfer, "reject")}>Reject</button>
+    </footer>}
+  </article>;
+}
+
+/** Transfer history (under the History tab): what other kitchens sent here and what this kitchen sent out. */
+export default function KitchenTransfers() {
   const [transfers, setTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   // quiet: a live update refreshes the list in place instead of showing "Loading transfers…" again.
@@ -25,43 +42,20 @@ export default function KitchenTransfers({ onCreate }) {
   }, []);
   useEffect(() => { void fetchTransfers(); }, [fetchTransfers]);
   useKitchenChanges(["transfers"], () => fetchTransfers(true));
-
-  const respond = async (transfer, action) => {
-    try { await api.post(`/user-transfers/${transfer._id}/${action}`); toast.success(`Transfer ${action === "accept" ? "accepted" : "rejected"}`); await fetchTransfers(); }
-    catch (error) { toast.error(error.response?.data?.error || `Could not ${action} transfer`); }
-  };
+  const respond = async (transfer, action) => { if (await respondToTransfer(transfer, action)) await fetchTransfers(); };
 
   // Two groups like the Ongoing orders list: what other kitchens sent here (ones still waiting for an answer first), then what this kitchen sent out.
   const groups = [
     ["Sent to you", transfers.filter((transfer) => transfer.isIncoming).sort((a, b) => Number(isPending(b)) - Number(isPending(a)))],
     ["Sent by you", transfers.filter((transfer) => !transfer.isIncoming)]
   ];
-  const card = (transfer) => {
-    const status = transfer.status || "pending";
-    return <article className={`kg-glass kl-card${transfer.isIncoming && status === "pending" ? " kg-glass--cool" : ""}`} key={transfer._id}>
-      <header className="kl-card__head">
-        <div><p>{transfer.createdAt ? formatDateTime(transfer.createdAt) : "Transfer"}</p><h2>{transfer.fromGodownId?.name || "Kitchen"} <ArrowRight size={14} aria-hidden="true" /> {transfer.toGodownId?.name || "Kitchen"}</h2></div>
-        <span className={`kg-pill kg-pill--${STATUS_TONE[status] || "routine"}`}>{status}</span>
-      </header>
-      <ul>{(transfer.items || []).map((item, index) => <li key={item.stockItemId?._id || index}><span>{item.stockItemId?.name || "Unknown item"}</span><strong>{item.qtyBaseUnit} {item.stockItemId?.unitId?.symbol || item.unit || "units"}</strong></li>)}</ul>
-      {transfer.isIncoming && status === "pending" && <footer className="kl-card__foot">
-        <button type="button" className="kg-btn" onClick={() => respond(transfer, "accept")}><Send size={16} aria-hidden="true" /> Accept transfer</button>
-        <button type="button" className="kg-chip kl-reject" onClick={() => respond(transfer, "reject")}>Reject</button>
-      </footer>}
-    </article>;
-  };
 
   return <main className="kl-shell">
-    <button type="button" className="kg-glass kg-lift kl-create" onClick={onCreate}>
-      <span className="kg-orb" aria-hidden="true"><Plus size={20} strokeWidth={1.8} /></span>
-      <span><strong>New stock transfer</strong><small>Choose a destination and the items to send</small></span>
-      <ArrowRight size={19} aria-hidden="true" />
-    </button>
     {loading ? <div className="kg-glass kl-state" role="status"><span className="kl-spinner" aria-hidden="true" /><p>Loading transfers…</p></div>
-      : transfers.length === 0 ? <div className="kg-glass kl-state"><Inbox size={28} strokeWidth={1.6} aria-hidden="true" /><h2>No transfers yet</h2><p>Incoming and outgoing transfers will appear here.</p></div>
+      : transfers.length === 0 ? <div className="kg-glass kl-state"><Inbox size={28} strokeWidth={1.6} aria-hidden="true" /><h2>No transfers yet</h2><p>Transfers sent to or by your kitchen will appear here.</p></div>
       : groups.map(([heading, list]) => list.length > 0 && <section className="kl-group" key={heading} aria-label={heading}>
         <h2>{heading}</h2>
-        <div className="kl-list">{list.map(card)}</div>
+        <div className="kl-list">{list.map((transfer) => <TransferCard key={transfer._id} transfer={transfer} onRespond={respond} />)}</div>
       </section>)}
   </main>;
 }

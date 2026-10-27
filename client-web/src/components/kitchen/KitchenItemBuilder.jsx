@@ -88,7 +88,7 @@ export default function KitchenItemBuilder({ type, items = [], cart = [], loadin
 
   return <main className="kb-shell">
     {confirmDialog}
-    <button type="button" className="kg-chip kb-back" onClick={onCancel}><ArrowLeft size={16} aria-hidden="true" /> {isTransfer ? "Back to transfers" : "Back to requests"}</button>
+    {onCancel && <button type="button" className="kg-chip kb-back" onClick={onCancel}><ArrowLeft size={16} aria-hidden="true" /> {isTransfer ? "Back to transfers" : "Back to requests"}</button>}
     <header className="kb-heading"><div><p>{isTransfer ? "Between kitchens" : "Kitchen supplies"}</p><h1>{title}</h1>
       <span>{isTransfer ? "Choose the kitchen and the items to send." : "Choose the supplies your kitchen needs."}</span></div></header>
 
