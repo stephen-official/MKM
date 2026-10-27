@@ -20,8 +20,7 @@ const TABS = [
  * @param {object} props
  * @param {"home"|"stock"|"requests"} props.activeTab
  * @param {(tab: string) => void} props.onTabChange
- * @param {number} [props.requestCount=0] Number of requests requiring attention.
- * @param {boolean} [props.requestAlert=false] An unsent supply order is waiting (items added from Home): the badge shows "!" instead.
+ * @param {boolean} [props.requestAlert=false] An unsent supply order is waiting (items added from Home): the Requests tab shows a "!" badge.
  * @param {Set<string>} [props.hiddenTabs] Tab ids to hide (features disabled for this kitchen).
  * @param {boolean} [props.disabled=false]
  * @param {string} [props.className=""]
@@ -29,15 +28,11 @@ const TABS = [
 export default function KitchenBottomNav({
   activeTab,
   onTabChange,
-  requestCount = 0,
   requestAlert = false,
   hiddenTabs = NO_HIDDEN_TABS,
   disabled = false,
   className = "",
 }) {
-  const safeRequestCount = Number.isFinite(Number(requestCount))
-    ? Math.max(0, Number(requestCount))
-    : 0;
   const visibleTabs = TABS.filter(({ id }) => !hiddenTabs.has(id));
   // The glass bubble under the current tab: one slot wide, slid across by whole slots (phone only; the sidebar styles the item itself).
   const activeIndex = visibleTabs.findIndex(({ id }) => id === activeTab);
@@ -54,7 +49,7 @@ export default function KitchenBottomNav({
         )}
         {visibleTabs.map(({ id, label, accessibleLabel, Icon }) => {
           const isActive = activeTab === id;
-          const showBadge = id === "requests" && (requestAlert || safeRequestCount > 0);
+          const showBadge = id === "requests" && requestAlert;
 
           return (
             <button
@@ -74,9 +69,7 @@ export default function KitchenBottomNav({
                   strokeWidth: isActive ? 1.8 : 1.6,
                 })}
                 {showBadge && (
-                  <span className={`kitchen-bottom-nav__badge${requestAlert ? " kitchen-bottom-nav__badge--alert" : ""}`}>
-                    {requestAlert ? "!" : safeRequestCount > 99 ? "99+" : safeRequestCount}
-                  </span>
+                  <span className="kitchen-bottom-nav__badge kitchen-bottom-nav__badge--alert">!</span>
                 )}
               </span>
               <span className="kitchen-bottom-nav__label">{label}</span>

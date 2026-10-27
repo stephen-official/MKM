@@ -50,7 +50,7 @@ const limitTo3Decimals = (value) => {
 
   return Number(num.toFixed(3));
 };
-const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "past-requests", "activity", "transfers"]);
+const KITCHEN_VIEWS = new Set(["home", "stock", "usage", "requests", "new-order", "past-requests", "activity", "transfers"]);
 const legacyUiEnabled = import.meta.env.VITE_ENABLE_LEGACY_KITCHEN_UI === "true";
 const DISCARD_DRAFT = Object.freeze({
   title: "Discard your unfinished entry?",
@@ -91,7 +91,6 @@ const ClientStore = () => {
   const [cart, setCart] = useState([]);
   // Supply-order draft ({ [productId]: { qty, packId, needsQty? } }): Home's "Add" puts items here; Requests' new order edits it.
   const [orderDraft, setOrderDraft] = useState(loadOrderDraft);
-  const [openOrderDraft, setOpenOrderDraft] = useState(false);
   useEffect(() => { saveOrderDraft(orderDraft); }, [orderDraft]);
   const [orders, setOrders] = useState([]); 
   // Day-by-day usage account from GET /usage-days (today, missed, days); null while loading or when usage is off.
@@ -127,6 +126,12 @@ const [godowns, setGodowns] = useState([]);
     ...(!hidden.has("usage") ? [{ value: "usage", label: "Record" }] : []),
     { value: "stock", label: "Stock levels" },
     ...(!hidden.has("activity") ? [{ value: "activity", label: "History" }] : [])
+  ];
+  // The Requests tab's section tabs: the ongoing shared orders land first, then a new order, then transfers between kitchens.
+  const requestSections = [
+    { value: "requests", label: "Ongoing" },
+    { value: "new-order", label: "New order" },
+    ...(!hidden.has("transfers") ? [{ value: "transfers", label: "Transfer" }] : [])
   ];
 
   const navigate = useNavigate();
@@ -720,12 +725,12 @@ setEditIndentId(indent._id);
     });
   };
 
-  // "Ask for supplies": shared orders, where every new request now starts.
-  const openOrders = () => {
+  // "Ask for supplies": shared orders, where every new request now starts. view: "requests" (ongoing orders) or "new-order".
+  const openOrders = (view = "requests") => {
     if (isBlocked("requests")) return false;
     return leaveDraft(() => {
       setCart([]);
-      setActiveTab("requests");
+      setActiveTab(view);
       return true;
     });
   };
@@ -736,16 +741,13 @@ setEditIndentId(indent._id);
     setOrderDraft((previous) => (previous[id] ? previous : { ...previous, [id]: { qty: "", packId: "", needsQty: true } }));
     return true;
   };
-  // "Enter quantity" on Home: go to Requests and open the new order there (only if leaving the usage draft was allowed).
-  const goToOrderDraft = async () => {
-    if (await openOrders()) setOpenOrderDraft(true);
-  };
+  // "Enter quantity" on Home: open the new order under Requests (only if leaving the usage draft was allowed).
+  const goToOrderDraft = () => openOrders("new-order");
 
-  // The bottom tab that stands for the current view (Record, History and Transfers all sit under Stock).
+  // The bottom tab that stands for the current view: Record and History sit under Stock; new orders, transfers and the older request screens under Requests.
   const bottomTab =
-    activeTab === "request-builder" ? (activeTransactionType === "transfer" ? "stock" : "requests")
-    : ["usage", "activity", "transfers"].includes(activeTab) ? "stock"
-    : ["receive-delivery", "past-requests"].includes(activeTab) ? "requests"
+    ["usage", "activity"].includes(activeTab) ? "stock"
+    : ["new-order", "transfers", "request-builder", "receive-delivery", "past-requests"].includes(activeTab) ? "requests"
     : activeTab;
 
   const handleTabChange = (tab) => {
@@ -781,12 +783,7 @@ setEditIndentId(indent._id);
 
   const usageItems = usableItems;
 
-  const oldDeliveriesWaiting = indents.filter((indent) =>
-    ["confirmed", "partially_received"].includes(indent.status)
-  ).length;
   const sharedToReceive = sharedOrders.filter((order) => hasArriving(order, userInfo?.godown?._id)).length;
-  const attentionCount =
-    requests.filter((request) => request.status === "pending").length + oldDeliveriesWaiting + sharedToReceive;
 
   // Deliveries now arrive through shared orders; only an old-style delivery on its own still opens Past requests.
 
@@ -849,18 +846,22 @@ setEditIndentId(indent._id);
             onNoUsage={markNoUsage}
           />
         </>
-      ) : activeTab === "requests" ? (
-        <KitchenOrders
-          products={usableItems}
-          onOrdersLoaded={setSharedOrders}
-          godownId={userInfo?.godown?._id}
-          draft={orderDraft}
-          onDraftChange={setOrderDraft}
-          openDraft={openOrderDraft}
-          onDraftOpened={() => setOpenOrderDraft(false)}
-          canShowPast={!hidden.has("past-requests")}
-          onShowPast={() => { setSupplyInitialTab("requests"); setActiveTab("past-requests"); }}
-        />
+      ) : activeTab === "requests" || activeTab === "new-order" ? (
+        <>
+          <KitchenSectionNav label="Request sections" value={activeTab} items={requestSections} onChange={(view) => setActiveTab(view)} />
+          <KitchenOrders
+            products={usableItems}
+            onOrdersLoaded={setSharedOrders}
+            godownId={userInfo?.godown?._id}
+            draft={orderDraft}
+            onDraftChange={setOrderDraft}
+            newOrder={activeTab === "new-order"}
+            onNewOrder={() => setActiveTab("new-order")}
+            onLeaveNewOrder={() => setActiveTab("requests")}
+            canShowPast={!hidden.has("past-requests")}
+            onShowPast={() => { setSupplyInitialTab("requests"); setActiveTab("past-requests"); }}
+          />
+        </>
       ) : activeTab === "past-requests" ? (
         <SupplyRequestsDeliveries
           key={supplyInitialTab}
@@ -879,12 +880,7 @@ setEditIndentId(indent._id);
         </>
       ) : activeTab === "transfers" ? (
         <>
-          <KitchenSectionNav
-            label="Stock sections"
-            value="transfers"
-            items={[{ value: "stock", label: "Stock levels" }, { value: "transfers", label: "Transfers" }]}
-            onChange={(view) => setActiveTab(view)}
-          />
+          <KitchenSectionNav label="Request sections" value="transfers" items={requestSections} onChange={(view) => setActiveTab(view)} />
           <KitchenTransfers
             onCreate={() => {
               setActiveTransactionType("transfer");
@@ -1552,7 +1548,6 @@ activeTransactionType === "request"
       <KitchenBottomNav
         activeTab={bottomTab}
         onTabChange={handleTabChange}
-        requestCount={attentionCount}
         requestAlert={draftCounts(orderDraft).items > 0}
         hiddenTabs={hidden}
       />

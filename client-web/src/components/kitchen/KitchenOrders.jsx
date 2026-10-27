@@ -338,9 +338,9 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
 
 /**
  * draft / onDraftChange: the new-order cart, held by the parent so items added from Home stay put while the cook is elsewhere.
- * openDraft: true asks this screen to open the new order as soon as it can (the cook chose "Enter quantity" on Home); onDraftOpened resets it.
+ * newOrder: the "New order" section tab is active, so the new-order picker is shown; onNewOrder / onLeaveNewOrder switch that tab on and off.
  */
-export default function KitchenOrders({ products = [], godownId, onShowPast, canShowPast = true, onOrdersLoaded, draft = {}, onDraftChange, openDraft = false, onDraftOpened }) {
+export default function KitchenOrders({ products = [], godownId, onShowPast, canShowPast = true, onOrdersLoaded, draft = {}, onDraftChange, newOrder = false, onNewOrder, onLeaveNewOrder }) {
   const [orders, setOrders] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -374,12 +374,11 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
   useEffect(() => { load(); }, [load]);
   useKitchenChanges(["orders"], load);
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
-  // "Enter quantity" on Home lands here: open the new order once the ordering settings are in.
+  // The "New order" tab opens the picker once the ordering settings are in; leaving the tab closes it (the draft stays put).
   useEffect(() => {
-    if (!openDraft || !settings || mode) return;
-    start("new");
-    onDraftOpened?.();
-  }, [openDraft, settings, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (newOrder && settings && mode?.type !== "new") start("new");
+    if (!newOrder && mode?.type === "new") setMode(null);
+  }, [newOrder, settings, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const joinable = useMemo(() => otherOpenOrders(orders, godownId, now), [orders, godownId, now]);
   const mine = useMemo(() => myOrders(orders, godownId), [orders, godownId]);
@@ -402,7 +401,7 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
       else if (mode.type === "join") await api.post(`${BASE}/${mode.order._id}/contributions`, { items });
       else await api.put(`${BASE}/${mode.order._id}/contributions/me`, { items });
       toast.success(mode.type === "edit" ? "Your items were updated" : "Request placed with the central store");
-      if (mode.type === "new") onDraftChange?.({});
+      if (mode.type === "new") { onDraftChange?.({}); onLeaveNewOrder?.(); }
       setMode(null);
       await load();
     } catch (error) {
@@ -422,7 +421,7 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
 
   if (mode) {
     return <ItemPicker mode={mode} products={products} cart={cart} setCart={setCart} settings={settings} neededIn={neededIn} setNeededIn={setNeededIn}
-      emergency={emergency} setEmergency={setEmergency} busy={busy} onBack={() => setMode(null)} onSubmit={submit} now={now} />;
+      emergency={emergency} setEmergency={setEmergency} busy={busy} onBack={() => { if (isNew) onLeaveNewOrder?.(); setMode(null); }} onSubmit={submit} now={now} />;
   }
 
   return <main className="ko-shell">
@@ -430,12 +429,12 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
       <div><p>Kitchen supplies</p><h1>Ask for supplies</h1><span>Order from the central store, or add your items to another kitchen’s order.</span></div>
     </header>
 
-    <button type="button" className={`kg-glass kg-lift ko-create${waiting.items ? " ko-create--waiting" : ""}`} onClick={() => start("new")} disabled={!settings}>
-      <span className="kg-orb" aria-hidden="true">{waiting.items ? <AlertCircle size={20} /> : <Plus size={20} />}</span>
-      <span><strong>{waiting.items ? "Continue your order" : "New order"}</strong>
-        <small>{waiting.missing ? `${waiting.missing} ${waiting.missing === 1 ? "item" : "items"} from Home ${waiting.missing === 1 ? "needs" : "need"} a quantity` : waiting.items ? `${waiting.items} ${waiting.items === 1 ? "item" : "items"} waiting to be sent` : "Choose items and when you need them"}</small></span>
+    {waiting.items > 0 && <button type="button" className="kg-glass kg-lift ko-create ko-create--waiting" onClick={onNewOrder} disabled={!settings}>
+      <span className="kg-orb" aria-hidden="true"><AlertCircle size={20} /></span>
+      <span><strong>Continue your order</strong>
+        <small>{waiting.missing ? `${waiting.missing} ${waiting.missing === 1 ? "item" : "items"} from Home ${waiting.missing === 1 ? "needs" : "need"} a quantity` : `${waiting.items} ${waiting.items === 1 ? "item" : "items"} waiting to be sent`}</small></span>
       <ChevronRight size={20} aria-hidden="true" />
-    </button>
+    </button>}
 
     {loading && orders.length === 0 ? <div className="ko-state" role="status"><span className="ko-spinner" aria-hidden="true" /><p>Loading orders…</p></div>
       : failed ? <div className="kg-glass ko-empty"><h2>Could not load orders</h2><p>Check your connection and try again.</p><button type="button" className="kg-btn" onClick={load}>Try again</button></div>

@@ -5,6 +5,7 @@ import { canOpenView, draftFeature, featureForView, hiddenTabs, isDraftBlocked, 
 describe("kitchen features", () => {
   it("hides tabs whose feature is off; unknown flags mean on", () => {
     assert.deepEqual([...hiddenTabs({ consumption: false, indent: true })].sort(), ["activity", "usage"]);
+    assert.deepEqual([...hiddenTabs({ "purchase-orders": false })].sort(), ["new-order", "requests"]);
     assert.equal(hiddenTabs(null).size, 0);
     assert.equal(isFeatureOn(undefined, "indent"), true);
   });
