@@ -267,23 +267,23 @@ export default function KitchenUsageScreen({
       <div className="kus-layout">
       {wide && ticketPanel}
       <div className="kus-main">
+      <label className="kus-search kg-float">
+        <span className="kus-visually-hidden">Search kitchen stock</span>
+        <Search size={19} aria-hidden="true" />
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search supplies"
+          autoComplete="off"
+        />
+        {search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search">Clear</button>}
+      </label>
       <section className="kg-glass kus-controls" aria-label="Usage details">
         <label className="kus-date">
           <span>Usage date</span>
           <DateField value={selectedDate} max={today} required label="Usage date"
             onChange={(value) => onDateChange?.(value)} disabled={submitting} />
-        </label>
-        <label className="kus-search">
-          <span className="kus-visually-hidden">Search kitchen stock</span>
-          <Search size={19} aria-hidden="true" />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search supplies"
-            autoComplete="off"
-          />
-          {search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search">Clear</button>}
         </label>
         <div className="kus-filters" role="group" aria-label="Show only">
           {FILTERS.map(({ key, label }) => (

@@ -209,7 +209,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
             <span><AlertTriangle size={16} aria-hidden="true" /> Emergency — needed within {settings?.emergencyHours === 1 ? "1 hour" : `${settings?.emergencyHours} hours`}</span></label>
         </section>}
 
-        <label className="ko-search"><Search size={19} aria-hidden="true" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search supplies" aria-label="Search supplies" />{search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search"><X size={17} /></button>}</label>
+        <label className="ko-search kg-float"><Search size={19} aria-hidden="true" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search supplies" aria-label="Search supplies" />{search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search"><X size={17} /></button>}</label>
 
         <section className="ko-products" aria-label="Supplies">
           {shown.length === 0 && <div className="kg-glass ko-empty"><h2>No supplies found</h2><p>Try another name.</p></div>}

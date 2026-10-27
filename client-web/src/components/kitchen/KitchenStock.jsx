@@ -84,24 +84,24 @@ export default function KitchenStock({
       </header>
       {requesting && <ProductRequestSheet onClose={() => setRequesting(false)} />}
 
-      <section className="kg-glass ks-controls" aria-label="Search and filter stock">
-        <label className="ks-search">
-          <span className="ks-sr-only">Search stock items</span>
-          <Search size={20} aria-hidden="true" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(event) => onSearchChange?.(event.target.value)}
-            placeholder="Search items"
-            autoComplete="off"
-          />
-          {searchQuery && (
-            <button type="button" onClick={() => onSearchChange?.("")} aria-label="Clear stock search">
-              <X size={18} aria-hidden="true" />
-            </button>
-          )}
-        </label>
+      <label className="ks-search kg-float">
+        <span className="ks-sr-only">Search stock items</span>
+        <Search size={20} aria-hidden="true" />
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(event) => onSearchChange?.(event.target.value)}
+          placeholder="Search items"
+          autoComplete="off"
+        />
+        {searchQuery && (
+          <button type="button" onClick={() => onSearchChange?.("")} aria-label="Clear stock search">
+            <X size={18} aria-hidden="true" />
+          </button>
+        )}
+      </label>
 
+      <section className="kg-glass ks-controls" aria-label="Filter stock">
         <div className="ks-filters" role="group" aria-label="Filter by stock status">
           {FILTERS.map(({ key, label }) => (
             <button

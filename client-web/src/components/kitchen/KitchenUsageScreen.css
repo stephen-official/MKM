@@ -18,7 +18,7 @@
 .kus-date .df > svg { color: var(--blue); }
 .kus-date .df__text { font-size: 13px; font-weight: 500; white-space: nowrap; }
 .kus-date .df--disabled { color: var(--muted-2); }
-.kus-search { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 0 12px; color: var(--muted-2); background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
+.kus-search { display: flex; align-items: center; gap: 9px; min-height: 44px; margin-bottom: 18px; padding: 0 12px; color: var(--muted-2); background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
 .kus-search:focus-within { box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
 .kus-search input { width: 100%; min-height: 42px; border: 0; outline: 0; color: var(--ink-2); background: transparent; font: inherit; font-size: 14px; }
 .kus-search input::placeholder { color: var(--muted-2); font-weight: 300; }
@@ -161,4 +161,4 @@
 @media (min-width: 900px) { .kus-layout { align-items: start; grid-template-columns: minmax(0, 1fr) 320px; gap: 22px; } .kus-layout .kt-ticket { order: 2; position: sticky; top: 16px; } }
 @media (prefers-reduced-motion: reduce) { .kus-spinner { animation: none; } .kus-bar { transition: none; } .kus-sheet__panel, .kus-stepper--open, .kus-stepper--done { animation: none; } }
 @media (max-width: 420px) { .kus-item__entry { align-items: flex-start; flex-direction: column; } .kus-stepper { width: 100%; } .kus-stepper input { flex: 1; } .kus-item__remaining { text-align: left; } }
-@media (min-width: 1024px) { .kus-screen { max-width: 1240px; padding: 34px 28px 56px; } .kus-controls { grid-template-columns: auto minmax(320px, 1fr); } .kus-filters { grid-column: 1 / -1; } .kus-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; } .kus-item__media { height: 158px; } .kus-item__body { padding: 16px 18px 18px; } }
+@media (min-width: 1024px) { .kus-screen { max-width: 1240px; padding: 34px 28px 56px; } .kus-controls { grid-template-columns: auto minmax(0, 1fr); align-items: center; } .kus-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; } .kus-item__media { height: 158px; } .kus-item__body { padding: 16px 18px 18px; } }

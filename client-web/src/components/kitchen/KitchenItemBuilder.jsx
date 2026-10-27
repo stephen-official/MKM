@@ -104,7 +104,7 @@ export default function KitchenItemBuilder({ type, items = [], cart = [], loadin
             </Select></label>
         </section>}
 
-        <label className="kb-search"><Search size={19} aria-hidden="true" /><span className="kb-visually-hidden">Search supplies</span>
+        <label className="kb-search kg-float"><Search size={19} aria-hidden="true" /><span className="kb-visually-hidden">Search supplies</span>
           <input type="search" value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search supplies" autoComplete="off" />
           {search && <button type="button" onClick={() => onSearch("")} aria-label="Clear search"><X size={17} /></button>}</label>
 
