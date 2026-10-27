@@ -182,15 +182,17 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
     return () => { document.body.style.overflow = previous; document.removeEventListener("keydown", onKey); };
   }, [sheetOpen]);
   const submitLabel = mode.type === "edit" ? "Save changes" : "Place request";
+  // Numbered steps so cooks know what to press next: a new order is when → add → review; join and edit skip "when".
+  const stepOf = (n) => (mode.type === "new" ? `Step ${n}/3` : `Step ${n - 1}/2`);
   const note = missing ? `${missing} ${missing === 1 ? "item needs" : "items need"} a quantity before you can send` : "";
   // Same ticket on both layouts: the sticky column beside the list from 900px, the sheet on a phone; the action lives inside it.
-  const ticket = <OrderTicket rows={rows} meta={[{ label: "Delivery", value: when }]} emptyText="Tap “Add” on a supply below and it will be listed here."
+  const ticket = <OrderTicket badge={stepOf(3)} rows={rows} meta={[{ label: "Delivery", value: when }]} emptyText="Tap “Add” on a supply below and it will be listed here."
     open={wide ? ticketOpen : true} onToggle={wide ? () => setTicketOpen((value) => !value) : undefined} onChange={setAmount} onClear={clearTicket}
     onSubmit={onSubmit} submitLabel={submitLabel} submittingLabel="Placing…" submitting={busy} submitDisabled={missing > 0} note={note} />;
 
   return <main className="ko-shell ko-picker">
     {confirmDialog}
-    <button type="button" className="kg-chip ko-back" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Back</button>
+    {mode.type !== "new" && <button type="button" className="kg-chip ko-back" onClick={onBack}><ArrowLeft size={16} aria-hidden="true" /> Back</button>}
     <header className="ko-heading"><div><p>Ask for supplies</p><h1>{title}</h1>
       <span>{mode.type === "new" ? "Choose what your kitchen needs and when." : `Delivery by ${deliveryDateText(mode.order.neededBy, { withTime: mode.order.emergency })}.`}</span></div></header>
 
@@ -199,6 +201,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
 
       <div className="ko-picker__main">
         {mode.type === "new" && <section className="kg-glass ko-when" aria-label="When do you need it">
+          <p className="ko-step-head"><span className="ko-step">{stepOf(1)}</span> When do you need it?</p>
           <label className="ko-field"><span>Needed by</span>
             <select value={neededIn} disabled={emergency} onChange={(event) => setNeededIn(event.target.value)}>
               {(settings?.neededInOptions || []).map((candidate) => <option key={candidate.key} value={candidate.key}>{candidate.label}</option>)}
@@ -209,6 +212,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
             <span><AlertTriangle size={16} aria-hidden="true" /> Emergency — needed within {settings?.emergencyHours === 1 ? "1 hour" : `${settings?.emergencyHours} hours`}</span></label>
         </section>}
 
+        <p className="ko-step-head"><span className="ko-step">{stepOf(2)}</span> Add supplies</p>
         <label className="ko-search kg-float"><Search size={19} aria-hidden="true" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search supplies" aria-label="Search supplies" />{search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search"><X size={17} /></button>}</label>
 
         <section className="ko-products" aria-label="Supplies">
@@ -317,7 +321,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
       <button type="button" className="ko-bar" onClick={() => setSheetOpen(true)} aria-haspopup="dialog" aria-expanded={sheetOpen}
         aria-label={`${count} ${count === 1 ? "item" : "items"} on the order ticket. Open the ticket.`}>
         <span className="ko-bar__count" aria-hidden="true">{count}</span>
-        <span className="ko-bar__text" aria-hidden="true"><strong>Order ticket</strong> · {missing ? `${missing} ${missing === 1 ? "needs" : "need"} a quantity` : "Review"}</span>
+        <span className="ko-bar__text" aria-hidden="true"><strong>{stepOf(3)} · Ticket</strong> · {missing ? `${missing} ${missing === 1 ? "needs" : "need"} a quantity` : "Review"}</span>
         <ChevronUp size={20} aria-hidden="true" />
       </button>
     )}

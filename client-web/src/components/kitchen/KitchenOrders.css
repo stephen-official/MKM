@@ -206,3 +206,8 @@
   .ko-product__body { padding: 16px 18px 18px; }
 }
 @media (prefers-reduced-motion: reduce) { .ko-spinner { animation: none; } .ko-bar { transition: none; } .ko-sheet__panel, .ko-stepper--open, .ko-stepper--done { animation: none; } }
+
+/* Step badges: the order flow is numbered (when → add → review) so cooks know what to press next. */
+.ko-step { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border: 1px solid rgba(170,186,210,.45); border-radius: 999px; background: rgba(228,237,249,.9); color: var(--blue-deep); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+.ko-step-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; padding-inline: 4px; color: var(--ink-2); font-size: 14.5px; font-weight: 500; }
+.ko-when .ko-step-head { margin: 2px 0 0; }

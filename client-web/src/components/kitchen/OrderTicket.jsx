@@ -32,10 +32,10 @@ function TicketQty({ row, onChange }) {
  * rows: [{ id, name, amount, unit, locked?, needsQty? }] in the order they were added; needsQty marks an item added from Home
  * that still has no amount. meta: [{ label, value }] shown under the title.
  */
-export default function OrderTicket({ title = "Order ticket", rows = [], meta = [], emptyText = "Tap “Add” on an item below and it will be listed here.", open = true, onToggle, onChange, onClear, clearLabel = "Remove all items",
+export default function OrderTicket({ title = "Order ticket", badge = "", rows = [], meta = [], emptyText = "Tap “Add” on an item below and it will be listed here.", open = true, onToggle, onChange, onClear, clearLabel = "Remove all items",
   onSubmit, submitLabel = "Done", submittingLabel = "Saving…", submitting = false, submitDisabled = false, note = "" }) {
   const count = rows.length;
-  const heading = <span><p>{title}</p><h2 id="kt-ticket-title">{count === 0 ? "Nothing added yet" : `${count} ${count === 1 ? "item" : "items"}`}</h2></span>;
+  const heading = <span><p>{badge && <span className="kt-ticket__badge">{badge}</span>}{title}</p><h2 id="kt-ticket-title">{count === 0 ? "Nothing added yet" : `${count} ${count === 1 ? "item" : "items"}`}</h2></span>;
   return <section className="kg-glass kt-ticket" id="kitchen-ticket" aria-labelledby="kt-ticket-title">
     {onToggle
       ? <button type="button" className="kt-ticket__head" onClick={onToggle} aria-expanded={open} aria-controls="kt-ticket-body">{heading}<ChevronDown size={20} className={open ? "is-open" : ""} aria-hidden="true" /></button>
