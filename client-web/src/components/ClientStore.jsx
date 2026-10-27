@@ -879,8 +879,6 @@ setEditIndentId(indent._id);
             canTransfer={!hidden.has("transfers")}
             onNewOrder={() => setActiveTab("new-order")}
             onLeaveNewOrder={() => setActiveTab("requests")}
-            canShowPast={!hidden.has("past-requests")}
-            onShowPast={() => { setSupplyInitialTab("requests"); setActiveTab("past-requests"); }}
           />
         </>
       ) : activeTab === "past-requests" ? (

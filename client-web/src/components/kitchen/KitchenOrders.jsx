@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, ChevronUp, Clock, History, Lock, Plus, Search, Truck, Users, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, ChevronUp, Clock, Lock, Plus, Search, Truck, Users, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
@@ -347,7 +347,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
  * section: "ongoing" (orders in progress, plus transfers waiting for Accept / Reject when canTransfer), "new" (the new-order picker) or "history" (delivered and cancelled orders).
  * onNewOrder / onLeaveNewOrder switch the "New order" section tab on and off.
  */
-export default function KitchenOrders({ products = [], godownId, onShowPast, canShowPast = true, onOrdersLoaded, draft = {}, onDraftChange, section = "ongoing", canTransfer = false, onNewOrder, onLeaveNewOrder }) {
+export default function KitchenOrders({ products = [], godownId, onOrdersLoaded, draft = {}, onDraftChange, section = "ongoing", canTransfer = false, onNewOrder, onLeaveNewOrder }) {
   const [orders, setOrders] = useState([]);
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -439,7 +439,7 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
   const failedState = <div className="kg-glass ko-empty"><h2>Could not load orders</h2><p>Check your connection and try again.</p><button type="button" className="kg-btn" onClick={load}>Try again</button></div>;
   const orderCard = (order) => <MyOrderCard key={order._id} order={order} godownId={godownId} now={now} onEdit={(picked) => start("edit", picked)} onReceive={receive} />;
 
-  // Orders history (under the History tab): delivered and cancelled orders, plus the older request screens.
+  // Orders history (under the History tab): delivered and cancelled orders.
   if (section === "history") {
     return <main className="ko-shell">
       {loading && orders.length === 0 ? loadingState : failed ? failedState
@@ -449,7 +449,6 @@ export default function KitchenOrders({ products = [], godownId, onShowPast, can
             ? <div className="kg-glass ko-empty"><span className="kg-orb" aria-hidden="true"><Truck size={24} /></span><h2>Nothing finished yet</h2><p>Delivered and cancelled orders will be listed here.</p></div>
             : <div className="ko-list">{done.map(orderCard)}</div>}
         </section>}
-      {canShowPast && <button type="button" className="kg-chip ko-past" onClick={onShowPast}><History size={17} aria-hidden="true" /> Past requests</button>}
     </main>;
   }
 
