@@ -122,6 +122,12 @@ const [godowns, setGodowns] = useState([]);
   const [flags, setFlags] = useState(null);
   const flagsRef = useRef(null);
   const hidden = useMemo(() => computeHidden(flags), [flags]);
+  // The Stock tab's section tabs: Record (usage) lands first, then the stock list and the usage history.
+  const stockSections = [
+    ...(!hidden.has("usage") ? [{ value: "usage", label: "Record" }] : []),
+    { value: "stock", label: "Stock levels" },
+    ...(!hidden.has("activity") ? [{ value: "activity", label: "History" }] : [])
+  ];
 
   const navigate = useNavigate();
   const [confirm, confirmDialog] = useConfirm();
@@ -735,14 +741,21 @@ setEditIndentId(indent._id);
     if (await openOrders()) setOpenOrderDraft(true);
   };
 
+  // The bottom tab that stands for the current view (Record, History and Transfers all sit under Stock).
+  const bottomTab =
+    activeTab === "request-builder" ? (activeTransactionType === "transfer" ? "stock" : "requests")
+    : ["usage", "activity", "transfers"].includes(activeTab) ? "stock"
+    : ["receive-delivery", "past-requests"].includes(activeTab) ? "requests"
+    : activeTab;
+
   const handleTabChange = (tab) => {
-    if (tab === activeTab) return;
+    if (tab === bottomTab) return;
     leaveDraft(() => {
       setCart([]);
       const target = tabTarget(tab);
       if (!target) return;
-      if (target.view === "stock") return openStock(true);
-      if (target.view === "usage") return openUsage(true);
+      // Stock lands on Record, or on the stock list when recording usage is switched off for this kitchen.
+      if (target.view === "stock") return hidden.has("usage") ? openStock(true) : openUsage(true);
       if (target.supplyTab) setSupplyInitialTab(target.supplyTab);
       setActiveTab(target.view);
     });
@@ -806,15 +819,7 @@ setEditIndentId(indent._id);
         />
       ) : activeTab === "stock" ? (
         <>
-          <KitchenSectionNav
-            label="Stock sections"
-            value="stock"
-            items={[
-              { value: "stock", label: "Stock levels" },
-              ...(!hidden.has("transfers") ? [{ value: "transfers", label: "Transfers" }] : [])
-            ]}
-            onChange={(view) => setActiveTab(view)}
-          />
+          <KitchenSectionNav label="Stock sections" value="stock" items={stockSections} onChange={(view) => setActiveTab(view)} />
           <KitchenStock
             items={items}
             loading={loading}
@@ -828,12 +833,7 @@ setEditIndentId(indent._id);
         </>
       ) : activeTab === "usage" ? (
         <>
-          <KitchenSectionNav
-            label="Usage sections"
-            value="usage"
-            items={[{ value: "usage", label: "Record" }, { value: "activity", label: "History" }]}
-            onChange={(view) => setActiveTab(view)}
-          />
+          <KitchenSectionNav label="Stock sections" value="usage" items={stockSections} onChange={(view) => setActiveTab(view)} />
           <KitchenUsageScreen
             items={usageItems}
             loading={loading}
@@ -874,12 +874,7 @@ setEditIndentId(indent._id);
         />
       ) : activeTab === "activity" ? (
         <>
-          <KitchenSectionNav
-            label="Usage sections"
-            value="activity"
-            items={[{ value: "usage", label: "Record" }, { value: "activity", label: "History" }]}
-            onChange={(view) => setActiveTab(view)}
-          />
+          <KitchenSectionNav label="Stock sections" value="activity" items={stockSections} onChange={(view) => setActiveTab(view)} />
           <KitchenActivity entries={usageHistory} />
         </>
       ) : activeTab === "transfers" ? (
@@ -1555,14 +1550,7 @@ activeTransactionType === "request"
         />
       )}
       <KitchenBottomNav
-        activeTab={
-          activeTab === "request-builder"
-              ? activeTransactionType === "transfer" ? "stock" : "requests"
-            : activeTab === "activity" ? "usage"
-            : activeTab === "transfers" ? "stock"
-            : ["receive-delivery", "past-requests"].includes(activeTab) ? "requests"
-            : activeTab
-        }
+        activeTab={bottomTab}
         onTabChange={handleTabChange}
         requestCount={attentionCount}
         requestAlert={draftCounts(orderDraft).items > 0}

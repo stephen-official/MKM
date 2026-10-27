@@ -47,7 +47,6 @@ export const sameFlags = (a, b) => {
 const BOTTOM_TAB_TARGETS = Object.freeze({
   home: Object.freeze({ view: "home" }),
   stock: Object.freeze({ view: "stock" }),
-  usage: Object.freeze({ view: "usage" }),
   requests: Object.freeze({ view: "requests", supplyTab: "requests" })
 });
 

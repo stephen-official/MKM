@@ -2,7 +2,6 @@ import {
   ClipboardList,
   Home,
   Package,
-  Utensils,
 } from "lucide-react";
 import { createElement } from "react";
 import "./kitchen-ui.css";
@@ -12,7 +11,6 @@ const NO_HIDDEN_TABS = new Set();
 const TABS = [
   { id: "home", label: "Home", Icon: Home },
   { id: "stock", label: "Stock", Icon: Package },
-  { id: "usage", label: "Use", accessibleLabel: "Record usage", Icon: Utensils },
   { id: "requests", label: "Requests", Icon: ClipboardList },
 ];
 
@@ -20,7 +18,7 @@ const TABS = [
  * Primary navigation for the kitchen mobile experience.
  *
  * @param {object} props
- * @param {"home"|"stock"|"usage"|"requests"} props.activeTab
+ * @param {"home"|"stock"|"requests"} props.activeTab
  * @param {(tab: string) => void} props.onTabChange
  * @param {number} [props.requestCount=0] Number of requests requiring attention.
  * @param {boolean} [props.requestAlert=false] An unsent supply order is waiting (items added from Home): the badge shows "!" instead.
