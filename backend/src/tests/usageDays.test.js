@@ -47,7 +47,6 @@ beforeEach(async () => {
 const as = (actor) => ({
   get: () => request(app).get("/api/usage-days").set("Authorization", `Bearer ${actor.token}`),
   none: (body) => request(app).post("/api/usage-days/none").set("Authorization", `Bearer ${actor.token}`).send(body),
-  undo: (date) => request(app).delete(`/api/usage-days/none/${date}`).set("Authorization", `Bearer ${actor.token}`),
 });
 
 test("GET lists the kitchen's days: the first usage day starts the range and a skipped day in between is missed", async () => {
@@ -59,32 +58,32 @@ test("GET lists the kitchen's days: the first usage day starts the range and a s
   assert.equal(body.missed, 2);
 });
 
-test("POST none marks a day; undo removes it; a future day, a bad reason and a recorded day are refused", async () => {
+test("POST none marks a day (with its note); a future day, a bad reason and a recorded day are refused; there is no kitchen undo", async () => {
   await consumption(ctx.kitchenA, { date: addDays(today, -1), createdAt: new Date(), lines: [[ctx.rice, 5]] });
-  const marked = await as(ctx.cook).none({ date: today, reason: "holiday" });
+  const marked = await as(ctx.cook).none({ date: today, reason: "holiday", note: "Diwali" });
   assert.equal(marked.status, 201, JSON.stringify(marked.body));
-  let { body } = await as(ctx.cook).get();
-  assert.deepEqual(body.days[0], { date: today, status: "none", entries: 0, reason: "holiday" });
+  const { body } = await as(ctx.cook).get();
+  assert.deepEqual(body.days[0], { date: today, status: "none", entries: 0, reason: "holiday", note: "Diwali" });
   assert.equal(body.missed, 0);
+  assert.deepEqual(body.marks.map((mark) => [mark.date, mark.reason, mark.note]), [[today, "holiday", "Diwali"]]);
 
   assert.equal((await as(ctx.cook).none({ date: addDays(today, 1), reason: "closed" })).body.code, "FUTURE_DATE");
   assert.equal((await as(ctx.cook).none({ date: today, reason: "strike" })).body.code, "INVALID_REASON");
   assert.equal((await as(ctx.cook).none({ date: addDays(today, -1), reason: "closed" })).status, 409);
 
-  assert.equal((await as(ctx.cook).undo(today)).status, 200);
-  assert.equal((await as(ctx.cook).undo(today)).status, 404);
-  ({ body } = await as(ctx.cook).get());
-  assert.equal(body.days[0].status, "missed");
+  const undo = await request(app).delete(`/api/usage-days/none/${today}`).set("Authorization", `Bearer ${ctx.cook.token}`);
+  assert.equal(undo.status, 404);
 });
 
-test("recording usage on a day marked no-usage replaces the mark", async () => {
+test("recording usage on a day marked no-usage is refused until an admin reopens it", async () => {
   await as(ctx.cook).none({ date: today, reason: "closed" });
   const recorded = await request(app).post("/api/orders").set("Authorization", `Bearer ${ctx.cook.token}`)
     .send({ date: today, items: [{ stockRecordId: ctx.row._id, qtyBaseUnit: 2 }] });
-  assert.ok(recorded.status < 300, JSON.stringify(recorded.body));
-  assert.equal(await NoUsageDay.countDocuments({ godownId: ctx.kitchenA._id }), 0);
+  assert.equal(recorded.status, 409, JSON.stringify(recorded.body));
+  assert.equal(recorded.body.code, "DAY_CLOSED");
+  assert.equal(await NoUsageDay.countDocuments({ godownId: ctx.kitchenA._id }), 1);
   const { body } = await as(ctx.cook).get();
-  assert.deepEqual(body.days[0], { date: today, status: "recorded", entries: 1, reason: null });
+  assert.equal(body.days[0].status, "none");
 });
 
 test("the day list is kitchen-only: an admin login is refused", async () => {

@@ -27,6 +27,7 @@ import { orderingSettingsRoutes } from "./routes/orderingSettingsRoutes.js";
 import { supplierRoutes } from "./routes/supplierRoutes.js";
 import { deliveryTicketRoutes } from "./routes/deliveryTicketRoutes.js";
 import { usageDayRoutes } from "./routes/usageDayRoutes.js";
+import { usageCorrectionRoutes } from "./routes/usageCorrectionRoutes.js";
 
 const app = express();
 
@@ -138,6 +139,7 @@ export const PROTECTED_MOUNTS = [
   ["/api/suppliers", supplierRoutes],
   ["/api/delivery-tickets", deliveryTicketRoutes],
   ["/api/usage-days", usageDayRoutes],
+  ["/api/usage-corrections", usageCorrectionRoutes],
   ["/api/procurement", procurementRoutes],
   ["/api", operationsRoutes],
   ["/api/reports", reportRoutes],

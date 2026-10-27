@@ -156,7 +156,12 @@ export const ROUTE_RULES = Object.freeze([
   feature("DELETE", "/api/consumptions/:id", ["consumption"], "mutation"),
   feature("GET", "/api/usage-days", ["consumption"], "read", "kitchen"),
   feature("POST", "/api/usage-days/none", ["consumption"], "mutation", "kitchen"),
-  feature("DELETE", "/api/usage-days/none/:date", ["consumption"], "mutation", "kitchen"),
+  // Corrections: a kitchen reports a mistake, an admin approves it (today: reopening a "no usage" day).
+  feature("POST", "/api/usage-corrections", ["consumption"], "mutation", "kitchen"),
+  feature("GET", "/api/usage-corrections/me", ["consumption"], "read", "kitchen"),
+  feature("GET", "/api/usage-corrections", ["consumption"], "read"),
+  feature("POST", "/api/usage-corrections/:id/approve", ["consumption"], "mutation"),
+  feature("POST", "/api/usage-corrections/:id/reject", ["consumption"], "mutation"),
 
   // --- reports ---
   feature("GET", "/api/reports/:entity/export/excel/:id", ["reports"], "read"),

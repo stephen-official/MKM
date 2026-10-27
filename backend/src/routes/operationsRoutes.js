@@ -154,9 +154,13 @@ const priceLines = async (godownId, lines, keep = new Map()) => {
 const handleStockProcessing = async (req, res) => {
   const session = await mongoose.startSession();
   try {
+    const godownId = isKitchenRole(req.user.role) ? req.user.godownId : req.body.godownId;
+    // A day the kitchen marked "no usage" stays closed until an admin approves a correction; nothing is recorded on it.
+    if (godownId && req.body.date && await NoUsageDay.exists({ godownId, date: req.body.date })) {
+      return res.status(409).json({ code: "DAY_CLOSED", error: "This day is marked as no usage. Ask the admin to reopen it before recording." });
+    }
     const result = await session.withTransaction(async () => {
       const { items } = req.body;
-      const godownId = isKitchenRole(req.user.role) ? req.user.godownId : req.body.godownId;
 
       if (!godownId) throw new Error("No godown associated with this request.");
 
@@ -229,8 +233,6 @@ const handleStockProcessing = async (req, res) => {
       .populate("godownId", "name") 
       .populate(deepPopulateItem);
 
-    // A day with usage is accounted for: drop any "no usage" mark the kitchen gave it earlier.
-    await NoUsageDay.deleteOne({ godownId: result.godownId, date: result.date });
     notifyKitchen(result.godownId, "stock");
     notifyKitchen(result.godownId, "usage");
     res.status(201).json(populatedResult);
