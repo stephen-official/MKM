@@ -19,12 +19,11 @@
 .kl-search input { min-width: 0; flex: 1; color: var(--ink-2); background: transparent; border: 0; outline: 0; font: inherit; font-size: 14px; }
 .kl-search input::placeholder { color: var(--muted-2); font-weight: 300; }
 .kl-search button { display: grid; width: 32px; height: 32px; padding: 0; place-items: center; color: var(--muted-2); background: transparent; border: 0; border-radius: 50%; }
-.kl-filter { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 8px 0 14px; color: var(--muted-2); }
-.kl-filter > svg { flex: none; color: var(--blue); }
-.kl-filter > span { font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+.kl-filter { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 8px 0 6px; color: var(--muted-2); }
 .kl-filter .df { width: auto; flex: 1; min-height: 32px; padding: 0 8px; color: var(--ink-2); background: transparent; border: 0; box-shadow: none; }
 .kl-filter .df > svg { color: var(--blue); }
 .kl-filter .df__text { font-size: 13px; font-weight: 500; white-space: nowrap; }
+.kl-filter .df__text--empty { color: var(--muted-2); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; } /* the hint reads like a label until a date is picked */
 .kl-filter button { border: 0; color: var(--blue-deep); background: transparent; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 
 /* "New stock transfer": a full-width glass row that opens the picker */
@@ -60,5 +59,5 @@
 
 @media (min-width: 700px) { .kl-shell { padding-right: 24px; padding-left: 24px; } .kl-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1024px) { .kl-shell { max-width: 1240px; padding: 34px 28px 56px; } .kl-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; } }
-@media (max-width: 420px) { .kl-card__foot { flex-direction: column; } .kl-filter { flex-wrap: wrap; min-height: 0; padding: 10px 8px 10px 14px; } .kl-filter .df { flex: 1 1 100%; margin-left: 26px; } }
+@media (max-width: 420px) { .kl-card__foot { flex-direction: column; } }
 @media (prefers-reduced-motion: reduce) { .kl-spinner { animation: none; } }

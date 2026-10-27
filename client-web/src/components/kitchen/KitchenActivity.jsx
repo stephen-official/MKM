@@ -1,4 +1,4 @@
-import { CalendarDays, ClipboardCheck, History, Search, X } from "lucide-react";
+import { ClipboardCheck, History, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toLocalDateKey } from "../../utils/date";
 import DateField from "../ui/DateField";
@@ -33,8 +33,7 @@ export default function KitchenActivity({ entries = [] }) {
         {search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search"><X size={18} aria-hidden="true" /></button>}
       </label>
       <label className="kg-glass kl-filter">
-        <CalendarDays size={19} aria-hidden="true" /><span>Filter by date</span>
-        <DateField value={date} label="Filter by date" placeholder="Any date" onChange={setDate} />
+        <DateField value={date} label="Filter by date" placeholder="Filter by date" onChange={setDate} />
         {date && <button type="button" onClick={() => setDate("")}>Clear</button>}
       </label>
       {visibleEntries.length === 0 ? (
