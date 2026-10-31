@@ -173,7 +173,7 @@ export const ReportsPage = () => {
   }
 
   return (
-    <div style={{ height: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <PageHeader
         title="Exports"
         subtitle="Download records from every workflow in one place."
