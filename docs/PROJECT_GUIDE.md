@@ -177,14 +177,15 @@ New endpoints return `{ code: "SCREAMING_SNAKE_CASE", message, ...details }`. Ol
 ## 5. Admin console (`admin-web/src`)
 
 - `App.jsx`: auth gate. Non-admin roles see "Access restricted". It wraps the shell in `FeatureFlagsProvider` and builds routes from the nav config.
-- `components/navItems.js`: `NAV` (10 feature pages, each with a `feature` key) and `SUPER_NAV` (4 super-admin pages). `features/featureNav.js` builds sidebar sections (Stock, Insights, Executive) and the route guards.
+- `components/navItems.js`: `NAV` (10 feature pages, each with a `feature` key) and `SUPER_NAV` (4 super-admin pages), plus `WORKSPACE_NAV` / `SUPER_WORKSPACE_NAV` (the workspaces the nav shows, each with tabs; the Catalog workspace's tabs are Products · Kitchen requests · Categories & locations, and a tab with `pendingCount` shows its pending count). `features/featureNav.js` builds the nav sections and the route guards.
+- `components/Layout.jsx`: the shell, which mirrors the kitchen app (2026-11-01): a glass header with the brand and Log out, and one nav listing every entry — a floating pill at the bottom of a phone (scrolls sideways when there are many entries) and a glass sidebar on a laptop (≥ 1024 px). The main area is a fixed-height scroll box; pages size their panes to it (`height: 100%`).
 - `components/ui/index.jsx`: the shared UI kit (PageHeader, DataTable, SplitView, DetailPanel, RailList, Field, DateField, Banner, EmptyState, ErrorState, LoadingState, StatusBadge, Button, Meta…), plus `useConfirm.jsx`. **Reuse these. Don't add new ad-hoc components.**
-- Styling: `theme.css` (tokens, brand teal `--color-brand: #0f766e`) and `styles.css`. Executive pages have `pages/executive/executive.css`.
+- Styling: the admin wears the kitchen app's glass look — Inter, a pale blue wash, frosted white panels, pill buttons, glass segmented tabs. `theme.css` holds the tokens (the kitchen block is copied from `client-web/src/index.css`, keep in step), `glass.css` the primitives (`.kg-*`, `.ks-*`, `.app-header`, `.app-nav`, `.section-nav`, copied from `client-web/.../kitchen-ui.css` and `KitchenStock.css`, keep in step), `styles.css` the components. Executive pages have `pages/executive/executive.css`.
 - Toasts: `toast.jsx` / `useToast.js`. Excel exports in the browser use `xlsx-js-style`.
 
 | Page | Purpose |
 |---|---|
-| Products | The master product list: add/edit popup (unit, price, packs, threshold, type, brand, code), completeness status, archive, kitchen product requests |
+| Products | The master product list as glass cards like the kitchen Stock screen (picture banner, facts, Edit/Archive chips), a floating search pill and status filter chips; add/edit popup (unit, price, packs, threshold, type, brand, code), completeness status, archive. Kitchen product requests are their own Catalog tab (`/catalog/requests`) |
 | Inventory Setup | Product groups and godowns; preset units (read-only) |
 | Indent | Review kitchen indent requests; create indents; mark purchased; logs |
 | Purchase Orders | Receive goods against purchased indents (Intake) and history; **Shared orders** tab (approve, supplier + invoice + bulk expiry, mark ordered, dispatch); **Problems** tab (`pages/problems/`, settle delivery problems); **Suppliers** tab (`pages/suppliers/`) |
