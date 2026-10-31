@@ -271,6 +271,11 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 .workflow-workspace__nav > strong { display: none; }
 .workflow-workspace__nav .tabs { width: min(100%, 560px); }
 .workflow-workspace__nav + .workflow-workspace__page .page-bar { padding-top: 18px; }
+/* Pages that render their blocks straight into the workspace (Users, Feature visibility, Schedules) get the page gutter here. */
+.workflow-workspace__page > :is(.banner, .tabs, .card, .exec-filters, .empty-state, .loading-state, .table-wrap), .layout-main > .banner { margin-inline: var(--page-gutter); }
+.workflow-workspace__page > .tabs { display: flex; width: fit-content; max-width: calc(100% - 2 * var(--page-gutter)); }
+.workflow-workspace__page > .exec-filters { width: auto; margin-bottom: 4px; } /* width: auto beats executive.css's width: 100% on phones */
+@media (max-width: 600px) { .workflow-workspace__page > .exec-filters > * { flex: 1 1 100%; width: 100%; } }
 
 .badge--status { text-transform: capitalize; }
 
@@ -470,7 +475,8 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 @media (min-width: 1101px) {
   .page-bar__body { flex-wrap: nowrap; }
   .page-bar__body > * { min-width: 0; }
-  .page-bar__body > select, .page-bar__body > .custom-select, .page-bar__body > .date-field { flex: 0 1 140px; }
+  .page-bar__body > select, .page-bar__body > .custom-select { flex: 0 1 auto; min-width: 170px; }
+  .page-bar__body > .date-field { flex: 0 1 140px; }
 }
 
 /* ---- date picker ---------------------------------------------------------- */

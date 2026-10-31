@@ -11,7 +11,9 @@ export const Layout = ({ onLogout, sections, children }) => {
   const items = sections.flatMap((section) => section.items);
   const activeIndex = items.findIndex((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`));
   const itemRefs = useRef([]);
+  const listRef = useRef(null);
   const [bubble, setBubble] = useState(null);
+  const [scrolls, setScrolls] = useState(false); // the phone pill holds more entries than fit: fade its right edge as a hint
 
   // A route change moves keyboard focus to the newly rendered page.
   useEffect(() => {
@@ -22,6 +24,8 @@ export const Layout = ({ onLogout, sections, children }) => {
   // rather than divided into equal slots because a long list scrolls sideways.
   useLayoutEffect(() => {
     const measure = () => {
+      const list = listRef.current;
+      setScrolls(Boolean(list && list.scrollWidth > list.clientWidth + 1));
       const el = itemRefs.current[activeIndex];
       if (!el) { setBubble(null); return; }
       setBubble({ width: `${el.offsetWidth}px`, transform: `translateX(${el.offsetLeft}px)` });
@@ -51,8 +55,8 @@ export const Layout = ({ onLogout, sections, children }) => {
       </header>
 
       {items.length > 0 && (
-        <nav className="app-nav" aria-label="Main navigation">
-          <div className="app-nav__items">
+        <nav className={`app-nav${scrolls ? " app-nav--scrolls" : ""}`} aria-label="Main navigation">
+          <div className="app-nav__items" ref={listRef}>
             {bubble && <span className="app-nav__bubble" aria-hidden="true" style={bubble} />}
             {items.map(({ label, path, icon: Icon, hiddenFromAdmins }, index) => (
               <NavLink
