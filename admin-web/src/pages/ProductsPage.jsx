@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Archive, ArchiveRestore, Download, Edit3, FileSpreadsheet, Package, Plus, Search, Upload } from "lucide-react";
 import { api } from "../api.js";
 import { useToast } from "../useToast.js";
 import { formatDateTime } from "../businessTime.js";
 import { useFeatureFlags } from "../features/FeatureFlagsContext.js";
-import { Badge, Banner, Button, Card, DataTable, EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, Select, Tabs } from "../components/ui/index.jsx";
+import { Badge, Banner, Button, Card, DataTable, EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, Select } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
 import { createRequestTracker } from "./executive/requestTracker.js";
 import { ProductForm } from "./products/ProductForm.jsx";
@@ -26,11 +26,10 @@ const StatusBadge = ({ product }) => {
   return <Badge variant="success">Available</Badge>;
 };
 
-export function ProductsPage() {
+export function ProductsPage({ view = "products" }) {
   const { showToast } = useToast();
   const { confirm, dialog } = useConfirm();
   const { isSuperAdmin: canPrice } = useFeatureFlags();
-  const [view, setView] = useState("products");
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
@@ -83,8 +82,6 @@ export function ProductsPage() {
     api.get("/products/units").then(({ data: rows }) => setUnits(rows)).catch(() => setUnits([]));
     api.get("/inventory/stock-groups").then(({ data: rows }) => setGroups(rows)).catch(() => setGroups([]));
   }, [loadRequests]);
-
-  const pending = useMemo(() => (requests || []).filter((r) => r.status === "pending"), [requests]);
 
   const openEditor = (next) => { setServerErrors({}); setEditing(next); };
 
@@ -294,8 +291,8 @@ export function ProductsPage() {
   return (
     <div className="products-shell">
       <PageHeader
-        title="Products"
-        subtitle="The master list. Every product a kitchen holds comes from here."
+        title={view === "products" ? "Products" : "Kitchen requests"}
+        subtitle={view === "products" ? "The master list. Every product a kitchen holds comes from here." : "Products the kitchens asked for that are not listed yet."}
         actions={view === "products" && (
           <>
             <label className="products-search">
@@ -309,12 +306,7 @@ export function ProductsPage() {
             <Button onClick={() => openEditor({ initial: emptyProductForm() })}><Plus size={16} aria-hidden="true" /> Add product</Button>
           </>
         )}
-      >
-        <Tabs label="Products sections" value={view} onChange={setView} items={[
-          { value: "products", label: `Products (${counts.all})` },
-          { value: "requests", label: pending.length ? `Kitchen requests (${pending.length} new)` : "Kitchen requests" }
-        ]} />
-      </PageHeader>
+      />
 
       <div className="products-page">
         {view === "products" ? (

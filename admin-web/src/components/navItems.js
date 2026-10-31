@@ -34,6 +34,8 @@ export const WORKSPACE_NAV = [
     label: "Catalog", path: "/catalog", icon: Package, section: "Workspace",
     tabs: [
       { label: "Products", slug: "products", route: "/products", feature: "products" },
+      // Kitchens' "add this product" requests, promoted from a tab inside Products (Anand, 2026-11-01). The count of pending ones sits on the tab.
+      { label: "Kitchen requests", slug: "requests", route: "/products/requests", feature: "products", pendingCount: "/product-requests" },
       { label: "Categories & locations", slug: "setup", route: "/inventory-info", feature: "inventory" }
     ]
   },

@@ -98,6 +98,7 @@ export const App = () => {
   const routeMap = useMemo(
     () => ({
       "/products": <ProductsPage />,
+      "/products/requests": <ProductsPage view="requests" />,
       "/inventory-info": <InventoryPage />,
       "/indent": <IndentPage />,
       "/purchase-orders": <PurchaseOrdersPage />,
