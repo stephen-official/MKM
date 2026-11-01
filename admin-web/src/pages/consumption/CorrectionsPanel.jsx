@@ -130,7 +130,6 @@ export const CorrectionsPanel = ({ onCount, onApplied }) => {
   return (
     <div className="corrections-page">
       {body}
-      {dialog}
       {details && (
         <Modal title={describeCorrection(details).title} onClose={() => setDetails(null)} wide actions={(
           details.status === "pending" ? (
@@ -169,6 +168,8 @@ export const CorrectionsPanel = ({ onCount, onApplied }) => {
           </Field>
         </Modal>
       )}
+      {/* Last, so the confirm box sits above the Details modal. */}
+      {dialog}
     </div>
   );
 };

@@ -69,7 +69,7 @@ export default function KitchenActivity({ entries = [], corrections = [], onEdit
             return (
             <article className="kg-glass kl-card" key={`${entry.type}-${entry._id}`}>
               <header className="kl-card__head">
-                <div><p>{entry.type === "daily" ? "Daily-use record" : "Stock usage"}</p><h2>{formatDateTime(entry.historyTime)}</h2></div>
+                <div><p>{entry.type === "daily" ? "Daily-use record" : "Stock usage"}{entry.date && toLocalDateKey(entry.historyTime) !== entry.date ? ` · for ${formatDateKey(entry.date)}` : ""}</p><h2>{formatDateTime(entry.historyTime)}</h2></div>
                 <span className={`kg-pill kg-pill--${status ? status.tone : "low"} kl-pill--plain`}>{status ? status.label : "Recorded"}</span>
               </header>
               <ul>{(entry.items || []).map((item, index) => <li key={item.stockItemId?._id || index}><span>{itemName(item)}</span><strong>{Number(item.qtyBaseUnit || item.quantity || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {item.stockItemId?.unitId?.symbol || item.unit || "units"}</strong></li>)}</ul>

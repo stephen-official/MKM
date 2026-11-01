@@ -17,9 +17,9 @@ const relevant = (rows) => {
   return [...rows].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0] || null;
 };
 
-/** The correction that matters for a marked day (kind reopen_day). */
+/** The correction that matters for a marked day (kind reopen_day). An approved one removed an earlier mark, so it never applies to the current one. */
 export const correctionForDay = (corrections = [], date) =>
-  relevant((corrections || []).filter((row) => row && row.kind === "reopen_day" && row.date === date));
+  relevant((corrections || []).filter((row) => row && row.kind === "reopen_day" && row.date === date && row.status !== "approved"));
 
 /** The correction that matters for a usage record (kind edit_usage). */
 export const correctionForRecord = (corrections = [], consumptionId) =>

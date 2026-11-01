@@ -466,7 +466,9 @@ if (isNaN(parsedQty)) return;
       // Inventory is server state. Keep it immutable while a usage draft is
       // edited and derive the projected balance in the usage screen. A count in bags is compared in kilograms.
       const packSize = product.packId && Number(product.packSize) > 0 ? Number(product.packSize) : 1;
-      if (!targetItem || !canRecordUsage(targetItem.currentQty, parsedQty * packSize)) {
+      // Correcting a usage record: its own quantities already left the stock, so they count as available again.
+      const back = Number(correction?.original?.[String(targetItem?._id)] || 0);
+      if (!targetItem || !canRecordUsage(Number(targetItem.currentQty || 0) + back, parsedQty * packSize)) {
         return toast.error("Insufficient Kitchen Stock");
       }
     }
@@ -731,7 +733,7 @@ setEditIndentId(indent._id);
       if (!(await confirm(CORRECTION_CONFIRM))) return false;
       const { cart: prefilled, missing } = target.kind === "edit_usage" ? cartFromRecord(target.items, items) : { cart: [], missing: [] };
       if (missing.length) toast.error(`${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} no longer in your stock list and cannot be changed here.`);
-      setCorrection({ kind: target.kind, date: target.date, consumptionId: target.consumptionId || null, reason: target.reason || "", from: activeTab });
+      setCorrection({ kind: target.kind, date: target.date, consumptionId: target.consumptionId || null, reason: target.reason || "", original: target.original || null, from: activeTab });
       setActiveTransactionType("usage");
       setCart(prefilled);
       setSelectedDate(target.date);
@@ -742,13 +744,17 @@ setEditIndentId(indent._id);
     return leaveDraft(go);
   };
   const editDay = (date, reason = "") => startCorrection({ kind: "reopen_day", date, reason });
-  const editRecord = (entry) => startCorrection({ kind: "edit_usage", date: entry.date, consumptionId: entry._id, items: entry.items });
+  const editRecord = (entry) => startCorrection({
+    kind: "edit_usage", date: entry.date, consumptionId: entry._id, items: entry.items,
+    original: Object.fromEntries((entry.items || []).map((line) => [String(line.stockItemId?._id || line.stockItemId), Number(line.qtyBaseUnit) || 0])),
+  });
   const leaveCorrection = () => {
     const back = correction?.from && correction.from !== "usage" ? correction.from : "activity";
     setCorrection(null);
     setCart([]);
     setSelectedDate(toLocalDateKey());
     setActiveTab(back);
+    window.scrollTo(0, 0);
     return true;
   };
   const cancelCorrection = () => leaveDraft(leaveCorrection);

@@ -14,6 +14,7 @@ test("correctionForDay: a pending ask wins, else the newest decided one, else nu
   assert.equal(correctionForDay(rows, "2026-10-26")._id, "other-day");
   assert.equal(correctionForDay([...rows, row("2026-10-27", "pending", "2026-10-27T04:00:00Z", { _id: "waiting" })], "2026-10-27")._id, "waiting");
   assert.equal(correctionForDay(rows, "2026-10-25"), null);
+  assert.equal(correctionForDay([row("2026-10-25", "approved", "2026-10-27T09:00:00Z")], "2026-10-25"), null);
   assert.equal(correctionForDay(undefined, "2026-10-25"), null);
 });
 

@@ -73,7 +73,7 @@ const filterKeysOf = (item, today) => {
 
 
 export default function KitchenUsageScreen({
-  items = [],
+  items: stockItems = [],
   loading = false,
   selectedDate = "",
   onDateChange,
@@ -88,7 +88,8 @@ export default function KitchenUsageScreen({
   onNoUsage,
   corrections = [],
   onEditDay,
-  // { kind: "reopen_day" | "edit_usage", date, reason } while a past record is being edited for the admin (ClientStore).
+  // { kind: "reopen_day" | "edit_usage", date, reason, original } while a past record is being edited for the admin (ClientStore);
+  // original = { [stockItemId]: qtyBaseUnit } of the record being changed.
   correction = null,
   onCancelCorrection,
 }) {
@@ -108,6 +109,15 @@ export default function KitchenUsageScreen({
   const [confirm, confirmDialog] = useConfirm();
   const quantitySource = cart ?? quantities;
   const today = toLocalDateKey();
+  // Correcting a usage record: its quantities already left the stock, so on this ticket they count as available again.
+  const items = useMemo(() => {
+    const original = correction?.original;
+    if (!original) return stockItems;
+    return stockItems.map((item) => {
+      const back = Number(original[String(item._id)] || 0);
+      return back > 0 ? { ...item, currentQty: Number(item.currentQty || 0) + back } : item;
+    });
+  }, [stockItems, correction]);
 
   // Expired and soon-to-expire stock first, so the cook uses it first; the deduction on the server follows the same order.
   const visibleItems = useMemo(() => {
@@ -283,7 +293,7 @@ export default function KitchenUsageScreen({
     <section className="kg-glass kus-closed kus-correcting" aria-labelledby="kus-correcting-title">
       <span className="kg-orb kus-closed__icon" aria-hidden="true"><Pencil size={20} strokeWidth={1.6} /></span>
       <div className="kus-closed__text">
-        <p className="kg-label">Correction · needs the admin’s approval</p>
+        <p className="kg-label">Needs admin approval</p>
         <h2 id="kus-correcting-title">{correction.kind === "reopen_day" ? `Recording usage for ${formatDateKey(selectedDate)}` : `Editing the usage of ${formatDateKey(selectedDate)}`}</h2>
         <span>{correction.kind === "reopen_day"
           ? `This day was marked “${REASON_LABEL[correction.reason] || "No usage"}”. Add what was used, then send it.`
