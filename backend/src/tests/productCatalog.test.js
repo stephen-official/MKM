@@ -209,3 +209,14 @@ test("the migration merges look-alike units into presets and reports what is sti
   const onion = await StockItem.findOne({ name: "Onion" }).lean();
   assert.equal(String(onion.unitId), String(ctx.kg._id));
 });
+
+test("the export can be imported again: every row updates its product instead of failing on the id", async () => {
+  const rice = (await as("root", "post", "/api/products").send(base({ pricePerUnit: 60 }))).body;
+  const exported = await as("root", "get", "/api/products/export/excel").buffer(true).parse((res, done) => { const chunks = []; res.on("data", (c) => chunks.push(c)); res.on("end", () => done(null, Buffer.concat(chunks))); });
+  assert.equal(exported.status, 200);
+  const imported = await as("root", "post", "/api/products/import").attach("file", exported.body, "products-export.xlsx");
+  assert.equal(imported.status, 200, JSON.stringify(imported.body));
+  assert.deepEqual(imported.body.results.map((r) => [r.action, r.name]), [["updated", "Rice"]]);
+  assert.equal(imported.body.failed, 0);
+  assert.equal((await as("root", "get", `/api/products/${rice._id}`)).body.pricePerUnit, 60);
+});

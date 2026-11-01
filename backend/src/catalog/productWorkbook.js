@@ -42,8 +42,9 @@ export const createProductWorkbook = async (products = [], { template = false } 
   sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E5B4F" } };
   sheet.views = [{ state: "frozen", ySplit: 1 }];
   sheet.columns = [18, 28, 22, 12, 14, 20, 18, 18, 34, 18, 18, 48, 14].map((width) => ({ width }));
+  // The id goes in as text: an ObjectId object would be stored as a quoted JSON string that the import cannot read back.
   if (!template) products.forEach((p) => sheet.addRow([
-    p._id, p.name, p.group?.name || "", p.unit?.symbol || "", p.itemType, p.defaultThreshold, p.brand, p.productCode,
+    String(p._id), p.name, p.group?.name || "", p.unit?.symbol || "", p.itemType, p.defaultThreshold, p.brand, p.productCode,
     p.imageUrl, p.pricePerUnit ?? "", p.soldInPacks ? "Yes" : "No", packText(p.packs), p.archived ? "Yes" : "No"
   ]));
   const guide = workbook.addWorksheet("How to use");
