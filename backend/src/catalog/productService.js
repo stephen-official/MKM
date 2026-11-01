@@ -41,7 +41,7 @@ const samePrice = (a, b) => (a ?? null) === (b ?? null) || (isValidPrice(a) && i
  * Turns a request body into the fields to save. `canPrice` is true only for a super-admin: anyone else may not
  * change a price, and a pack whose size they change loses its price until a super-admin sets it again.
  */
-export const buildProductUpdate = async (body, { canPrice, existing = null, userId = null, allowBlankPrice = false }) => {
+export const buildProductUpdate = async (body, { canPrice, existing = null, userId = null, allowBlankPrice = false, requirePhoto = false }) => {
   const errors = {};
   const update = {};
 
@@ -84,6 +84,8 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
   update.productCode = code || undefined;
 
   if (body.imageUrl !== undefined) update.imageUrl = String(body.imageUrl || "");
+  // The form must carry a photo (kitchen staff pick by picture). Spreadsheet imports may leave it blank; those are flagged.
+  if (requirePhoto && !String(body.imageUrl ?? existing?.imageUrl ?? "").trim()) errors.imageUrl = "Add a photo. Kitchen staff pick products by their picture.";
   // --- food safety (FSSAI) ---
   // A new product must say whether it is food. An older product keeps whatever it had until someone edits it.
   const kind = body.kind ?? existing?.kind ?? null;
@@ -116,8 +118,13 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
     throw new CatalogError(403, "PRICE_SUPER_ADMIN_ONLY", "Only a super-admin can set or change prices.");
   }
 
+  // --- expiry ---
+  // Follows the food answers: packaged food asks the kitchen for an expiry date on receipt; loose/fresh food and non-food do not.
+  // A product that has no kind yet (saved before the food facts) keeps whatever it had, or what the body says.
+  if (update.kind === "food") update.expiryRequired = update.form !== "loose";
+  else if (update.kind === "non_food") update.expiryRequired = false;
+  else update.expiryRequired = Boolean(body.expiryRequired ?? existing?.expiryRequired ?? true);
   // --- packs ---
-  update.expiryRequired = Boolean(body.expiryRequired ?? existing?.expiryRequired ?? true);
 
   const soldInPacks = Boolean(body.soldInPacks ?? existing?.soldInPacks ?? false);
   update.soldInPacks = soldInPacks;

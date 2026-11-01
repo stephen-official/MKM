@@ -4,7 +4,7 @@ import {
 } from "./productForm.js";
 import { foodSafetySummary, toggleAllergen } from "./foodSafety.js";
 
-const filled = (extra = {}) => ({ ...emptyProductForm(), name: "Rice", stockGroupId: "g1", unitId: "u1", pricePerUnit: "60", kind: "food", vegMark: "veg", storage: "room", allergens: ["none"], ...extra });
+const filled = (extra = {}) => ({ ...emptyProductForm(), imageUrl: "https://img.test/rice.jpg", name: "Rice", stockGroupId: "g1", unitId: "u1", pricePerUnit: "60", kind: "food", vegMark: "veg", storage: "room", allergens: ["none"], ...extra });
 
 describe("product form", () => {
   it("requires a price only from a super-admin", () => {
@@ -56,11 +56,9 @@ describe("product form", () => {
     expect(payloadFromForm({ ...form, soldInPacks: false }, { canPrice: true }).packs).toEqual([]);
   });
 
-  it("treats expiry as required unless the product says otherwise, and sends the choice back", () => {
-    expect(emptyProductForm().expiryRequired).toBe(true);
-    expect(formFromProduct({ name: "Rice" }).expiryRequired).toBe(true);
-    expect(formFromProduct({ name: "Salt", expiryRequired: false }).expiryRequired).toBe(false);
-    expect(payloadFromForm(filled({ expiryRequired: false }), { canPrice: false }).expiryRequired).toBe(false);
+  it("wants a photo, and never sends an expiry setting (the server derives it)", () => {
+    expect(validateProductForm(filled({ imageUrl: "" }), { canPrice: true })).toEqual({ imageUrl: "Add a photo. Kitchen staff pick products by their picture." });
+    expect("expiryRequired" in payloadFromForm(filled(), { canPrice: true })).toBe(false);
   });
 
   it("blanks a legacy unit so it has to be re-chosen, and prefills a request's unit", () => {
@@ -72,6 +70,7 @@ describe("product form", () => {
   it("opens the More details fold only when something is in it", () => {
     expect(hasMoreDetails(emptyProductForm())).toBe(false);
     expect(hasMoreDetails(filled({ brand: "Tata" }))).toBe(true);
+    expect(hasMoreDetails(filled())).toBe(false);
     expect(hasMoreDetails(filled({ itemType: "daily_use" }))).toBe(true);
     expect(hasMoreDetails(filled({ defaultThreshold: "5" }))).toBe(true);
   });

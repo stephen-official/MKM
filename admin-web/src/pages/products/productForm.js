@@ -78,7 +78,7 @@ export const formFromProduct = (product, { units = [] } = {}) => ({
 });
 
 /** True when any field behind the "More details" fold has something in it, so the fold opens on edit. */
-export const hasMoreDetails = (form) => Boolean(form.imageUrl || form.brand || form.productCode || form.itemType === "daily_use" || Number(form.defaultThreshold) > 0);
+export const hasMoreDetails = (form) => Boolean(form.brand || form.productCode || form.itemType === "daily_use" || Number(form.defaultThreshold) > 0);
 
 const positive = (text) => {
   const value = Number(text);
@@ -88,6 +88,7 @@ const positive = (text) => {
 /** Field errors keyed like the server's (`packList[i].name` etc). `canPrice` = the user is a super-admin. */
 export const validateProductForm = (form, { canPrice }) => {
   const errors = {};
+  if (!String(form.imageUrl || "").trim()) errors.imageUrl = "Add a photo. Kitchen staff pick products by their picture.";
   if (!form.name.trim()) errors.name = "Enter a product name.";
   if (!form.stockGroupId) errors.stockGroupId = "Choose a product group.";
   if (!form.unitId) errors.unitId = "Choose a unit.";
@@ -129,7 +130,7 @@ export const payloadFromForm = (form, { canPrice }) => ({
   productCode: form.productCode.trim(),
   defaultThreshold: Number(form.defaultThreshold),
   ...(canPrice ? { pricePerUnit: Number(form.pricePerUnit) } : {}),
-  expiryRequired: form.expiryRequired,
+  // No expiry here: the server sets it from the food answers (packaged food asks the kitchen for a date; the rest do not).
   kind: form.kind,
   ...(form.kind === "food" ? { form: form.form || null, vegMark: form.vegMark, allergens: form.allergens, storage: form.storage } : {}),
   soldInPacks: form.soldInPacks,

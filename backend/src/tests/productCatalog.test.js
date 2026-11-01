@@ -29,7 +29,7 @@ beforeEach(async () => {
 });
 
 const as = (who, method, url) => request(app)[method](url).set("Authorization", `Bearer ${ctx[who].token}`);
-const base = (extra = {}) => ({ name: "Rice", stockGroupId: ctx.group._id, unitId: ctx.kg._id, itemType: "stock", defaultThreshold: 5, kind: "food", vegMark: "veg", storage: "room", ...extra });
+const base = (extra = {}) => ({ name: "Rice", stockGroupId: ctx.group._id, unitId: ctx.kg._id, itemType: "stock", defaultThreshold: 5, kind: "food", vegMark: "veg", storage: "room", imageUrl: "https://img.test/rice.jpg", ...extra });
 
 test("preset aliases map common spellings and nothing vague", () => {
   assert.equal(presetFor({ symbol: "Kgs" }).symbol, "kg");
@@ -69,15 +69,27 @@ test("an admin creates a product without a price; it stays hidden from kitchens 
   assert.deepEqual((await as("cook", "get", "/api/inventory/stock-items")).body.map((p) => p.name), ["Rice"]);
 });
 
-test("expiry is required on every product unless an admin turns it off", async () => {
-  const created = await as("admin", "post", "/api/products").send(base());
-  assert.equal(created.status, 201);
-  assert.equal(created.body.expiryRequired, true);
-  const off = await as("admin", "put", `/api/products/${created.body._id}`).send({ expiryRequired: false });
-  assert.equal(off.status, 200);
-  assert.equal(off.body.expiryRequired, false);
-  const untouched = await as("admin", "put", `/api/products/${created.body._id}`).send({ brand: "Daawat" });
-  assert.equal(untouched.body.expiryRequired, false, "an edit that does not mention expiry keeps the setting");
+test("expiry follows the food answers: packaged food asks for it; loose food and non-food do not", async () => {
+  const packaged = (await as("admin", "post", "/api/products").send(base({ form: "packaged" }))).body;
+  assert.equal(packaged.expiryRequired, true);
+  assert.equal((await as("admin", "post", "/api/products").send(base({ name: "Onion", form: "loose" }))).body.expiryRequired, false);
+  assert.equal((await as("admin", "post", "/api/products").send(base({ name: "Atta" }))).body.expiryRequired, true, "food with no answer on how it arrives counts as packaged");
+  assert.equal((await as("admin", "post", "/api/products").send(base({ name: "Soap", kind: "non_food" }))).body.expiryRequired, false);
+  // The form's old tick box is ignored once the kind is known.
+  assert.equal((await as("admin", "put", `/api/products/${packaged._id}`).send({ expiryRequired: false })).body.expiryRequired, true);
+  assert.equal((await as("admin", "put", `/api/products/${packaged._id}`).send({ form: "loose" })).body.expiryRequired, false);
+});
+
+test("a photo is required on the form; products without one are flagged and counted", async () => {
+  const none = await as("admin", "post", "/api/products").send(base({ imageUrl: "" }));
+  assert.equal(none.status, 400);
+  assert.match(none.body.errors.imageUrl, /Add a photo/);
+  const old = await StockItem.create({ name: "Old Dal", stockGroupId: ctx.group._id, unitId: ctx.kg._id, pricePerUnit: 50, kind: "food", vegMark: "veg", storage: "room" });
+  const listed = await as("root", "get", "/api/products?status=nophoto");
+  assert.deepEqual(listed.body.items.map((p) => [p.name, p.available]), [["Old Dal", true]]);
+  assert.equal(listed.body.counts.noPhoto, 1);
+  assert.match((await as("admin", "put", `/api/products/${old._id}`).send({ brand: "Tata" })).body.errors.imageUrl, /Add a photo/);
+  assert.equal((await as("admin", "put", `/api/products/${old._id}`).send({ imageUrl: "https://img.test/dal.jpg" })).status, 200);
 });
 
 test("only a super-admin may set or change a price", async () => {
@@ -140,7 +152,7 @@ test("the list filters by status and search and always returns the counts", asyn
   await as("admin", "post", "/api/products").send(base({ name: "Dal", brand: "Tata" }));
   const res = await as("admin", "get", "/api/products?status=incomplete");
   assert.deepEqual(res.body.items.map((p) => p.name), ["Dal"]);
-  assert.deepEqual(res.body.counts, { all: 2, available: 1, incomplete: 1, archived: 0, needsPrice: 1, fssai: 0 });
+  assert.deepEqual(res.body.counts, { all: 2, available: 1, incomplete: 1, archived: 0, needsPrice: 1, fssai: 0, noPhoto: 0 });
   assert.deepEqual((await as("admin", "get", "/api/products?q=tata")).body.items.map((p) => p.name), ["Dal"]);
   assert.equal((await as("cook", "get", "/api/products")).status, 403);
 });
@@ -237,7 +249,7 @@ test("food safety: a new product must say whether it is food; food needs a veg m
   assert.deepEqual([soap.kind, soap.form, soap.vegMark, soap.allergens, soap.storage, soap.fssaiMissing, soap.available], ["non_food", null, null, [], null, false, true]);
 
   // A product from before these facts existed: still available to kitchens, but counted under "fssai" until someone edits it.
-  const old = await StockItem.create({ name: "Old Dal", stockGroupId: ctx.group._id, unitId: ctx.kg._id, pricePerUnit: 50 });
+  const old = await StockItem.create({ name: "Old Dal", stockGroupId: ctx.group._id, unitId: ctx.kg._id, pricePerUnit: 50, imageUrl: "https://img.test/dal.jpg" });
   const listed = await as("root", "get", "/api/products?status=fssai");
   assert.deepEqual(listed.body.items.map((p) => [p.name, p.available, p.fssaiMissing]), [["Old Dal", true, true]]);
   assert.equal(listed.body.counts.fssai, 1);

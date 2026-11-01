@@ -2,8 +2,7 @@ import express from "express";
 import { notifyKitchens } from "../realtime.js";
 import mongoose from "mongoose";
 import multer from "multer";
-import { v2 as cloudinary } from "cloudinary";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
+import { storePhoto } from "../stock/photoStorage.js";
 import { authorize } from "../middleware/auth.js";
 import { StockItem } from "../models/InventoryModels.js";
 import { StockGroup } from "../models/InventoryModels.js";
@@ -25,15 +24,11 @@ productRoutes.use((req, res, next) => {
 const adminOnly = authorize(["admin"]);
 const superAdminOnly = authorize(["super_admin"]);
 
-const upload = multer({
-  storage: new CloudinaryStorage({
-    cloudinary,
-    params: { folder: "inventory_management", allowed_formats: ["jpg", "png", "jpeg", "webp"], transformation: [{ width: 500, height: 500, crop: "limit" }] }
-  })
-});
+// Product photos go where kitchen receiving photos go: Cloudinary when its keys are set, else the backend's uploads folder.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 const workbookUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
-const STATUSES = ["all", "available", "incomplete", "fssai", "archived"];
+const STATUSES = ["all", "available", "incomplete", "fssai", "nophoto", "archived"];
 
 const loadOne = async (id) => {
   if (!mongoose.isValidObjectId(id)) throw new CatalogError(404, "NOT_FOUND", "Product not found.");
@@ -121,9 +116,15 @@ productRoutes.post("/import", adminOnly, workbookUpload.single("file"), async (r
   } catch (error) { sendCatalogError(res, error); }
 });
 
-productRoutes.post("/upload-image", adminOnly, upload.single("image"), (req, res) => {
-  if (!req.file) return res.status(400).json({ message: "Choose an image to upload." });
-  return res.status(201).json({ imageUrl: req.file.path });
+productRoutes.post("/upload-image", adminOnly, upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) throw new CatalogError(400, "IMAGE_REQUIRED", "Choose an image to upload.");
+    const imageUrl = await storePhoto({ buffer: req.file.buffer, mimetype: req.file.mimetype, folder: "products", baseUrl: `${req.protocol}://${req.get("host")}` });
+    return res.status(201).json({ imageUrl });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ code: error.code || "INVALID_INPUT", message: error.message });
+    return sendCatalogError(res, error);
+  }
 });
 
 /** The master list. `status` narrows it; counts always cover the whole catalog so the tabs can show them. */
@@ -142,10 +143,12 @@ productRoutes.get("/", adminOnly, async (req, res) => {
       // Waiting on a super-admin: the only thing (or one of the things) missing is a price.
       needsPrice: all.filter((p) => !p.archived && p.missing.some((code) => code === "price" || code === "packPrice")).length,
       // Food-safety facts not filled in yet (older products, or a food product without its mark or storage).
-      fssai: all.filter((p) => p.fssaiMissing).length
+      fssai: all.filter((p) => p.fssaiMissing).length,
+      // Kitchen staff pick products by their picture; these have none yet.
+      noPhoto: all.filter((p) => !p.archived && !p.imageUrl).length
     };
     const matchesStatus = (p) => status === "all" || (status === "available" && p.available)
-      || (status === "incomplete" && !p.archived && !p.available) || (status === "fssai" && p.fssaiMissing) || (status === "archived" && p.archived);
+      || (status === "incomplete" && !p.archived && !p.available) || (status === "fssai" && p.fssaiMissing) || (status === "nophoto" && !p.archived && !p.imageUrl) || (status === "archived" && p.archived);
     const matchesQuery = (p) => !q || [p.name, p.brand, p.productCode, p.group?.name].some((text) => String(text || "").toLowerCase().includes(q));
     res.json({ items: all.filter((p) => matchesStatus(p) && matchesQuery(p)), counts });
   } catch (error) {
@@ -208,7 +211,7 @@ productRoutes.post("/pack-types/remove", adminOnly, async (req, res) => {
 
 productRoutes.post("/", adminOnly, async (req, res) => {
   try {
-    const update = await buildProductUpdate(req.body || {}, { canPrice: isSuperAdmin(req.user.role), userId: req.user.sub });
+    const update = await buildProductUpdate(req.body || {}, { canPrice: isSuperAdmin(req.user.role), userId: req.user.sub, requirePhoto: true });
     const created = await StockItem.create(update);
     res.status(201).json(await loadOne(created._id));
   } catch (error) {
@@ -221,7 +224,7 @@ productRoutes.put("/:id", adminOnly, async (req, res) => {
     if (!mongoose.isValidObjectId(req.params.id)) throw new CatalogError(404, "NOT_FOUND", "Product not found.");
     const existing = await StockItem.findById(req.params.id).lean();
     if (!existing) throw new CatalogError(404, "NOT_FOUND", "Product not found.");
-    const { productCode, ...update } = await buildProductUpdate(req.body || {}, { canPrice: isSuperAdmin(req.user.role), existing, userId: req.user.sub });
+    const { productCode, ...update } = await buildProductUpdate(req.body || {}, { canPrice: isSuperAdmin(req.user.role), existing, userId: req.user.sub, requirePhoto: true });
     // An empty code is removed rather than stored, so the unique index ignores it.
     await StockItem.updateOne({ _id: existing._id }, productCode
       ? { $set: { ...update, productCode } }

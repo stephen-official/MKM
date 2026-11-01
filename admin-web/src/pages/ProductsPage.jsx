@@ -17,6 +17,7 @@ const STATUS_TABS = [
   { value: "available", label: "Available" },
   { value: "incomplete", label: "Incomplete" },
   { value: "fssai", label: "FSSAI details" },
+  { value: "nophoto", label: "No photo" },
   { value: "archived", label: "Archived" }
 ];
 const REQUEST_TABS = [
@@ -206,7 +207,8 @@ export function ProductsPage({ view = "products" }) {
     }
   };
 
-  const counts = data?.counts || { all: 0, available: 0, incomplete: 0, fssai: 0, archived: 0 };
+  const raw = data?.counts || { all: 0, available: 0, incomplete: 0, fssai: 0, noPhoto: 0, archived: 0 };
+  const counts = { ...raw, nophoto: raw.noPhoto || 0 };
   const products = data?.items || [];
 
   // Cards like the kitchen's Stock screen: picture banner, name and status, then the facts, then the actions as icon chips.
@@ -234,7 +236,7 @@ export function ProductsPage({ view = "products" }) {
                 <div>
                   <p className="kg-label">{[p.itemType === "daily_use" ? "Daily use" : "Stock item", p.productCode].filter(Boolean).join(" · ")}</p>
                   <h2>{p.name}</h2>
-                  <div className="product-card__badges"><StatusBadge product={p} />{p.fssaiMissing && <Badge variant="warn" title="Open Edit and say whether it is food, veg or non-veg, and where it is kept">FSSAI details needed</Badge>}</div>
+                  <div className="product-card__badges"><StatusBadge product={p} />{p.fssaiMissing && <Badge variant="warn" title="Open Edit and say whether it is food, veg or non-veg, and where it is kept">FSSAI details needed</Badge>}{!p.archived && !p.imageUrl && <Badge variant="warn" title="Kitchen staff pick products by their picture. Open Edit and add one.">No photo</Badge>}</div>
                 </div>
                 <p className="product-card__price">
                   <strong>{p.pricePerUnit == null ? "Not set" : formatPrice(p.pricePerUnit)}</strong>
@@ -391,6 +393,7 @@ export function ProductsPage({ view = "products" }) {
           units={units}
           groups={groups}
           canPrice={canPrice}
+          onPackTypeRemoved={() => loadProducts()}
           knownPackNames={products.flatMap((p) => (p.packs || []).map((pack) => pack.name))}
           busy={busy}
           serverErrors={serverErrors}

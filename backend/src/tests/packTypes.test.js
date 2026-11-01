@@ -38,7 +38,7 @@ test("pack names are normalised to the preset spelling and length-limited", asyn
   assert.equal(canonicalPackName("jerry CAN"), "Jerry CAN");
   assert.equal(isPresetPackType("TUB"), true);
 
-  const body = (name) => ({ name: "Rice", stockGroupId: String(group._id), unitId: String(unit._id), pricePerUnit: 10, kind: "food", vegMark: "veg", storage: "room", soldInPacks: true, packs: [{ name, size: 5, price: 50 }] });
+  const body = (name) => ({ name: "Rice", stockGroupId: String(group._id), unitId: String(unit._id), pricePerUnit: 10, kind: "food", vegMark: "veg", storage: "room", imageUrl: "https://img.test/x.jpg", soldInPacks: true, packs: [{ name, size: 5, price: 50 }] });
   const saved = await api("post", "/api/products").send(body("bag"));
   assert.equal(saved.status, 201);
   assert.equal(saved.body.packs[0].name, "Bag");
