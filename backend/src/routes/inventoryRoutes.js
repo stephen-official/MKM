@@ -2,6 +2,15 @@ import express from "express";
 import ExcelJS from "exceljs";
 import { authorize } from "../middleware/auth.js";
 import { Godown, StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
+import { Consumption, Distribution, GodownStock, IndentRequest, Request, Transfer } from "../models/FlowModels.js";
+import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
+import { DeliveryTicket } from "../models/DeliveryTicketModel.js";
+import { NoUsageDay } from "../models/NoUsageDayModel.js";
+import { OpeningBalance } from "../models/OpeningBalanceModel.js";
+import { ProductRequest } from "../models/ProductRequestModel.js";
+import { StockBatch } from "../models/StockBatchModel.js";
+import { UsageCorrection } from "../models/UsageCorrectionModel.js";
+import { User } from "../models/User.js";
 import { isAvailable } from "../catalog/completeness.js";
 import { isKitchenRole } from "../utils/roles.js";
 
@@ -16,6 +25,32 @@ const modelMap = {
 
 const adminOnly = authorize(["admin"]);
 const adminOrUser = authorize(["admin", "user"]);
+
+/**
+ * Everything that can point at a godown. A godown with any of these cannot be deleted: the records would be left
+ * pointing at nothing (a kitchen user with no kitchen, stock rows and usage with no owner). Plain words for the admin.
+ */
+const GODOWN_USES = [
+  ["users", User, (id) => ({ godownId: id })],
+  ["stock", GodownStock, (id) => ({ godownId: id })],
+  ["stock batches", StockBatch, (id) => ({ godownId: id })],
+  ["opening balances", OpeningBalance, (id) => ({ godownId: id })],
+  ["usage records", Consumption, (id) => ({ godownId: id })],
+  ["no-usage days", NoUsageDay, (id) => ({ godownId: id })],
+  ["usage corrections", UsageCorrection, (id) => ({ godownId: id })],
+  ["usage requests", Request, (id) => ({ godownId: id })],
+  ["transfers", Transfer, (id) => ({ $or: [{ fromGodownId: id }, { toGodownId: id }] })],
+  ["distributions", Distribution, (id) => ({ "allocations.godownId": id })],
+  ["supply requests", IndentRequest, (id) => ({ godownId: id })],
+  ["orders", CollaborativePurchaseOrder, (id) => ({ $or: [{ createdByGodown: id }, { "contributions.godownId": id }] })],
+  ["delivery tickets", DeliveryTicket, (id) => ({ godownId: id })],
+  ["product requests", ProductRequest, (id) => ({ godownId: id })],
+];
+/** The names of the record kinds that still point at this godown, in GODOWN_USES order. */
+export const godownUses = async (id) => {
+  const hits = await Promise.all(GODOWN_USES.map(async ([label, Model, filter]) => ((await Model.exists(filter(id))) ? label : null)));
+  return hits.filter(Boolean);
+};
 
 /** Products are managed on the products page (price rules live there) and units are fixed presets. */
 const refuseCatalogWrites = (req, res, next) => {
@@ -171,6 +206,12 @@ inventoryRoutes.delete("/:type/:id", adminOnly, refuseCatalogWrites, async (req,
     if (!Model) return res.status(404).json({ message: "Invalid type" });
     if (req.params.type === "stock-groups" && await StockItem.exists({ stockGroupId: req.params.id })) {
       return res.status(409).json({ code: "GROUP_IN_USE", message: "Products still belong to this group. Move them to another group first." });
+    }
+    if (req.params.type === "godowns") {
+      const uses = await godownUses(req.params.id);
+      if (uses.length) {
+        return res.status(409).json({ code: "GODOWN_IN_USE", uses, message: `This godown still has ${uses.join(", ")} pointing at it. It cannot be deleted while any of those exist.` });
+      }
     }
 
     await Model.findByIdAndDelete(req.params.id);
