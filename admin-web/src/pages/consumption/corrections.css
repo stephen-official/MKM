@@ -2,7 +2,7 @@
 .corrections-page { padding: 20px 24px; overflow-y: auto; }
 .corrections { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; }
 .corrections-empty { padding: 28px 20px; }
-.correction { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; color: var(--ink-2); }
+.correction { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; color: var(--ink-2); cursor: pointer; }
 .correction--rejected { color: var(--muted-2); }
 .correction__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .correction__top > div { min-width: 0; display: grid; gap: 4px; }

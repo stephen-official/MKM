@@ -117,13 +117,14 @@ export const CorrectionsPanel = ({ onCount, onApplied }) => {
           const status = STATUS[r.status] || STATUS.pending;
           const what = r.kind === "reopen_day" ? "Record usage" : (r.items || []).length === 0 ? "Cancel usage record" : "Change usage";
           return (
-            <li key={r._id} className={`kg-glass kg-lift correction correction--${r.status}${r.status === "pending" ? " kg-glass--cool" : ""}`}>
+            // The whole card opens the ticket; the chevron stays as the keyboard-reachable control.
+            <li key={r._id} className={`kg-glass kg-lift correction correction--${r.status}${r.status === "pending" ? " kg-glass--cool" : ""}`} onClick={() => setOpen(r)}>
               <div className="correction__top">
                 <div>
                   <p className="kg-label">{r.kitchen?.name || "Kitchen"} · {what}</p>
                   <h2>{longDay(r.date)}</h2>
                 </div>
-                <button type="button" className="kg-chip correction__open" onClick={() => setOpen(r)} aria-label={`Open the ticket for ${longDay(r.date)}`}>
+                <button type="button" className="kg-chip correction__open" onClick={(event) => { event.stopPropagation(); setOpen(r); }} aria-label={`Open the ticket for ${longDay(r.date)}`}>
                   <ArrowUpRight size={18} strokeWidth={1.8} aria-hidden="true" />
                 </button>
               </div>
