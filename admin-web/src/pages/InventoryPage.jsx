@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { Search, FileSpreadsheet, Plus, Trash2, Edit3, Layers, MapPin, Ruler, Check, X } from "lucide-react";
+import { Search, FileSpreadsheet, Plus, Trash2, Edit3, Layers, MapPin, Ruler, Check, X, Loader2 } from "lucide-react";
 import { api } from "../api.js";
 import { useToast } from "../useToast.js";
-import {
-  PageHeader, Button, Badge, Field, EmptyState, ErrorState, LoadingState,
-  DataTable, Tabs, DetailPanel
-} from "../components/ui/index.jsx";
+import { PageHeader, Button, EmptyState, ErrorState, Tabs } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
+import "./InventorySetup.css";
 
 // Products have their own page (ProductsPage.jsx); units are a fixed preset list, shown here read-only.
 const TABS = [
-  { value: "stock-groups", label: "Product Groups", singular: "Product Group", icon: <Layers size={14} /> },
-  { value: "units", label: "Units", singular: "Unit", icon: <Ruler size={14} />, readOnly: true },
-  { value: "godowns", label: "Godowns", singular: "Godown", icon: <MapPin size={14} /> }
+  { value: "stock-groups", label: "Product groups", singular: "Product group", icon: <Layers size={14} />, hint: "Every product belongs to one group; the kitchen app arranges its stock list by them." },
+  { value: "units", label: "Units", singular: "Unit", icon: <Ruler size={14} />, readOnly: true, hint: "Products may only use these preset units, and kitchens record quantities in them with no conversion." },
+  { value: "godowns", label: "Godowns", singular: "Godown", icon: <MapPin size={14} />, hint: "The kitchens and the central store. A godown cannot be deleted while anything still points at it." }
 ];
 
 // Keep in step with backend/src/catalog/units.js.
@@ -123,8 +121,10 @@ export const InventoryPage = () => {
 
   const removeRow = async (row) => {
     const ok = await confirm({
-      title: `Delete ${currentTab.singular.toLowerCase()}`,
-      message: `Delete "${row.name}"? Records that already reference it may stop showing correctly. This cannot be undone.`,
+      title: `Delete ${currentTab.singular.toLowerCase()} “${row.name}”?`,
+      message: tab === "godowns"
+        ? "Only a godown nothing points at can be deleted. This cannot be undone."
+        : "Only a group with no products in it can be deleted. This cannot be undone.",
       confirmLabel: "Delete",
       variant: "danger"
     });
@@ -180,127 +180,94 @@ export const InventoryPage = () => {
 
   let body;
   if (loading && rows.length === 0) {
-    body = <LoadingState label="Loading…" />;
+    body = <div className="kg-glass setup-state" role="status"><Loader2 size={18} className="animate-spin" aria-hidden="true" /> Loading…</div>;
   } else if (loadError) {
     body = <ErrorState message={loadError} onRetry={load} />;
   } else if (rows.length === 0) {
     body = (
-      <EmptyState title={debouncedQ ? `No ${currentTab.label.toLowerCase()} match "${debouncedQ}"` : `No ${currentTab.label.toLowerCase()} yet`}>
-        {debouncedQ ? "Try a different search." : currentTab.readOnly ? "Preset units appear once the Products page has been opened." : `Use the form above to add your first ${currentTab.singular.toLowerCase()}.`}
+      <EmptyState className="kg-glass setup-state" title={debouncedQ ? `No ${currentTab.label.toLowerCase()} match “${debouncedQ}”` : `No ${currentTab.label.toLowerCase()} yet`}>
+        {debouncedQ ? "Try a different search." : currentTab.readOnly ? "Preset units appear once the Products page has been opened." : `Use the box above to add the first ${currentTab.singular.toLowerCase()}.`}
       </EmptyState>
     );
   } else {
     body = (
       <>
-        <DataTable>
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              {tab === "units" && <th scope="col">Status</th>}
-              {!currentTab.readOnly && <th scope="col">Actions</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((row) => {
-              const editing = editingId === row._id;
-              const busy = savingId === row._id || deletingId === row._id;
-              return (
-                <tr key={row._id}>
-                  <td>
+        <ul className="setup-rows" aria-label={currentTab.label}>
+          {visibleRows.map((row) => {
+            const editing = editingId === row._id;
+            const busy = savingId === row._id || deletingId === row._id;
+            const preset = tab === "units" && PRESET_SYMBOLS.has(row.symbol);
+            return (
+              <li key={row._id} className={`kg-glass setup-row${editing ? " setup-row--editing" : ""}`}>
+                {editing ? (
+                  <input className="setup-row__input" autoFocus aria-label="Name" value={editName} onChange={(e) => setEditName(e.target.value)} onKeyDown={(e) => onEditKeyDown(e, row._id)} />
+                ) : (
+                  <div className="setup-row__text">
+                    <strong>{row.name}</strong>
+                    {tab === "units" && row.symbol && <small>{row.symbol}</small>}
+                  </div>
+                )}
+                {tab === "units" && (
+                  preset
+                    ? <span className="kg-pill kg-pill--ok">Preset</span>
+                    : <span className="kg-pill kg-pill--soon" title="Products using it are hidden from kitchens until moved to a preset unit">Old unit, not offered</span>
+                )}
+                {!currentTab.readOnly && (
+                  <div className="setup-row__actions">
                     {editing ? (
-                      <input autoFocus aria-label="Name" value={editName} onChange={(e) => setEditName(e.target.value)} onKeyDown={(e) => onEditKeyDown(e, row._id)} />
+                      <>
+                        <button type="button" className="kg-btn setup-row__save" disabled={busy} onClick={() => saveEdit(row._id)} aria-label={`Save ${row.name}`}>
+                          <Check size={15} aria-hidden="true" /> {savingId === row._id ? "Saving…" : "Save"}
+                        </button>
+                        <button type="button" className="kg-chip setup-row__icon" disabled={busy} onClick={cancelEdit} aria-label="Cancel editing" title="Cancel"><X size={16} aria-hidden="true" /></button>
+                      </>
                     ) : (
-                      <strong>{row.name}{tab === "units" && row.symbol ? ` (${row.symbol})` : ""}</strong>
+                      <button type="button" className="kg-chip setup-row__icon" disabled={busy} onClick={() => startEdit(row)} aria-label={`Edit ${row.name}`} title="Edit"><Edit3 size={16} aria-hidden="true" /></button>
                     )}
-                    <div className="page-subtitle">ID: {String(row._id).slice(-6).toUpperCase()}</div>
-                  </td>
-                  {tab === "units" && (
-                    <td>
-                      {PRESET_SYMBOLS.has(row.symbol)
-                        ? <Badge variant="success">Preset</Badge>
-                        : <Badge variant="warn" title="Products using it are hidden from kitchens until moved to a preset unit">Old unit, not offered</Badge>}
-                    </td>
-                  )}
-                  {!currentTab.readOnly && (
-                    <td>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        {editing ? (
-                          <>
-                            <Button variant="success" size="sm" disabled={busy} onClick={() => saveEdit(row._id)} aria-label={`Save ${row.name}`} title="Save">
-                              <Check size={14} /> {savingId === row._id ? "Saving…" : "Save"}
-                            </Button>
-                            <Button variant="ghost" size="sm" disabled={busy} onClick={cancelEdit} aria-label="Cancel editing" title="Cancel">
-                              <X size={14} />
-                            </Button>
-                          </>
-                        ) : (
-                          <Button variant="ghost" size="sm" disabled={busy} onClick={() => startEdit(row)} aria-label={`Edit ${row.name}`} title="Edit">
-                            <Edit3 size={14} />
-                          </Button>
-                        )}
-                        <Button variant="danger" size="sm" disabled={busy} onClick={() => removeRow(row)} aria-label={`Delete ${row.name}`} title="Delete">
-                          <Trash2 size={14} />
-                        </Button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </DataTable>
+                    <button type="button" className="kg-chip setup-row__icon setup-row__icon--danger" disabled={busy} onClick={() => removeRow(row)} aria-label={`Delete ${row.name}`} title="Delete"><Trash2 size={16} aria-hidden="true" /></button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
         {!showAll && rows.length > ROW_LIMIT && (
-          <div style={{ display: "flex", justifyContent: "center", paddingTop: 12 }}>
-            <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>Show all {rows.length}</Button>
-          </div>
+          <div className="setup-more"><button type="button" className="kg-chip" onClick={() => setShowAll(true)}>Show all {rows.length}</button></div>
         )}
       </>
     );
   }
 
-  const head = currentTab.readOnly ? (
-    <p className="page-subtitle" style={{ margin: 0 }}>
-      Products may only use these preset units, and kitchens record quantities in them with no conversion. Products are added and edited on the Products page.
-    </p>
-  ) : (
-    <form onSubmit={addRow} style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-end", flex: 1 }}>
-      <Field label="Name">
-        <input placeholder="Enter name..." value={name} onChange={(e) => setName(e.target.value)} aria-invalid={duplicateName || undefined} style={{ minWidth: 200 }} />
-        {duplicateName && <span className="page-subtitle" role="status">Already exists</span>}
-      </Field>
-      <Button type="submit" variant="dark" disabled={adding}>
-        <Plus size={16} /> {adding ? "Adding…" : `Add ${currentTab.singular}`}
-      </Button>
-    </form>
-  );
-
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div className="setup-shell">
       <PageHeader
-        title="Inventory Setup"
-        subtitle="Manage product groups, preset units and godown locations."
-        actions={
-          <>
-            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-              <Search size={14} aria-hidden="true" style={{ position: "absolute", left: 10, color: "var(--muted-soft)" }} />
-              <input
-                type="search" aria-label={`Search ${currentTab.label.toLowerCase()}`} placeholder="Search..."
-                value={q} onChange={(e) => setQ(e.target.value)} style={{ paddingLeft: 30, width: 180 }}
-              />
-            </div>
-            <Button variant="success" size="sm" onClick={handleExport} disabled={loading || rows.length === 0}>
-              <FileSpreadsheet size={14} /> Export
-            </Button>
-          </>
-        }
-      >
-        <Tabs label="Inventory categories" items={TABS} value={tab} onChange={switchTab} />
-      </PageHeader>
-
-      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "20px 32px 28px" }}>
-        <DetailPanel head={head}>
-          <div style={{ paddingTop: 16 }}>{body}</div>
-        </DetailPanel>
+        title="Groups & godowns"
+        subtitle="Product groups, the preset units, and the godowns (kitchens and the central store)."
+        actions={(
+          <Button variant="ghost" size="sm" onClick={handleExport} disabled={loading || rows.length === 0}>
+            <FileSpreadsheet size={14} aria-hidden="true" /> Export
+          </Button>
+        )}
+      />
+      <div className="setup-page">
+        <Tabs label="Setup sections" items={TABS} value={tab} onChange={switchTab} />
+        <p className="setup-hint">{currentTab.hint}</p>
+        <label className="ks-search kg-float">
+          <Search size={16} aria-hidden="true" />
+          <input type="search" aria-label={`Search ${currentTab.label.toLowerCase()}`} placeholder={`Search ${currentTab.label.toLowerCase()}`} value={q} onChange={(e) => setQ(e.target.value)} />
+          {q && <button type="button" aria-label="Clear search" onClick={() => setQ("")}><X size={16} aria-hidden="true" /></button>}
+        </label>
+        {!currentTab.readOnly && (
+          <form className="kg-glass setup-add" onSubmit={addRow}>
+            <input className="setup-add__input" placeholder={`New ${currentTab.singular.toLowerCase()} name`} aria-label={`New ${currentTab.singular.toLowerCase()} name`} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={duplicateName || undefined} />
+            {duplicateName && <span className="setup-add__dup" role="status">Already exists</span>}
+            <button type="submit" className="kg-btn" disabled={adding || !name.trim() || duplicateName}>
+              <Plus size={16} aria-hidden="true" /> {adding ? "Adding…" : `Add ${currentTab.singular.toLowerCase()}`}
+            </button>
+          </form>
+        )}
+        <p className="setup-results" aria-live="polite"><strong>{rows.length}</strong> {rows.length === 1 ? currentTab.singular.toLowerCase() : currentTab.label.toLowerCase()}{debouncedQ ? ` matching “${debouncedQ}”` : ""}</p>
+        {body}
       </div>
       {dialog}
     </div>

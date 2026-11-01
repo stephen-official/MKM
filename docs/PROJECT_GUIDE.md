@@ -186,7 +186,7 @@ New endpoints return `{ code: "SCREAMING_SNAKE_CASE", message, ...details }`. Ol
 | Page | Purpose |
 |---|---|
 | Products | The master product list as glass cards like the kitchen Stock screen (picture banner, facts, Edit/Archive chips), a floating search pill and status filter chips; add/edit popup (unit, price, packs, threshold, type, brand, code), completeness status, archive. Kitchen product requests are their own Catalog tab (`/catalog/requests`) |
-| Inventory Setup | Product groups and godowns; preset units (read-only) |
+| Groups & godowns (`InventoryPage.jsx`, Catalog tab "setup") | Product groups, preset units (read-only) and godowns as glass rows with inline rename and delete. A group with products and a godown anything points at (users, stock, usage, transfers, orders, requests…) cannot be deleted (`GROUP_IN_USE` / `GODOWN_IN_USE`, the reply names what is in the way) |
 | Indent | Review kitchen indent requests; create indents; mark purchased; logs |
 | Purchase Orders | Receive goods against purchased indents (Intake) and history; **Shared orders** tab (approve, supplier + invoice + bulk expiry, mark ordered, dispatch); **Problems** tab (`pages/problems/`, settle delivery problems); **Suppliers** tab (`pages/suppliers/`) |
 | Stock Distribution | Allocate received PO stock to kitchens (splits, leftovers) |
