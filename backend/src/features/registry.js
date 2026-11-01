@@ -156,9 +156,10 @@ export const ROUTE_RULES = Object.freeze([
   feature("DELETE", "/api/consumptions/:id", ["consumption"], "mutation"),
   feature("GET", "/api/usage-days", ["consumption"], "read", "kitchen"),
   feature("POST", "/api/usage-days/none", ["consumption"], "mutation", "kitchen"),
-  // Corrections: a kitchen reports a mistake, an admin approves it (today: reopening a "no usage" day).
+  // Corrections: a kitchen asks to change what it recorded (reopen a "no usage" day with usage, or edit a record); an admin approves it.
   feature("POST", "/api/usage-corrections", ["consumption"], "mutation", "kitchen"),
   feature("GET", "/api/usage-corrections/me", ["consumption"], "read", "kitchen"),
+  feature("DELETE", "/api/usage-corrections/:id", ["consumption"], "mutation", "kitchen"),
   feature("GET", "/api/usage-corrections", ["consumption"], "read"),
   feature("POST", "/api/usage-corrections/:id/approve", ["consumption"], "mutation"),
   feature("POST", "/api/usage-corrections/:id/reject", ["consumption"], "mutation"),
