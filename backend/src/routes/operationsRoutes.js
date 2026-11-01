@@ -151,17 +151,8 @@ const priceLines = async (godownId, lines, keep = new Map()) => {
   });
 };
 
-const handleStockProcessing = async (req, res) => {
-  const session = await mongoose.startSession();
-  try {
-    const godownId = isKitchenRole(req.user.role) ? req.user.godownId : req.body.godownId;
-    // A day the kitchen marked "no usage" stays closed until an admin approves a correction; nothing is recorded on it.
-    if (godownId && req.body.date && await NoUsageDay.exists({ godownId, date: req.body.date })) {
-      return res.status(409).json({ code: "DAY_CLOSED", error: "This day is marked as no usage. Ask the admin to reopen it before recording." });
-    }
-    const result = await session.withTransaction(async () => {
-      const { items } = req.body;
-
+/** Records usage inside `session`: deducts stock (FEFO), raises low-stock alerts and saves the record. Shared with correction approvals. */
+export const recordConsumption = async ({ godownId, userId, date, items, session }) => {
       if (!godownId) throw new Error("No godown associated with this request.");
 
       const orderItems = [];
@@ -220,13 +211,23 @@ const handleStockProcessing = async (req, res) => {
 
       const consumption = await Consumption.create([{
         godownId,
-        userId: req.user.sub, 
-        date: req.body.date,
+        userId,
+        date,
         items: orderItems
       }], { session });
 
       return consumption[0];
-    });
+};
+
+const handleStockProcessing = async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    const godownId = isKitchenRole(req.user.role) ? req.user.godownId : req.body.godownId;
+    // A day the kitchen marked "no usage" stays closed until an admin approves a correction; nothing is recorded on it.
+    if (godownId && req.body.date && await NoUsageDay.exists({ godownId, date: req.body.date })) {
+      return res.status(409).json({ code: "DAY_CLOSED", error: "This day is marked as no usage. Ask the admin to reopen it before recording." });
+    }
+    const result = await session.withTransaction(() => recordConsumption({ godownId, userId: req.user.sub, date: req.body.date, items: req.body.items, session }));
 
     const populatedResult = await Consumption.findById(result._id)
       .populate("userId", "name")
@@ -260,34 +261,8 @@ operationsRoutes.post("/consumptions", authorize(["user", "admin"]), requireAvai
 // OLD 20 -> DELETE  => +20 returned to GodownStock
 // ============================================================
 
-operationsRoutes.patch(
-  "/consumptions/:id",
-  authorize(["admin"]),
-  async (req, res) => {
-    const session = await mongoose.startSession();
-
-    try {
-      await session.withTransaction(async () => {
-        const { id } = req.params;
-        const { items } = req.body;
-
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-          throw new Error("Invalid consumption ID");
-        }
-
-        if (!Array.isArray(items)) {
-          throw new Error("Items must be an array");
-        }
-
-        // ----------------------------------------------------
-        // Find original consumption
-        // ----------------------------------------------------
-        const consumption = await Consumption.findById(id).session(session);
-
-        if (!consumption) {
-          throw new Error("Consumption record not found");
-        }
-
+/** Replaces a usage record's lines inside `session` and moves stock by the difference. Shared with correction approvals. */
+export const applyConsumptionEdit = async ({ consumption, items, userId, session }) => {
         const godownId = consumption.godownId;
 
         // ----------------------------------------------------
@@ -513,7 +488,7 @@ operationsRoutes.patch(
             valuation = { unitPriceAtIssue: priced.unitPriceAtIssue, amountAtIssue: priced.amountAtIssue };
             const returnBatch = await createStockBatch({
               godownId, stockItemId: item.stockItemId, quantity: Math.abs(quantity),
-              unitPrice: valuation.unitPriceAtIssue, sourceType: "return", createdBy: req.user.sub, session,
+              unitPrice: valuation.unitPriceAtIssue, sourceType: "return", createdBy: userId, session,
             });
             item.returnBatchId = returnBatch._id;
           }
@@ -527,6 +502,37 @@ operationsRoutes.patch(
         consumption.items = replacementLines;
 
         await consumption.save({ session });
+};
+
+operationsRoutes.patch(
+  "/consumptions/:id",
+  authorize(["admin"]),
+  async (req, res) => {
+    const session = await mongoose.startSession();
+
+    try {
+      await session.withTransaction(async () => {
+        const { id } = req.params;
+        const { items } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+          throw new Error("Invalid consumption ID");
+        }
+
+        if (!Array.isArray(items)) {
+          throw new Error("Items must be an array");
+        }
+
+        // ----------------------------------------------------
+        // Find original consumption
+        // ----------------------------------------------------
+        const consumption = await Consumption.findById(id).session(session);
+
+        if (!consumption) {
+          throw new Error("Consumption record not found");
+        }
+
+        await applyConsumptionEdit({ consumption, items, userId: req.user.sub, session });
       });
 
       // ------------------------------------------------------
@@ -576,32 +582,8 @@ operationsRoutes.patch(
 // quantities back to GodownStock.
 // ============================================================
 
-operationsRoutes.delete(
-  "/consumptions/:id",
-  authorize(["admin"]),
-  async (req, res) => {
-    const session = await mongoose.startSession();
-
-    try {
-      let deletedConsumption;
-
-      await session.withTransaction(async () => {
-        const { id } = req.params;
-
-        if (!mongoose.Types.ObjectId.isValid(id)) {
-          throw new Error("Invalid consumption ID");
-        }
-
-        // ----------------------------------------------------
-        // Find consumption
-        // ----------------------------------------------------
-        const consumption = await Consumption.findById(id)
-          .session(session);
-
-        if (!consumption) {
-          throw new Error("Consumption record not found");
-        }
-
+/** Deletes a usage record inside `session`, returning every consumed quantity to stock. Shared with correction approvals. */
+export const removeConsumption = async ({ consumption, session }) => {
         const godownId = consumption.godownId;
 
         // ----------------------------------------------------
@@ -664,7 +646,7 @@ operationsRoutes.delete(
         // ----------------------------------------------------
         // Delete consumption
         // ----------------------------------------------------
-        deletedConsumption = {
+        const deleted = {
           stockRestored: linesToReturn.length > 0,
           _id: consumption._id,
           godownId: consumption.godownId,
@@ -674,6 +656,36 @@ operationsRoutes.delete(
         await Consumption.deleteOne({
           _id: consumption._id
         }).session(session);
+        return deleted;
+};
+
+operationsRoutes.delete(
+  "/consumptions/:id",
+  authorize(["admin"]),
+  async (req, res) => {
+    const session = await mongoose.startSession();
+
+    try {
+      let deletedConsumption;
+
+      await session.withTransaction(async () => {
+        const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+          throw new Error("Invalid consumption ID");
+        }
+
+        // ----------------------------------------------------
+        // Find consumption
+        // ----------------------------------------------------
+        const consumption = await Consumption.findById(id)
+          .session(session);
+
+        if (!consumption) {
+          throw new Error("Consumption record not found");
+        }
+
+        deletedConsumption = await removeConsumption({ consumption, session });
       });
 
       // ------------------------------------------------------
