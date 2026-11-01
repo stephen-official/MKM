@@ -89,7 +89,7 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
   ) : <span className="product-locked"><Lock size={13} aria-hidden="true" />{formatPrice(Number(value) || null)}</span>;
 
   return (
-    <Modal title={title} onClose={() => !busy && onCancel()} wide actions={(
+    <Modal title={title} onClose={() => !busy && onCancel()} wide dismissible={false} closeButton actions={(
       <>
         <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
         <Button type="submit" form="product-form" disabled={busy || uploading}>{busy ? "Saving…" : submitLabel}</Button>
@@ -100,7 +100,7 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
 
         <section className="product-form__section" aria-labelledby="product-basics">
           <h3 id="product-basics">Product</h3>
-          <div className="product-form__grid">
+          <div className="product-form__grid product-form__grid--three">
             <Field label="Name" className="product-form__wide">
               <input value={form.name} onChange={(e) => set({ name: e.target.value })} maxLength={120} aria-invalid={Boolean(errors.name) || undefined} autoFocus />
               {error("name")}
@@ -130,35 +130,38 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
 
         <section className="product-form__section" aria-labelledby="product-safety">
           <h3 id="product-safety">Food safety (FSSAI)</h3>
-          <Field label="Is this food?">
-            <Choices label="Is this food?" options={PRODUCT_KINDS} value={form.kind} invalid={Boolean(errors.kind)} onChange={(kind) => set({ kind })} />
-            {error("kind")}
-          </Field>
-          {form.kind === "food" && (
-            <div className="product-form__grid">
-              <Field label="Veg or non-veg">
-                <Choices label="Veg or non-veg" options={VEG_MARKS} value={form.vegMark} invalid={Boolean(errors.vegMark)} onChange={(vegMark) => set({ vegMark })} />
-                {error("vegMark")}
-              </Field>
-              <Field label="Kept in">
-                <Choices label="Kept in" options={STORAGE_OPTIONS} value={form.storage} invalid={Boolean(errors.storage)} onChange={(storage) => set({ storage })} />
-                {error("storage")}
-              </Field>
+          <div className="product-form__grid">
+            <Field label="Is this food?">
+              <Choices label="Is this food?" options={PRODUCT_KINDS} value={form.kind} invalid={Boolean(errors.kind)} onChange={(kind) => set({ kind })} />
+              {error("kind")}
+            </Field>
+            {form.kind === "food" ? (
               <Field label="How it arrives (optional)">
                 <Choices label="How it arrives" options={PRODUCT_FORMS} value={form.form} onChange={(next) => set({ form: form.form === next ? "" : next })} />
                 {error("form")}
               </Field>
-              <Field label="Contains allergens (tick all that apply)" className="product-form__wide">
-                <Choices label="Allergens" multiple options={ALLERGENS} value={form.allergens} onChange={(allergens) => set({ allergens })} />
-                {error("allergens")}
-              </Field>
-            </div>
-          )}
-          {form.kind === "non_food" && <p className="product-form__hint">Not food, so no FSSAI details are needed.</p>}
-          <label className="checkbox">
-            <input type="checkbox" checked={form.expiryRequired} onChange={(e) => set({ expiryRequired: e.target.checked })} />
-            <span>Kitchens must enter an expiry date when receiving<small className="product-form__hint">Untick for items with no expiry date, such as salt or cleaning materials.</small></span>
-          </label>
+            ) : <div className="field" aria-hidden="true"><span className="field__label">&nbsp;</span>{form.kind === "non_food" && <p className="product-form__hint product-form__hint--inline">Not food, so no FSSAI details are needed.</p>}</div>}
+            {form.kind === "food" && (
+              <>
+                <Field label="Veg or non-veg">
+                  <Choices label="Veg or non-veg" options={VEG_MARKS} value={form.vegMark} invalid={Boolean(errors.vegMark)} onChange={(vegMark) => set({ vegMark })} />
+                  {error("vegMark")}
+                </Field>
+                <Field label="Kept in">
+                  <Choices label="Kept in" options={STORAGE_OPTIONS} value={form.storage} invalid={Boolean(errors.storage)} onChange={(storage) => set({ storage })} />
+                  {error("storage")}
+                </Field>
+                <Field label="Contains allergens (tick all that apply)" className="product-form__wide">
+                  <Choices label="Allergens" multiple options={ALLERGENS} value={form.allergens} onChange={(allergens) => set({ allergens })} />
+                  {error("allergens")}
+                </Field>
+              </>
+            )}
+            <label className="checkbox product-form__wide">
+              <input type="checkbox" checked={form.expiryRequired} onChange={(e) => set({ expiryRequired: e.target.checked })} />
+              <span>Kitchens must enter an expiry date when receiving<small className="product-form__hint">Untick for items with no expiry date, such as salt or cleaning materials.</small></span>
+            </label>
+          </div>
         </section>
 
         <section className="product-form__section" aria-labelledby="product-packs">
@@ -212,7 +215,10 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
         </section>
 
         <details className="product-form__more" open={hasMoreDetails(initial) || undefined}>
-          <summary>More details<small>Photo, brand, product code, low-stock warning, daily-use item</small></summary>
+          <summary>
+            <span className="product-form__more-mark" aria-hidden="true" />
+            <span className="product-form__more-text">More details<small>Photo, brand, product code, low-stock warning, daily-use item</small></span>
+          </summary>
           <div className="product-form__basics">
             <div className="product-photo">
               <div className="product-photo__frame">

@@ -67,11 +67,15 @@
 .choices--invalid .choice { box-shadow: 0 0 0 1px var(--st-expired-line), inset 0 1px 0 #fff; }
 /* The fold for details most products never need. */
 .product-form__more { padding-top: 20px; border-top: 1px solid var(--border); }
-.product-form__more > summary { display: flex; flex-direction: column; gap: 2px; color: var(--ink-2); font-size: 14px; font-weight: 500; cursor: pointer; list-style: none; }
+.product-form__more > summary { display: flex; align-items: center; gap: 12px; color: var(--ink-2); font-size: 14px; font-weight: 500; cursor: pointer; list-style: none; }
 .product-form__more > summary::-webkit-details-marker { display: none; }
-.product-form__more > summary::before { content: "+"; float: left; margin-right: 8px; color: var(--muted-2); }
-.product-form__more[open] > summary::before { content: "–"; }
-.product-form__more > summary small { color: var(--muted-2); font-size: 12px; font-weight: 300; }
+.product-form__more-mark { display: grid; flex: none; width: 32px; height: 32px; place-items: center; color: var(--muted-2); background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: 50%; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
+.product-form__more-mark::before { content: "+"; font-size: 18px; line-height: 1; }
+.product-form__more[open] .product-form__more-mark::before { content: "–"; }
+.product-form__more-text { display: flex; flex-direction: column; gap: 2px; }
+.product-form__more-text small { color: var(--muted-2); font-size: 12px; font-weight: 300; }
+.product-form__hint--inline { margin-top: 10px; }
+.product-form__grid > .checkbox { margin-top: 2px; }
 .product-form__more > div { margin-top: 16px; }
 .product-pack__other { margin-top: 6px; }
 .product-packs { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 14px; }

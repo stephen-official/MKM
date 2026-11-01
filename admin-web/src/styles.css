@@ -241,6 +241,10 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 }
 @keyframes modal-rise { from { transform: translateY(10px); opacity: 0; } }
 .modal--wide { max-width: 760px; }
+.modal-head { display: flex; align-items: center; gap: 12px; margin: 0 0 16px; }
+.modal-head .modal-title { margin: 0; }
+.modal-close { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; padding: 0; color: var(--ink-2); background: var(--btn-glass-bg); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px var(--btn-glass-line), inset 0 1px 0 #fff; cursor: pointer; }
+.modal-close:hover, .modal-close:focus-visible { color: var(--blue-deep); outline: none; box-shadow: 0 0 0 1px var(--btn-glass-primary-line), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
 .modal-title { margin: 0 0 16px; font-size: 20px; font-weight: 300; letter-spacing: -.01em; }
 .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
 .confirm-message { font-size: 14px; line-height: 1.6; color: var(--muted-2); }
