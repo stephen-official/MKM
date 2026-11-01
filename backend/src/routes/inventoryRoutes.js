@@ -12,6 +12,7 @@ import { StockBatch } from "../models/StockBatchModel.js";
 import { UsageCorrection } from "../models/UsageCorrectionModel.js";
 import { User } from "../models/User.js";
 import { isAvailable } from "../catalog/completeness.js";
+import { ensureOtherGroup, isOtherGroup, sortGroups } from "../catalog/groups.js";
 import { isKitchenRole } from "../utils/roles.js";
 
 export const inventoryRoutes = express.Router();
@@ -131,7 +132,9 @@ const middleware =
       if (req.params.type === "units")
         query = query.populate("stockGroupId");
 
+      if (req.params.type === "stock-groups") await ensureOtherGroup();
       let rows = await query.lean();
+      if (req.params.type === "stock-groups") rows = sortGroups(rows);
       if (req.params.type === "stock-items") {
         // Admin pages use this list to name past records, so they get every product (with `archived`);
         // kitchens only ever see products that are complete and not archived.
@@ -181,6 +184,11 @@ inventoryRoutes.put(
       if (!Model) return res.status(404).json({ message: "Invalid type" });
 
       const updateData = { ...req.body };
+      if (type === "stock-groups") {
+        const current = await Model.findById(req.params.id).lean();
+        if (current && isOtherGroup(current.name)) return res.status(409).json({ code: "GROUP_BUILT_IN", message: "“Other” is built in and keeps its name." });
+        if (isOtherGroup(updateData.name)) return res.status(409).json({ code: "GROUP_BUILT_IN", message: "“Other” is already there as a built-in group." });
+      }
 
       const row = await Model.findByIdAndUpdate(
         req.params.id,
@@ -204,6 +212,10 @@ inventoryRoutes.delete("/:type/:id", adminOnly, refuseCatalogWrites, async (req,
   try {
     const Model = modelMap[req.params.type];
     if (!Model) return res.status(404).json({ message: "Invalid type" });
+    if (req.params.type === "stock-groups") {
+      const current = await StockGroup.findById(req.params.id).lean();
+      if (current && isOtherGroup(current.name)) return res.status(409).json({ code: "GROUP_BUILT_IN", message: "“Other” is built in and cannot be deleted." });
+    }
     if (req.params.type === "stock-groups" && await StockItem.exists({ stockGroupId: req.params.id })) {
       return res.status(409).json({ code: "GROUP_IN_USE", message: "Products still belong to this group. Move them to another group first." });
     }

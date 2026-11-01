@@ -248,3 +248,14 @@ test("food safety: a new product must say whether it is food; food needs a veg m
   assert.equal(fixed.body.fssaiMissing, false);
   assert.equal((await as("root", "put", `/api/products/${old._id}`).send({ name: "Old Dal 2" })).body.kind, "food");
 });
+
+test("the Other group is always there, listed last, and can be neither renamed nor deleted", async () => {
+  await StockGroup.create({ name: "Zebra" });
+  const listed = await as("admin", "get", "/api/inventory/stock-groups");
+  assert.deepEqual(listed.body.map((g) => g.name), ["Grains", "Zebra", "Other"]);
+  const other = listed.body.find((g) => g.name === "Other");
+  assert.equal((await as("admin", "put", `/api/inventory/stock-groups/${other._id}`).send({ name: "Misc" })).body.code, "GROUP_BUILT_IN");
+  assert.equal((await as("admin", "delete", `/api/inventory/stock-groups/${other._id}`)).body.code, "GROUP_BUILT_IN");
+  assert.equal((await as("admin", "put", `/api/inventory/stock-groups/${ctx.group._id}`).send({ name: "other" })).body.code, "GROUP_BUILT_IN");
+  assert.equal((await as("admin", "get", "/api/inventory/stock-groups")).body.length, 3);
+});

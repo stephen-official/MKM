@@ -10,7 +10,7 @@ import "./InventorySetup.css";
 
 // Products have their own page (ProductsPage.jsx); units are a fixed preset list, shown here read-only.
 const TABS = [
-  { value: "stock-groups", label: "Product groups", singular: "Product group", icon: <Layers size={14} />, hint: "Every product belongs to one group; the kitchen app arranges its stock list by them." },
+  { value: "stock-groups", label: "Product groups", singular: "Product group", icon: <Layers size={14} />, hint: "Every product belongs to one group; the kitchen app arranges its stock list by them. “Other” is always there for products that fit nowhere else." },
   { value: "units", label: "Units", singular: "Unit", icon: <Ruler size={14} />, readOnly: true, hint: "Products may only use these preset units, and kitchens record quantities in them with no conversion." },
   { value: "godowns", label: "Godowns", singular: "Godown", icon: <MapPin size={14} />, hint: "The kitchens and the central store. A godown cannot be deleted while anything still points at it." },
   // Custom pack names typed into product forms (Bag, Box/Carton, Can, Tub and Packet are built in). Deleting one removes its packs from every product.
@@ -244,6 +244,7 @@ export const InventoryPage = () => {
             const editing = editingId === row._id;
             const busy = savingId === row._id || deletingId === row._id;
             const preset = tab === "units" && PRESET_SYMBOLS.has(row.symbol);
+            const builtIn = tab === "stock-groups" && String(row.name).trim().toLowerCase() === "other";
             return (
               <li key={row._id} className={`kg-glass setup-row${editing ? " setup-row--editing" : ""}`}>
                 {editing ? (
@@ -255,12 +256,13 @@ export const InventoryPage = () => {
                     {currentTab.packTypes && <small>used by {row.products} {row.products === 1 ? "product" : "products"}</small>}
                   </div>
                 )}
+                {builtIn && <span className="kg-pill kg-pill--routine" title="Always there for products that fit nowhere else; it cannot be renamed or deleted">Built in</span>}
                 {tab === "units" && (
                   preset
                     ? <span className="kg-pill kg-pill--ok">Preset</span>
                     : <span className="kg-pill kg-pill--soon" title="Products using it are hidden from kitchens until moved to a preset unit">Old unit, not offered</span>
                 )}
-                {!currentTab.readOnly && (
+                {!currentTab.readOnly && !builtIn && (
                   <div className="setup-row__actions">
                     {currentTab.packTypes ? null : editing ? (
                       <>
