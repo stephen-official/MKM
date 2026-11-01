@@ -20,6 +20,7 @@
 .product-card__body { display: flex; flex: 1; flex-direction: column; min-width: 0; padding: 14px 16px 16px; }
 .product-card__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .product-card__top > div { min-width: 0; display: grid; gap: 6px; justify-items: start; }
+.product-card__badges { display: flex; flex-wrap: wrap; gap: 6px; }
 .product-card h2 { margin: 2px 0 0; font-size: 15px; font-weight: 500; line-height: 1.25; color: inherit; overflow-wrap: anywhere; }
 .product-card__price { display: flex; flex: none; margin: 0; align-items: flex-end; flex-direction: column; text-align: right; }
 .product-card__price strong { font-size: 17px; font-weight: 300; line-height: 1.2; font-variant-numeric: tabular-nums; }
@@ -57,6 +58,22 @@
 .product-input-affix--end > input { border-radius: var(--radius) 0 0 var(--radius); }
 .product-locked { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-subtle); color: var(--ink-soft); font-size: 14px; }
 
+/* Choice chips: one tap per answer (Food / Non-food, Veg / Non-veg, Yes / No, allergens). */
+.choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.choice { display: inline-flex; align-items: center; min-height: 36px; padding: 0 14px; color: var(--muted-2); background: rgba(255,255,255,.45); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; transition: background .15s, color .15s; }
+.choice:hover { color: var(--blue-deep); background: rgba(255,255,255,.65); }
+.choice.is-on { color: var(--blue-deep); background: rgba(228, 237, 249, 0.95); box-shadow: 0 0 0 1px var(--btn-glass-primary-line), inset 0 1px 0 #fff; }
+.choice:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.choices--invalid .choice { box-shadow: 0 0 0 1px var(--st-expired-line), inset 0 1px 0 #fff; }
+/* The fold for details most products never need. */
+.product-form__more { padding-top: 20px; border-top: 1px solid var(--border); }
+.product-form__more > summary { display: flex; flex-direction: column; gap: 2px; color: var(--ink-2); font-size: 14px; font-weight: 500; cursor: pointer; list-style: none; }
+.product-form__more > summary::-webkit-details-marker { display: none; }
+.product-form__more > summary::before { content: "+"; float: left; margin-right: 8px; color: var(--muted-2); }
+.product-form__more[open] > summary::before { content: "–"; }
+.product-form__more > summary small { color: var(--muted-2); font-size: 12px; font-weight: 300; }
+.product-form__more > div { margin-top: 16px; }
+.product-pack__other { margin-top: 6px; }
 .product-packs { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 14px; }
 .product-pack { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: start; width: 100%; margin: 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .product-pack__remove-cell { align-self: start; }
@@ -67,26 +84,6 @@
 .product-pack__remove:hover svg { transform: scale(1.1); }
 .product-pack__remove:active svg { transform: rotate(12deg) scale(0.85); }
 @media (prefers-reduced-motion: reduce) { .product-pack__remove.btn, .product-pack__remove svg { transition: none; } }
-.pack-types { gap: 6px; }
-.pack-select { position: relative; }
-.pack-select__button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 38px; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
-.pack-select__button[aria-invalid] { border-color: var(--danger); }
-.pack-select__placeholder { color: var(--muted); }
-.pack-select__panel { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; width: 100%; min-width: 180px; }
-.pack-select__list { margin: 0; padding: 4px; max-height: 260px; overflow-y: auto; list-style: none; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); box-shadow: 0 6px 20px rgb(0 0 0 / 0.18); }
-.pack-select__row { display: flex; align-items: center; gap: 6px; padding-right: 6px; border-radius: 6px; }
-.pack-select__row:hover { background: var(--bg-subtle); }
-.pack-select__option { flex: 1; padding: 8px; border: 0; background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
-.pack-select__option[aria-selected="true"] { font-weight: 700; color: var(--primary); }
-.pack-select__preview { position: absolute; left: calc(100% + 10px); box-sizing: content-box; width: 220px; padding: 5px; border: 2px solid var(--primary); border-radius: 16px; background: var(--surface); box-shadow: 0 10px 28px rgb(0 0 0 / 0.22); pointer-events: none; opacity: 0; visibility: hidden; transform: scale(0.05); transition: transform 0.25s ease-in, opacity 0.2s ease-in, visibility 0s linear 0.25s; }
-.pack-select__preview.is-open { opacity: 1; visibility: visible; transform: none; transition: transform 0.45s cubic-bezier(0.34, 1.7, 0.5, 1), opacity 0.2s ease-out, visibility 0s; }
-.pack-select__preview img { display: block; width: 100%; height: auto; max-height: 240px; object-fit: contain; border-radius: 11px; }
-@media (prefers-reduced-motion: reduce) { .pack-select__preview, .pack-select__preview.is-open { transition: opacity 0.15s linear; transform: none; } }
-.pack-type__info { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 1px solid var(--border-strong); border-radius: 50%; color: var(--ink-soft); cursor: help; }
-.pack-type__remove { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 1px solid var(--danger); border-radius: 3px; background: var(--danger-bg); color: var(--danger); cursor: pointer; }
-.pack-type__remove { transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease; }
-.pack-type__remove:active { transform: scale(0.82); }
-.pack-type__remove:hover, .pack-type__remove:focus-visible { background: var(--danger); color: var(--white); }
 .pack-spelling { color: var(--ink-soft); font-size: 12px; line-height: 1.8; }
 .pack-spelling button { margin-left: 6px; padding: 0 8px; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); color: var(--primary); font: inherit; cursor: pointer; }
 .pack-spelling button:hover { background: var(--primary-bg); }

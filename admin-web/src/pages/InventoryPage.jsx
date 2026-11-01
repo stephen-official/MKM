@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { Search, FileSpreadsheet, Plus, Trash2, Edit3, Layers, MapPin, Ruler, Check, X, Loader2 } from "lucide-react";
+import { Search, FileSpreadsheet, Plus, Trash2, Edit3, Layers, MapPin, Ruler, Check, X, Loader2, Boxes } from "lucide-react";
+import { isPresetPackName } from "./products/productForm.js";
 import { api } from "../api.js";
 import { useToast } from "../useToast.js";
 import { PageHeader, Button, EmptyState, ErrorState, Tabs } from "../components/ui/index.jsx";
@@ -11,7 +12,9 @@ import "./InventorySetup.css";
 const TABS = [
   { value: "stock-groups", label: "Product groups", singular: "Product group", icon: <Layers size={14} />, hint: "Every product belongs to one group; the kitchen app arranges its stock list by them." },
   { value: "units", label: "Units", singular: "Unit", icon: <Ruler size={14} />, readOnly: true, hint: "Products may only use these preset units, and kitchens record quantities in them with no conversion." },
-  { value: "godowns", label: "Godowns", singular: "Godown", icon: <MapPin size={14} />, hint: "The kitchens and the central store. A godown cannot be deleted while anything still points at it." }
+  { value: "godowns", label: "Godowns", singular: "Godown", icon: <MapPin size={14} />, hint: "The kitchens and the central store. A godown cannot be deleted while anything still points at it." },
+  // Custom pack names typed into product forms (Bag, Box/Carton, Can and Tub are built in). Deleting one removes its packs from every product.
+  { value: "pack-types", label: "Pack types", singular: "Pack type", icon: <Boxes size={14} />, packTypes: true, hint: "Pack names typed in on product forms, besides the built-in Bag, Box/Carton, Can and Tub. Deleting one removes that pack from every product that has it." }
 ];
 
 // Keep in step with backend/src/catalog/units.js.
@@ -53,6 +56,19 @@ export const InventoryPage = () => {
     setLoading(true);
     setLoadError("");
     try {
+      if (tab === "pack-types") {
+        const { data } = await api.get("/products");
+        if (requestId !== requestRef.current) return;
+        const counts = new Map();
+        (data.items || []).forEach((p) => (p.packs || []).forEach((pack) => {
+          const name = String(pack.name || "").trim();
+          if (name && !isPresetPackName(name)) counts.set(name, (counts.get(name) || 0) + 1);
+        }));
+        const needle = debouncedQ.toLowerCase();
+        setRows([...counts].filter(([name]) => !needle || name.toLowerCase().includes(needle)).sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([name, products]) => ({ _id: name, name, products })));
+        return;
+      }
       const res = await api.get(`/inventory/${tab}`, { params: { q: debouncedQ } });
       if (requestId !== requestRef.current) return;
       const next = Array.isArray(res.data) ? res.data : [];
@@ -119,7 +135,38 @@ export const InventoryPage = () => {
     }
   };
 
+  const removePackType = async (row) => {
+    let affected = [];
+    try {
+      const { data } = await api.get("/products/pack-types/usage", { params: { name: row.name } });
+      affected = data.products || [];
+    } catch (error) {
+      return showToast(errorMessage(error, "Could not check which products use it."), "error");
+    }
+    const disabled = affected.filter((p) => p.disabled);
+    const ok = await confirm({
+      title: `Delete pack type “${row.name}”?`,
+      message: affected.length === 0
+        ? "No product uses it any more. It will just disappear from the list."
+        : `Its packs are removed from ${affected.length === 1 ? "1 product" : `${affected.length} products`}: ${affected.map((p) => p.name).join(", ")}.${disabled.length ? ` ${disabled.length === 1 ? "One of them is" : `${disabled.length} of them are`} left with no pack and will be hidden from kitchens until a pack is added.` : ""} Past orders keep their own copy of the pack.`,
+      confirmLabel: "Delete pack type",
+      variant: "danger"
+    });
+    if (!ok) return;
+    setDeletingId(row._id);
+    try {
+      await api.post("/products/pack-types/remove", { name: row.name });
+      showToast("Pack type deleted", "success");
+      await load();
+    } catch (error) {
+      showToast(errorMessage(error, "Delete failed"), "error");
+    } finally {
+      setDeletingId("");
+    }
+  };
+
   const removeRow = async (row) => {
+    if (currentTab.packTypes) return removePackType(row);
     const ok = await confirm({
       title: `Delete ${currentTab.singular.toLowerCase()} “${row.name}”?`,
       message: tab === "godowns"
@@ -186,7 +233,7 @@ export const InventoryPage = () => {
   } else if (rows.length === 0) {
     body = (
       <EmptyState className="kg-glass setup-state" title={debouncedQ ? `No ${currentTab.label.toLowerCase()} match “${debouncedQ}”` : `No ${currentTab.label.toLowerCase()} yet`}>
-        {debouncedQ ? "Try a different search." : currentTab.readOnly ? "Preset units appear once the Products page has been opened." : `Use the box above to add the first ${currentTab.singular.toLowerCase()}.`}
+        {debouncedQ ? "Try a different search." : currentTab.readOnly ? "Preset units appear once the Products page has been opened." : currentTab.packTypes ? "Custom pack names appear here once a product form uses one." : `Use the box above to add the first ${currentTab.singular.toLowerCase()}.`}
       </EmptyState>
     );
   } else {
@@ -205,6 +252,7 @@ export const InventoryPage = () => {
                   <div className="setup-row__text">
                     <strong>{row.name}</strong>
                     {tab === "units" && row.symbol && <small>{row.symbol}</small>}
+                    {currentTab.packTypes && <small>used by {row.products} {row.products === 1 ? "product" : "products"}</small>}
                   </div>
                 )}
                 {tab === "units" && (
@@ -214,7 +262,7 @@ export const InventoryPage = () => {
                 )}
                 {!currentTab.readOnly && (
                   <div className="setup-row__actions">
-                    {editing ? (
+                    {currentTab.packTypes ? null : editing ? (
                       <>
                         <button type="button" className="kg-btn setup-row__save" disabled={busy} onClick={() => saveEdit(row._id)} aria-label={`Save ${row.name}`}>
                           <Check size={15} aria-hidden="true" /> {savingId === row._id ? "Saving…" : "Save"}
@@ -257,7 +305,7 @@ export const InventoryPage = () => {
           <input type="search" aria-label={`Search ${currentTab.label.toLowerCase()}`} placeholder={`Search ${currentTab.label.toLowerCase()}`} value={q} onChange={(e) => setQ(e.target.value)} />
           {q && <button type="button" aria-label="Clear search" onClick={() => setQ("")}><X size={16} aria-hidden="true" /></button>}
         </label>
-        {!currentTab.readOnly && (
+        {!currentTab.readOnly && !currentTab.packTypes && (
           <form className="kg-glass setup-add" onSubmit={addRow}>
             <input className="setup-add__input" placeholder={`New ${currentTab.singular.toLowerCase()} name`} aria-label={`New ${currentTab.singular.toLowerCase()} name`} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={duplicateName || undefined} />
             {duplicateName && <span className="setup-add__dup" role="status">Already exists</span>}

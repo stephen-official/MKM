@@ -9,12 +9,14 @@ import { useConfirm } from "../components/ui/useConfirm.jsx";
 import { createRequestTracker } from "./executive/requestTracker.js";
 import { ProductForm } from "./products/ProductForm.jsx";
 import { emptyProductForm, formFromProduct, formatPrice, missingText, packSummary, payloadFromForm } from "./products/productForm.js";
+import { foodSafetySummary } from "./products/foodSafety.js";
 import "./products/products.css";
 
 const STATUS_TABS = [
   { value: "all", label: "All" },
   { value: "available", label: "Available" },
   { value: "incomplete", label: "Incomplete" },
+  { value: "fssai", label: "FSSAI details" },
   { value: "archived", label: "Archived" }
 ];
 const REQUEST_TABS = [
@@ -204,7 +206,7 @@ export function ProductsPage({ view = "products" }) {
     }
   };
 
-  const counts = data?.counts || { all: 0, available: 0, incomplete: 0, archived: 0 };
+  const counts = data?.counts || { all: 0, available: 0, incomplete: 0, fssai: 0, archived: 0 };
   const products = data?.items || [];
 
   // Cards like the kitchen's Stock screen: picture banner, name and status, then the facts, then the actions as icon chips.
@@ -232,7 +234,7 @@ export function ProductsPage({ view = "products" }) {
                 <div>
                   <p className="kg-label">{[p.itemType === "daily_use" ? "Daily use" : "Stock item", p.productCode].filter(Boolean).join(" · ")}</p>
                   <h2>{p.name}</h2>
-                  <StatusBadge product={p} />
+                  <div className="product-card__badges"><StatusBadge product={p} />{p.fssaiMissing && <Badge variant="warn" title="Open Edit and say whether it is food, veg or non-veg, and where it is kept">FSSAI details needed</Badge>}</div>
                 </div>
                 <p className="product-card__price">
                   <strong>{p.pricePerUnit == null ? "Not set" : formatPrice(p.pricePerUnit)}</strong>
@@ -242,6 +244,7 @@ export function ProductsPage({ view = "products" }) {
               <dl className="product-card__facts">
                 <div><dt>Group</dt><dd>{p.group?.name || <span className="product-card__none">Not set</span>}</dd></div>
                 <div><dt>Unit</dt><dd>{p.unit ? (p.unit.preset ? p.unit.symbol : <Badge variant="warn" title="Not a preset unit">{p.unit.symbol}</Badge>) : <span className="product-card__none">Not set</span>}</dd></div>
+                {foodSafetySummary(p) && <div><dt>Food safety</dt><dd>{foodSafetySummary(p)}</dd></div>}
                 {p.brand && <div><dt>Brand</dt><dd>{p.brand}</dd></div>}
                 <div><dt>Packs</dt><dd>{p.soldInPacks && p.packs.length ? <ul className="product-pack-list">{p.packs.map((pack) => <li key={pack._id}>{packSummary(pack, p.unit?.symbol)}</li>)}</ul> : <span className="product-card__none">Loose only</span>}</dd></div>
                 <div><dt>Kitchens</dt><dd>{p.kitchensHolding > 0 ? `Held by ${p.kitchensHolding} ${p.kitchensHolding === 1 ? "kitchen" : "kitchens"}` : <span className="product-card__none">None hold it</span>}</dd></div>
@@ -359,6 +362,12 @@ export function ProductsPage({ view = "products" }) {
                 <button type="button" className="exec-link" onClick={() => setStatus("incomplete")}>Show {counts.incomplete === 1 ? "it" : "them"}</button>
               </Banner>
             )}
+            {counts.fssai > 0 && status !== "fssai" && (
+              <Banner variant="info">
+                {counts.fssai} {counts.fssai === 1 ? "product has" : "products have"} no FSSAI details yet (food or not, veg or non-veg, where it is kept). {counts.fssai === 1 ? "It stays" : "They stay"} available to kitchens; open Edit to fill them in.{" "}
+                <button type="button" className="exec-link" onClick={() => setStatus("fssai")}>Show {counts.fssai === 1 ? "it" : "them"}</button>
+              </Banner>
+            )}
             <section className="kg-glass ks-controls" aria-label="Filter products">
               <div className="ks-filters" role="group" aria-label="Filter by status">
                 {STATUS_TABS.map((tab) => (
@@ -382,7 +391,6 @@ export function ProductsPage({ view = "products" }) {
           units={units}
           groups={groups}
           canPrice={canPrice}
-          onPackTypeRemoved={() => loadProducts()}
           knownPackNames={products.flatMap((p) => (p.packs || []).map((pack) => pack.name))}
           busy={busy}
           serverErrors={serverErrors}

@@ -5,6 +5,7 @@ import { isKitchenRole } from "../utils/roles.js";
 import { MAX_PACK_NAME_LENGTH, canonicalPackName } from "./packTypes.js";
 import { isAvailable, isValidPrice, missingFields } from "./completeness.js";
 import { UNIT_PRESETS, isPresetSymbol } from "./units.js";
+import { ALLERGENS, PRODUCT_FORMS, PRODUCT_KINDS, STORAGE_OPTIONS, VEG_MARKS, foodSafetyMissing } from "./foodSafety.js";
 
 export class CatalogError extends Error {
   constructor(status, code, message, extra = {}) {
@@ -83,6 +84,28 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
   update.productCode = code || undefined;
 
   if (body.imageUrl !== undefined) update.imageUrl = String(body.imageUrl || "");
+  // --- food safety (FSSAI) ---
+  // A new product must say whether it is food. An older product keeps whatever it had until someone edits it.
+  const kind = body.kind ?? existing?.kind ?? null;
+  if (kind === null && !existing) errors.kind = "Say whether this is food or not.";
+  else if (kind !== null && !PRODUCT_KINDS.includes(kind)) errors.kind = "Choose food or non-food.";
+  else update.kind = kind;
+  if (kind === "food") {
+    const form = body.form ?? existing?.form ?? null;
+    if (form !== null && !PRODUCT_FORMS.includes(form)) errors.form = "Choose packaged or loose.";
+    else update.form = form;
+    const vegMark = body.vegMark ?? existing?.vegMark ?? null;
+    if (!VEG_MARKS.includes(vegMark)) errors.vegMark = "Choose veg, non-veg or egg.";
+    else update.vegMark = vegMark;
+    const storage = body.storage ?? existing?.storage ?? null;
+    if (!STORAGE_OPTIONS.includes(storage)) errors.storage = "Say where it is kept.";
+    else update.storage = storage;
+    const allergens = body.allergens ?? existing?.allergens ?? [];
+    if (!Array.isArray(allergens) || allergens.some((code) => !ALLERGENS.includes(code))) errors.allergens = "Pick allergens from the list.";
+    else update.allergens = [...new Set(allergens)];
+  } else if (kind === "non_food") {
+    Object.assign(update, { form: null, vegMark: null, storage: null, allergens: [] });
+  }
 
   // --- price per unit ---
   const priceInput = body.pricePerUnit === undefined ? existing?.pricePerUnit ?? null : toNumber(body.pricePerUnit);
@@ -158,6 +181,13 @@ export const serializeProduct = (doc, holding = new Map()) => {
     pricePerUnit: doc.pricePerUnit ?? null,
     priceUpdatedAt: doc.priceUpdatedAt || null,
     expiryRequired: doc.expiryRequired !== false,
+    kind: doc.kind || null,
+    form: doc.form || null,
+    vegMark: doc.vegMark || null,
+    allergens: doc.allergens || [],
+    storage: doc.storage || null,
+    // True while the food-safety facts are not filled in (an older product, or a food product missing its mark or storage).
+    fssaiMissing: !doc.archived && foodSafetyMissing(doc).length > 0,
     soldInPacks: Boolean(doc.soldInPacks),
     packs: (doc.packs || []).map((pack) => ({ _id: pack._id, name: pack.name, size: pack.size, price: pack.price ?? null })),
     archived: Boolean(doc.archived),

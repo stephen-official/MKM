@@ -1,4 +1,5 @@
 import { isPresetSymbol } from "./units.js";
+import { foodSafetyMissing } from "./foodSafety.js";
 
 // A product is offered to kitchens only when nothing below is missing and it is not archived.
 // The same rule applies to every product, old or new; the products page lists the codes.
@@ -8,7 +9,9 @@ export const MISSING_LABELS = Object.freeze({
   price: "Price per unit",
   packs: "At least one pack",
   packDetails: "Pack name and size",
-  packPrice: "Pack price"
+  packPrice: "Pack price",
+  vegMark: "Veg or non-veg mark",
+  storage: "Where it is stored"
 });
 
 export const isValidPrice = (value) => typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -26,6 +29,8 @@ export const missingFields = (product, unit = product?.unitId) => {
     if (packs.some((pack) => !String(pack.name || "").trim() || !isPositive(pack.size))) missing.push("packDetails");
     if (packs.some((pack) => !isValidPrice(pack.price))) missing.push("packPrice");
   }
+  // A food product must say veg/non-veg and where it is kept; a product with no kind yet is only flagged (foodSafety.js).
+  missing.push(...foodSafetyMissing(product).filter((code) => code !== "kind"));
   return missing;
 };
 

@@ -33,7 +33,7 @@ const upload = multer({
 });
 const workbookUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
-const STATUSES = ["all", "available", "incomplete", "archived"];
+const STATUSES = ["all", "available", "incomplete", "fssai", "archived"];
 
 const loadOne = async (id) => {
   if (!mongoose.isValidObjectId(id)) throw new CatalogError(404, "NOT_FOUND", "Product not found.");
@@ -140,10 +140,12 @@ productRoutes.get("/", adminOnly, async (req, res) => {
       incomplete: all.filter((p) => !p.archived && !p.available).length,
       archived: all.filter((p) => p.archived).length,
       // Waiting on a super-admin: the only thing (or one of the things) missing is a price.
-      needsPrice: all.filter((p) => !p.archived && p.missing.some((code) => code === "price" || code === "packPrice")).length
+      needsPrice: all.filter((p) => !p.archived && p.missing.some((code) => code === "price" || code === "packPrice")).length,
+      // Food-safety facts not filled in yet (older products, or a food product without its mark or storage).
+      fssai: all.filter((p) => p.fssaiMissing).length
     };
     const matchesStatus = (p) => status === "all" || (status === "available" && p.available)
-      || (status === "incomplete" && !p.archived && !p.available) || (status === "archived" && p.archived);
+      || (status === "incomplete" && !p.archived && !p.available) || (status === "fssai" && p.fssaiMissing) || (status === "archived" && p.archived);
     const matchesQuery = (p) => !q || [p.name, p.brand, p.productCode, p.group?.name].some((text) => String(text || "").toLowerCase().includes(q));
     res.json({ items: all.filter((p) => matchesStatus(p) && matchesQuery(p)), counts });
   } catch (error) {

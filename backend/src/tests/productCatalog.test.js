@@ -29,7 +29,7 @@ beforeEach(async () => {
 });
 
 const as = (who, method, url) => request(app)[method](url).set("Authorization", `Bearer ${ctx[who].token}`);
-const base = (extra = {}) => ({ name: "Rice", stockGroupId: ctx.group._id, unitId: ctx.kg._id, itemType: "stock", defaultThreshold: 5, ...extra });
+const base = (extra = {}) => ({ name: "Rice", stockGroupId: ctx.group._id, unitId: ctx.kg._id, itemType: "stock", defaultThreshold: 5, kind: "food", vegMark: "veg", storage: "room", ...extra });
 
 test("preset aliases map common spellings and nothing vague", () => {
   assert.equal(presetFor({ symbol: "Kgs" }).symbol, "kg");
@@ -140,7 +140,7 @@ test("the list filters by status and search and always returns the counts", asyn
   await as("admin", "post", "/api/products").send(base({ name: "Dal", brand: "Tata" }));
   const res = await as("admin", "get", "/api/products?status=incomplete");
   assert.deepEqual(res.body.items.map((p) => p.name), ["Dal"]);
-  assert.deepEqual(res.body.counts, { all: 2, available: 1, incomplete: 1, archived: 0, needsPrice: 1 });
+  assert.deepEqual(res.body.counts, { all: 2, available: 1, incomplete: 1, archived: 0, needsPrice: 1, fssai: 0 });
   assert.deepEqual((await as("admin", "get", "/api/products?q=tata")).body.items.map((p) => p.name), ["Dal"]);
   assert.equal((await as("cook", "get", "/api/products")).status, 403);
 });
@@ -219,4 +219,32 @@ test("the export can be imported again: every row updates its product instead of
   assert.deepEqual(imported.body.results.map((r) => [r.action, r.name]), [["updated", "Rice"]]);
   assert.equal(imported.body.failed, 0);
   assert.equal((await as("root", "get", `/api/products/${rice._id}`)).body.pricePerUnit, 60);
+});
+
+test("food safety: a new product must say whether it is food; food needs a veg mark and storage; non-food clears them; old products are flagged, not hidden", async () => {
+  const noKind = await as("root", "post", "/api/products").send({ ...base({ pricePerUnit: 60 }), kind: undefined });
+  assert.equal(noKind.status, 400);
+  assert.equal(noKind.body.errors.kind, "Say whether this is food or not.");
+  const bare = await as("root", "post", "/api/products").send({ ...base({ pricePerUnit: 60 }), vegMark: undefined, storage: undefined });
+  assert.equal(bare.status, 400);
+  assert.deepEqual(Object.keys(bare.body.errors).sort(), ["storage", "vegMark"]);
+  assert.equal((await as("root", "post", "/api/products").send(base({ pricePerUnit: 60, allergens: ["milk", "nuts"] }))).body.errors.allergens, "Pick allergens from the list.");
+
+  const food = (await as("root", "post", "/api/products").send(base({ pricePerUnit: 60, form: "packaged", allergens: ["gluten", "milk", "milk"], storage: "fridge" }))).body;
+  assert.deepEqual([food.kind, food.form, food.vegMark, food.allergens, food.storage, food.fssaiMissing, food.available], ["food", "packaged", "veg", ["gluten", "milk"], "fridge", false, true]);
+
+  const soap = (await as("root", "post", "/api/products").send(base({ name: "Soap", pricePerUnit: 20, kind: "non_food", form: "packaged", allergens: ["milk"] }))).body;
+  assert.deepEqual([soap.kind, soap.form, soap.vegMark, soap.allergens, soap.storage, soap.fssaiMissing, soap.available], ["non_food", null, null, [], null, false, true]);
+
+  // A product from before these facts existed: still available to kitchens, but counted under "fssai" until someone edits it.
+  const old = await StockItem.create({ name: "Old Dal", stockGroupId: ctx.group._id, unitId: ctx.kg._id, pricePerUnit: 50 });
+  const listed = await as("root", "get", "/api/products?status=fssai");
+  assert.deepEqual(listed.body.items.map((p) => [p.name, p.available, p.fssaiMissing]), [["Old Dal", true, true]]);
+  assert.equal(listed.body.counts.fssai, 1);
+  // Editing it must now say the kind; a food kind without its facts is refused, and once given the product is complete.
+  assert.equal((await as("root", "put", `/api/products/${old._id}`).send({ kind: "food" })).body.errors.vegMark, "Choose veg, non-veg or egg.");
+  const fixed = await as("root", "put", `/api/products/${old._id}`).send({ kind: "food", vegMark: "veg", storage: "room" });
+  assert.equal(fixed.status, 200, JSON.stringify(fixed.body));
+  assert.equal(fixed.body.fssaiMissing, false);
+  assert.equal((await as("root", "put", `/api/products/${old._id}`).send({ name: "Old Dal 2" })).body.kind, "food");
 });

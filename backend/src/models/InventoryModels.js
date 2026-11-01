@@ -64,6 +64,12 @@ const stockItemSchema = new mongoose.Schema(
   // Ordered, distributed and stocked in packs too, e.g. a 25 kg bag of rice with its own price.
   // Kitchens must enter an expiry date when receiving this product (FSSAI). Admins turn it off for items that have none.
   expiryRequired: { type: Boolean, default: true },
+  // Food-safety facts (FSSAI), see catalog/foodSafety.js. Unset `kind` = saved before these existed; the form asks on the next edit.
+  kind: { type: String, enum: ["food", "non_food", null], default: undefined },
+  form: { type: String, enum: ["packaged", "loose", null], default: undefined },
+  vegMark: { type: String, enum: ["veg", "non_veg", "egg", null], default: undefined },
+  allergens: { type: [String], default: [] },
+  storage: { type: String, enum: ["room", "fridge", "freezer", null], default: undefined },
   soldInPacks: { type: Boolean, default: false },
   packs: [{
     name: { type: String, trim: true, required: true },
