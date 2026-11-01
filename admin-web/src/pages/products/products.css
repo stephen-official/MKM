@@ -65,6 +65,11 @@
 .choice.is-on { color: var(--blue-deep); background: rgba(228, 237, 249, 0.95); box-shadow: 0 0 0 1px var(--btn-glass-primary-line), inset 0 1px 0 #fff; }
 .choice:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .choices--invalid .choice { box-shadow: 0 0 0 1px var(--st-expired-line), inset 0 1px 0 #fff; }
+/* Even grid of equal chips (allergens): three across, then the two plain answers on their own row. */
+.choices--grid { display: grid; gap: 6px; }
+.choices--grid .choice { justify-content: center; text-align: center; }
+.choices--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.choices--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 6px; }
 /* The fold for details most products never need. */
 .product-form__more { padding-top: 20px; border-top: 1px solid var(--border); }
 .product-form__more > summary { display: flex; align-items: center; gap: 12px; color: var(--ink-2); font-size: 14px; font-weight: 500; cursor: pointer; list-style: none; }

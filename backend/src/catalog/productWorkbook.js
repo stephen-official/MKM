@@ -4,7 +4,7 @@ export const PRODUCT_COLUMNS = [
   ["Product ID", "Use this only when updating an exported product"],
   ["Name", "Required"], ["Product Group", "Required; must already exist"], ["Unit", "Required; kg, g, L, mL, pcs, dozen or packet"],
   ["Type", "stock or daily_use"], ["Kind", "food or non_food"], ["Form", "packaged or loose (food only)"], ["Veg Mark", "veg, non_veg or egg (food only)"],
-  ["Allergens", "food only; comma-separated: gluten, milk, egg, fish, crustacean, peanut, tree_nut, soy, sulphite"], ["Storage", "room, fridge or freezer (food only)"],
+  ["Allergens", "food only; comma-separated: gluten, milk, egg, fish, crustacean, peanut, tree_nut, soy, sulphite, or none / unknown"], ["Storage", "room, fridge or freezer (food only)"],
   ["Low Stock Threshold", "0 or higher"], ["Brand", "Optional"], ["Product Code", "Optional"],
   ["Image URL", "Optional"], ["Price per Unit", "Leave blank for an incomplete product"], ["Ordered in Packs", "Yes or No"],
   ["Packs", "Optional. Separate packs with ; and use Name|Size|Price, e.g. Bag|25|1450;Carton|50|2800"], ["Archived", "Yes or No"]

@@ -4,8 +4,9 @@ export const PRODUCT_KINDS = ["food", "non_food"];
 export const PRODUCT_FORMS = ["packaged", "loose"]; // packaged food must show a compliant label at receipt; loose/fresh is traced by supplier and date
 export const VEG_MARKS = ["veg", "non_veg", "egg"];
 export const STORAGE_OPTIONS = ["room", "fridge", "freezer"]; // matches StockBatch.storage
-// The allergens the FSS (Labelling and Display) Regulations 2020 require on a label.
-export const ALLERGENS = ["gluten", "milk", "egg", "fish", "crustacean", "peanut", "tree_nut", "soy", "sulphite"];
+// The allergens the FSS (Labelling and Display) Regulations 2020 require on a label, plus two plain answers:
+// "none" (the product has no allergen) and "unknown" (not sure, or one not in the list). Those two stand alone.
+export const ALLERGENS = ["gluten", "milk", "egg", "fish", "crustacean", "peanut", "tree_nut", "soy", "sulphite", "none", "unknown"];
 
 /**
  * What a product still needs before its food-safety facts are complete.

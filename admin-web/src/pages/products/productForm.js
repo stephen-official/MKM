@@ -11,7 +11,8 @@ export const PACK_TYPES = [
   { name: "Box/Carton", image: "/pack-types/box-carton.avif" },
   { name: "Bag", image: "/pack-types/bag.avif" },
   { name: "Can", image: "/pack-types/can.avif" },
-  { name: "Tub", image: "/pack-types/tub.avif" }
+  { name: "Tub", image: "/pack-types/tub.avif" },
+  { name: "Packet", image: "" }
 ];
 export const isPresetPackName = (name) => PACK_TYPES.some((type) => type.name.toLowerCase() === String(name || "").trim().toLowerCase());
 
@@ -97,6 +98,7 @@ export const validateProductForm = (form, { canPrice }) => {
   if (form.kind === "food") {
     if (!form.vegMark) errors.vegMark = "Choose veg, non-veg or egg.";
     if (!form.storage) errors.storage = "Say where it is kept.";
+    if (form.allergens.length === 0) errors.allergens = "Tick the allergens, or None, or Not sure.";
   }
   if (form.soldInPacks) {
     if (form.packs.length === 0) errors.packs = "Add at least one pack, or answer No.";

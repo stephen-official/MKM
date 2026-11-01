@@ -13,8 +13,8 @@ const TABS = [
   { value: "stock-groups", label: "Product groups", singular: "Product group", icon: <Layers size={14} />, hint: "Every product belongs to one group; the kitchen app arranges its stock list by them." },
   { value: "units", label: "Units", singular: "Unit", icon: <Ruler size={14} />, readOnly: true, hint: "Products may only use these preset units, and kitchens record quantities in them with no conversion." },
   { value: "godowns", label: "Godowns", singular: "Godown", icon: <MapPin size={14} />, hint: "The kitchens and the central store. A godown cannot be deleted while anything still points at it." },
-  // Custom pack names typed into product forms (Bag, Box/Carton, Can and Tub are built in). Deleting one removes its packs from every product.
-  { value: "pack-types", label: "Pack types", singular: "Pack type", icon: <Boxes size={14} />, packTypes: true, hint: "Pack names typed in on product forms, besides the built-in Bag, Box/Carton, Can and Tub. Deleting one removes that pack from every product that has it." }
+  // Custom pack names typed into product forms (Bag, Box/Carton, Can, Tub and Packet are built in). Deleting one removes its packs from every product.
+  { value: "pack-types", label: "Pack types", singular: "Pack type", icon: <Boxes size={14} />, packTypes: true, hint: "Pack names typed in on product forms, besides the built-in Bag, Box/Carton, Can, Tub and Packet. Deleting one removes that pack from every product that has it." }
 ];
 
 // Keep in step with backend/src/catalog/units.js.

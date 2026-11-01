@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   emptyProductForm, formFromProduct, hasMoreDetails, missingText, newPack, packSummary, payloadFromForm, unitPriceFromPack, validateProductForm
 } from "./productForm.js";
-import { foodSafetySummary } from "./foodSafety.js";
+import { foodSafetySummary, toggleAllergen } from "./foodSafety.js";
 
-const filled = (extra = {}) => ({ ...emptyProductForm(), name: "Rice", stockGroupId: "g1", unitId: "u1", pricePerUnit: "60", kind: "food", vegMark: "veg", storage: "room", ...extra });
+const filled = (extra = {}) => ({ ...emptyProductForm(), name: "Rice", stockGroupId: "g1", unitId: "u1", pricePerUnit: "60", kind: "food", vegMark: "veg", storage: "room", allergens: ["none"], ...extra });
 
 describe("product form", () => {
   it("requires a price only from a super-admin", () => {
@@ -16,6 +16,7 @@ describe("product form", () => {
   it("asks whether the product is food, and for food wants the veg mark and storage", () => {
     expect(validateProductForm(filled({ kind: "" }), { canPrice: true })).toEqual({ kind: "Say whether this is food or not." });
     expect(validateProductForm(filled({ vegMark: "", storage: "" }), { canPrice: true })).toEqual({ vegMark: "Choose veg, non-veg or egg.", storage: "Say where it is kept." });
+    expect(validateProductForm(filled({ allergens: [] }), { canPrice: true })).toEqual({ allergens: "Tick the allergens, or None, or Not sure." });
     expect(validateProductForm(filled({ kind: "non_food", vegMark: "", storage: "" }), { canPrice: true })).toEqual({});
   });
 
@@ -80,7 +81,14 @@ describe("product form", () => {
     expect(packSummary({ name: "Bag", size: 25, price: null }, "kg")).toBe("Bag (25 kg) · Not set");
     expect(missingText(["price", "packPrice", "vegMark"])).toBe("Needs price per unit, pack price, veg or non-veg mark");
     expect(foodSafetySummary({ kind: "food", vegMark: "veg", form: "packaged", storage: "fridge", allergens: ["milk", "tree_nut"] })).toBe("Veg · Packaged · Fridge · Allergens: Milk, Tree nuts");
-    expect(foodSafetySummary({ kind: "food", vegMark: "non_veg", storage: "freezer" })).toBe("Non-veg · Freezer · No allergens listed");
+    expect(foodSafetySummary({ kind: "food", vegMark: "non_veg", storage: "freezer" })).toBe("Non-veg · Freezer · Allergens not answered");
+    expect(foodSafetySummary({ kind: "food", vegMark: "veg", storage: "room", allergens: ["none"] })).toBe("Veg · Room · No allergens");
+    expect(foodSafetySummary({ kind: "food", vegMark: "veg", storage: "room", allergens: ["unknown"] })).toBe("Veg · Room · Allergens: not sure");
+    expect(toggleAllergen([], "milk")).toEqual(["milk"]);
+    expect(toggleAllergen(["milk"], "none")).toEqual(["none"]);
+    expect(toggleAllergen(["none"], "egg")).toEqual(["egg"]);
+    expect(toggleAllergen(["milk", "egg"], "milk")).toEqual(["egg"]);
+    expect(toggleAllergen(["unknown"], "unknown")).toEqual([]);
     expect(foodSafetySummary({ kind: "non_food" })).toBe("Non-food");
     expect(foodSafetySummary({})).toBe("");
     expect(unitPriceFromPack({ size: "25", price: "1450" })).toBe(58);

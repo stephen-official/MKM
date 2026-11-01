@@ -2,20 +2,21 @@ import { useRef, useState } from "react";
 import { ImagePlus, Loader2, Lock, Package, Plus, Trash2 } from "lucide-react";
 import { api } from "../../api.js";
 import { Button, Field, Modal, Select } from "../../components/ui/index.jsx";
-import { ALLERGENS, PRODUCT_FORMS, PRODUCT_KINDS, STORAGE_OPTIONS, VEG_MARKS } from "./foodSafety.js";
+import { ALLERGENS, ALLERGEN_ANSWERS, PRODUCT_FORMS, PRODUCT_KINDS, STORAGE_OPTIONS, VEG_MARKS, toggleAllergen } from "./foodSafety.js";
 import { PACK_TYPES, formatPrice, hasMoreDetails, isPresetPackName, newPack, unitPriceFromPack, validateProductForm } from "./productForm.js";
 
 const OTHER = "__other";
 
 /** A row of choice chips: one answer (or several when `multiple`). */
-function Choices({ options, value, onChange, multiple = false, label, invalid }) {
+function Choices({ options, value, onChange, onToggle, multiple = false, label, invalid, columns = 0 }) {
   const chosen = (option) => (multiple ? value.includes(option.value) : value === option.value);
   const pick = (option) => {
     if (!multiple) return onChange(option.value);
+    if (onToggle) return onToggle(option.value); // the owner works out the next list from its own latest state
     onChange(chosen(option) ? value.filter((v) => v !== option.value) : [...value, option.value]);
   };
   return (
-    <div className={`choices${invalid ? " choices--invalid" : ""}`} role="group" aria-label={label}>
+    <div className={`choices${invalid ? " choices--invalid" : ""}${columns ? ` choices--grid choices--${columns}` : ""}`} role="group" aria-label={label}>
       {options.map((option) => (
         <button type="button" key={option.value} className={chosen(option) ? "choice is-on" : "choice"} aria-pressed={chosen(option)} title={option.hint} onClick={() => pick(option)}>
           {option.label}
@@ -44,6 +45,8 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
   const set = (patch) => setForm((prev) => ({ ...prev, ...patch }));
   const setPack = (key, patch) => set({ packs: form.packs.map((pack) => (pack.key === key ? { ...pack, ...patch } : pack)) });
   const setSoldInPacks = (yes) => set({ soldInPacks: yes, packs: yes && form.packs.length === 0 ? [newPack()] : form.packs });
+  // None and Not sure stand alone; a specific allergen clears them (foodSafety.js). Read the latest list, so quick taps never lose one.
+  const tapAllergen = (value) => setForm((prev) => ({ ...prev, allergens: toggleAllergen(prev.allergens, value) }));
 
   const upload = async (event) => {
     const file = event.target.files?.[0];
@@ -152,7 +155,8 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
                   {error("storage")}
                 </Field>
                 <Field label="Contains allergens (tick all that apply)" className="product-form__wide">
-                  <Choices label="Allergens" multiple options={ALLERGENS} value={form.allergens} onChange={(allergens) => set({ allergens })} />
+                  <Choices label="Allergens" multiple columns={3} options={ALLERGENS} value={form.allergens} invalid={Boolean(errors.allergens)} onToggle={tapAllergen} />
+                  <Choices label="No allergens, or not sure" multiple columns={2} options={ALLERGEN_ANSWERS} value={form.allergens} invalid={Boolean(errors.allergens)} onToggle={tapAllergen} />
                   {error("allergens")}
                 </Field>
               </>
@@ -165,7 +169,7 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
         </section>
 
         <section className="product-form__section" aria-labelledby="product-packs">
-          <h3 id="product-packs">Bought in bags, tins or boxes?</h3>
+          <h3 id="product-packs">Bought in bags, tins, boxes or packets?</h3>
           <Choices label="Bought in packs" options={[{ value: true, label: "Yes" }, { value: false, label: "No, by the kg or piece" }]} value={form.soldInPacks} onChange={setSoldInPacks} />
           {form.soldInPacks && (
             <div className="product-packs">
