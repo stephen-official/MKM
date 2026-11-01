@@ -1,23 +1,45 @@
 import { useCallback, useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, ArrowUpRight, Minus, Plus } from "lucide-react";
 import { api } from "../../api.js";
 import { useToast } from "../../useToast.js";
 import { formatDateTime } from "../../businessTime.js";
-import { Badge, Button, DataTable, EmptyState, ErrorState, Field, LoadingState, Modal } from "../../components/ui/index.jsx";
+import { Button, EmptyState, ErrorState, Field, LoadingState, Modal } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
 import { errMsg } from "../indent/helpers.js";
-import { correctionChanges, describeCorrection } from "./correctionSummary.js";
+import { correctionChanges, describeCorrection, longDay } from "./correctionSummary.js";
 import "./corrections.css";
 
-const STATUS = { pending: "Waiting", approved: "Approved", rejected: "Rejected" };
-const TONE = { pending: "warn", approved: "success", rejected: "neutral" };
-const CHANGE = { changed: "Changed", removed: "Removed", added: "Added", same: "" };
+const STATUS = { pending: { label: "Waiting for you", tone: "soon" }, approved: { label: "Approved", tone: "routine" }, rejected: { label: "Rejected", tone: "expired" } };
 const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
+const amount = (value, unit) => (value === null ? "—" : `${qty(value)} ${unit}`.trim());
+
+/* One ticket row: before → after with an arrow saying what happened (up, down, new, removed). */
+const ChangeRow = ({ change, reopen }) => {
+  const kind = change.kind === "changed" ? (Number(change.after) > Number(change.before) ? "up" : "down") : change.kind;
+  const icon = kind === "up" ? <ArrowUp size={14} aria-hidden="true" />
+    : kind === "down" ? <ArrowDown size={14} aria-hidden="true" />
+    : kind === "added" ? <Plus size={14} aria-hidden="true" />
+    : kind === "removed" ? <Minus size={14} aria-hidden="true" /> : null;
+  const word = kind === "up" ? "More" : kind === "down" ? "Less" : kind === "added" ? "New" : kind === "removed" ? "Removed" : "Same";
+  return (
+    <li className={`correction-ticket__row correction-ticket__row--${kind}`}>
+      <div className="correction-ticket__name"><strong>{change.name}</strong><small>{change.unit}</small></div>
+      <div className="correction-ticket__amounts">
+        <span className="correction-ticket__before">{reopen ? "No usage" : amount(change.before, change.unit)}</span>
+        <span className="correction-ticket__arrow" aria-hidden="true">→</span>
+        <span className="correction-ticket__after">{amount(change.after, change.unit)}</span>
+      </div>
+      <span className={`correction-ticket__tag correction-ticket__tag--${kind}`}>{icon}{word}</span>
+    </li>
+  );
+};
 
 /**
  * Corrections kitchens asked for: usage to record on a day marked "no usage" by mistake, or new lines for a usage
- * record (none = cancel it). Each row says in a few words what changes; Details shows every line before and after.
- * Approving makes the change (stock moves with it); rejecting changes nothing and sends the note to the kitchen.
- * onCount reports open ones; onApplied fires after an approval so the records list can reload.
+ * record (none = cancel it). One card per ask: the date, two or three plain lines, and a chevron that opens the
+ * ticket, where every line shows before → after with an arrow. Approve (in the ticket) makes the change and stock moves
+ * with it; Reject changes nothing and sends the note to the kitchen. onCount reports open ones; onApplied fires
+ * after an approval so the records list can reload.
  */
 export const CorrectionsPanel = ({ onCount, onApplied }) => {
   const { showToast } = useToast();
@@ -26,7 +48,7 @@ export const CorrectionsPanel = ({ onCount, onApplied }) => {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [rejecting, setRejecting] = useState(null); // { row, note }
-  const [details, setDetails] = useState(null); // the row whose before/after table is open
+  const [open, setOpen] = useState(null); // the row whose ticket is open
 
   const load = useCallback(async () => {
     try {
@@ -57,7 +79,7 @@ export const CorrectionsPanel = ({ onCount, onApplied }) => {
     try {
       await api.post(`/usage-corrections/${row._id}/approve`, {});
       showToast("Approved. The kitchen's records and stock are updated.", "success");
-      setDetails(null);
+      setOpen(null);
       await load();
       onApplied?.();
     } catch (err) {
@@ -74,7 +96,7 @@ export const CorrectionsPanel = ({ onCount, onApplied }) => {
       await api.post(`/usage-corrections/${rejecting.row._id}/reject`, { note: rejecting.note.trim() });
       showToast("Rejected. The kitchen sees your note.", "success");
       setRejecting(null);
-      setDetails(null);
+      setOpen(null);
       await load();
     } catch (err) {
       showToast(errMsg(err, "Could not reject"), "error");
@@ -83,42 +105,36 @@ export const CorrectionsPanel = ({ onCount, onApplied }) => {
     }
   };
 
-  const actions = (r) => r.status === "pending" ? (
-    <div className="row-actions">
-      <Button size="sm" variant="ghost" disabled={busy} onClick={() => setDetails(r)}>Details</Button>
-      <Button size="sm" disabled={busy} onClick={() => approve(r)}>Approve</Button>
-      <Button size="sm" variant="ghost" disabled={busy} onClick={() => setRejecting({ row: r, note: "" })}>Reject</Button>
-    </div>
-  ) : (
-    <div className="row-actions">
-      <Button size="sm" variant="ghost" onClick={() => setDetails(r)}>Details</Button>
-      <Badge variant={TONE[r.status] || "neutral"}>{STATUS[r.status] || r.status}</Badge>
-    </div>
-  );
-
   let body;
   if (rows === null) body = <LoadingState label="Loading corrections…" />;
   else if (error) body = <ErrorState message={error} onRetry={load} />;
-  else if (rows.length === 0) body = <EmptyState title="No corrections">When a kitchen edits a recorded day, its request appears here for approval.</EmptyState>;
+  else if (rows.length === 0) body = <EmptyState className="kg-glass corrections-empty" title="No corrections">When a kitchen edits a recorded day, its request appears here for approval.</EmptyState>;
   else {
     body = (
-      <ul className="corrections">
+      <ul className="corrections" aria-label="Corrections">
         {rows.map((r) => {
-          const { title, lines } = describeCorrection(r);
+          const { lines } = describeCorrection(r);
+          const status = STATUS[r.status] || STATUS.pending;
+          const what = r.kind === "reopen_day" ? "Record usage" : (r.items || []).length === 0 ? "Cancel usage record" : "Change usage";
           return (
-            <li key={r._id} className={`correction correction--${r.status}`}>
-              <div>
-                <strong>{title}</strong>
-                <p>{[r.requestedBy && `asked by ${r.requestedBy}`, formatDateTime(r.createdAt)].filter(Boolean).join(" · ")}</p>
-                {lines.map((text) => <p key={text} className="correction__line">{text}</p>)}
-                {r.note && <p className="correction__note">“{r.note}”</p>}
-                {r.status !== "pending" && (
-                  <p className="correction__decision">
-                    {r.status === "approved" ? "Approved" : `Rejected: ${r.decisionNote}`}{r.decidedBy && ` · ${r.decidedBy}`}{r.decidedAt && ` · ${formatDateTime(r.decidedAt)}`}
-                  </p>
-                )}
+            <li key={r._id} className={`kg-glass kg-lift correction correction--${r.status}${r.status === "pending" ? " kg-glass--cool" : ""}`}>
+              <div className="correction__top">
+                <div>
+                  <p className="kg-label">{r.kitchen?.name || "Kitchen"} · {what}</p>
+                  <h2>{longDay(r.date)}</h2>
+                </div>
+                <button type="button" className="kg-chip correction__open" onClick={() => setOpen(r)} aria-label={`Open the ticket for ${longDay(r.date)}`}>
+                  <ArrowUpRight size={18} strokeWidth={1.8} aria-hidden="true" />
+                </button>
               </div>
-              {actions(r)}
+              {lines.map((text) => <p key={text} className="correction__line">{text}</p>)}
+              {r.note && <p className="correction__note">“{r.note}”</p>}
+              <div className="correction__foot">
+                <span className={`kg-pill kg-pill--${status.tone}`}>{status.label}</span>
+                <p>{r.status === "pending"
+                  ? [r.requestedBy && `asked by ${r.requestedBy}`, formatDateTime(r.createdAt)].filter(Boolean).join(" · ")
+                  : [r.status === "approved" ? "Approved" : `Rejected: ${r.decisionNote}`, r.decidedBy, r.decidedAt && formatDateTime(r.decidedAt)].filter(Boolean).join(" · ")}</p>
+              </div>
             </li>
           );
         })}
@@ -126,34 +142,37 @@ export const CorrectionsPanel = ({ onCount, onApplied }) => {
     );
   }
 
-  const changes = details ? correctionChanges(details) : [];
+  const changes = open ? correctionChanges(open) : [];
+  const openStatus = open ? STATUS[open.status] || STATUS.pending : null;
   return (
     <div className="corrections-page">
       {body}
-      {details && (
-        <Modal title={describeCorrection(details).title} onClose={() => setDetails(null)} wide actions={(
-          details.status === "pending" ? (
+      {open && (
+        <Modal title={`${open.kitchen?.name || "Kitchen"} · ${longDay(open.date)}`} onClose={() => !busy && setOpen(null)} actions={(
+          open.status === "pending" ? (
             <>
-              <Button variant="ghost" disabled={busy} onClick={() => setRejecting({ row: details, note: "" })}>Reject</Button>
-              <Button disabled={busy} onClick={() => approve(details)}>Approve</Button>
+              <Button variant="ghost" disabled={busy} onClick={() => setRejecting({ row: open, note: "" })}>Reject</Button>
+              <Button disabled={busy} onClick={() => approve(open)}>Approve</Button>
             </>
-          ) : <Button variant="ghost" onClick={() => setDetails(null)}>Close</Button>
+          ) : <Button variant="ghost" onClick={() => setOpen(null)}>Close</Button>
         )}>
-          {describeCorrection(details).lines.map((text) => <p key={text} className="correction__line">{text}</p>)}
-          <DataTable className="correction-table">
-            <thead><tr><th>Item</th><th>{details.kind === "reopen_day" ? "Marked" : "Before"}</th><th>After</th><th>Change</th></tr></thead>
-            <tbody>
-              {changes.map((change) => (
-                <tr key={change.name} className={`correction-table__row--${change.kind}`}>
-                  <td>{change.name}</td>
-                  <td>{change.before === null ? (details.kind === "reopen_day" ? "No usage" : "—") : `${qty(change.before)} ${change.unit}`}</td>
-                  <td>{change.after === null ? "—" : `${qty(change.after)} ${change.unit}`}</td>
-                  <td>{CHANGE[change.kind]}</td>
-                </tr>
-              ))}
-              {changes.length === 0 && <tr><td colSpan={4}>No lines.</td></tr>}
-            </tbody>
-          </DataTable>
+          <section className="kg-glass correction-ticket" aria-label="Correction ticket">
+            <header className="correction-ticket__head">
+              <div><p className="kg-label">Correction ticket</p><h3>{changes.length} {changes.length === 1 ? "item" : "items"}</h3></div>
+              <span className={`kg-pill kg-pill--${openStatus.tone}`}>{openStatus.label}</span>
+            </header>
+            <dl className="correction-ticket__meta">
+              <div><dt>Usage date</dt><dd>{longDay(open.date)}</dd></div>
+              <div><dt>Asked by</dt><dd>{[open.requestedBy, formatDateTime(open.createdAt)].filter(Boolean).join(" · ")}</dd></div>
+            </dl>
+            {describeCorrection(open).lines.map((text) => <p key={text} className="correction-ticket__line">{text}</p>)}
+            <ul className="correction-ticket__rows">
+              <li className="correction-ticket__cols" aria-hidden="true"><span>Item</span><span>{open.kind === "reopen_day" ? "Marked → After" : "Before → After"}</span><span>Change</span></li>
+              {changes.map((change) => <ChangeRow key={change.name} change={change} reopen={open.kind === "reopen_day"} />)}
+              {changes.length === 0 && <li className="correction-ticket__empty">No lines.</li>}
+            </ul>
+            {open.status !== "pending" && open.decisionNote && <p className="correction-ticket__line">Note to the kitchen: {open.decisionNote}</p>}
+          </section>
         </Modal>
       )}
       {rejecting && (
@@ -168,7 +187,7 @@ export const CorrectionsPanel = ({ onCount, onApplied }) => {
           </Field>
         </Modal>
       )}
-      {/* Last, so the confirm box sits above the Details modal. */}
+      {/* Last, so the confirm box sits above the ticket modal. */}
       {dialog}
     </div>
   );

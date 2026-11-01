@@ -738,6 +738,7 @@ setEditIndentId(indent._id);
       setCart(prefilled);
       setSelectedDate(target.date);
       setActiveTab("usage");
+      window.scrollTo(0, 0);
       fetchItems(false);
       return true;
     };

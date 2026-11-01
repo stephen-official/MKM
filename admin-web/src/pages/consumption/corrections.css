@@ -1,18 +1,50 @@
-/* Usage Records → Corrections: one row per request, like the kitchen product requests on the Products page. */
+/* Usage Records → Corrections: one glass card per kitchen ask (like the Products cards), and a ticket in a modal. */
 .corrections-page { padding: 20px 24px; overflow-y: auto; }
-.corrections { margin: 0; padding: 0; list-style: none; }
-.correction { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
-.correction:first-child { padding-top: 0; }
-.correction:last-child { border-bottom: 0; padding-bottom: 0; }
-.correction strong { color: var(--ink); font-size: 15px; }
-.correction p { margin: 3px 0 0; color: var(--ink-soft); font-size: 13px; }
-.correction__note { font-style: italic; }
-.correction__line { color: var(--ink) !important; }
-.correction-table { margin-top: 12px; }
-.correction-table__row--changed td:nth-child(3), .correction-table__row--added td:nth-child(3) { font-weight: 600; }
-.correction-table__row--removed td:nth-child(2) { text-decoration: line-through; color: var(--muted); }
-.correction-table__row--same td { color: var(--muted); }
-.correction__decision { color: var(--muted) !important; }
-.correction .row-actions { display: flex; flex: none; gap: 8px; }
-.correction > .badge { flex: none; }
-@media (max-width: 700px) { .corrections-page { padding: 16px; } .correction { flex-direction: column; align-items: flex-start; } }
+.corrections { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; }
+.corrections-empty { padding: 28px 20px; }
+.correction { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; color: var(--ink-2); }
+.correction--rejected { color: var(--muted-2); }
+.correction__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.correction__top > div { min-width: 0; display: grid; gap: 4px; }
+.correction__top h2 { margin: 0; font-size: 18px; font-weight: 300; letter-spacing: -.01em; line-height: 1.2; color: var(--ink-2); }
+.correction__open { flex: none; width: 40px; height: 40px; padding: 0; justify-content: center; }
+.correction__line { margin: 0; color: var(--ink-2); font-size: 13.5px; font-weight: 300; line-height: 1.5; }
+.correction__note { margin: 0; color: var(--muted-2); font-size: 13px; font-style: italic; }
+.correction__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: auto; padding-top: 10px; border-top: 1px solid rgba(170,186,210,.28); }
+.correction__foot p { margin: 0; color: var(--muted-2); font-size: 12.5px; font-weight: 300; }
+
+/* The ticket: the kitchen's usage ticket, read-only, every line before → after with an arrow. */
+.correction-ticket { padding: 4px 16px 12px; color: var(--ink-2); }
+.correction-ticket__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 56px; border-bottom: 1px solid rgba(170,186,210,.28); }
+.correction-ticket__head h3 { margin: 0; font-size: 18px; font-weight: 300; letter-spacing: -.01em; }
+.correction-ticket__meta { display: grid; gap: 6px; margin: 0; padding: 10px 0; border-bottom: 1px solid rgba(170,186,210,.28); font-size: 12.5px; }
+.correction-ticket__meta div { display: flex; justify-content: space-between; gap: 12px; }
+.correction-ticket__meta dt { color: var(--muted-2); font-weight: 300; }
+.correction-ticket__meta dd { margin: 0; font-weight: 500; text-align: right; }
+.correction-ticket__line { margin: 10px 0 0; font-size: 13.5px; font-weight: 300; line-height: 1.5; }
+.correction-ticket__rows { margin: 0; padding: 0; list-style: none; }
+.correction-ticket__cols { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; padding: 12px 0 4px; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
+.correction-ticket__row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid rgba(170,186,210,.22); }
+.correction-ticket__name { min-width: 0; }
+.correction-ticket__name strong { display: block; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.correction-ticket__name small { color: var(--muted-2); font-size: 12px; font-weight: 300; }
+.correction-ticket__amounts { display: flex; align-items: center; gap: 6px; font-size: 13.5px; white-space: nowrap; }
+.correction-ticket__before { color: var(--muted-2); font-weight: 300; }
+.correction-ticket__arrow { color: var(--muted-2); }
+.correction-ticket__after { font-weight: 600; }
+.correction-ticket__row--removed .correction-ticket__before { text-decoration: line-through; }
+.correction-ticket__row--same .correction-ticket__after { font-weight: 300; color: var(--muted-2); }
+.correction-ticket__tag { display: inline-flex; align-items: center; gap: 4px; min-width: 84px; justify-content: center; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; border: 1px solid var(--glass-border); color: var(--muted-2); background: rgba(255,255,255,.55); }
+.correction-ticket__tag--up, .correction-ticket__tag--added { color: var(--st-ok-fg, #1f6b43); background: var(--st-ok-bg, rgba(222,243,230,.8)); border-color: var(--st-ok-line, rgba(120,190,150,.5)); }
+.correction-ticket__tag--down, .correction-ticket__tag--removed { color: var(--st-expired-fg, #9b3f36); background: var(--st-expired-bg, rgba(252,232,228,.8)); border-color: var(--st-expired-line, rgba(214,160,152,.6)); }
+.correction-ticket__empty { padding: 12px 0; color: var(--muted-2); font-size: 13px; }
+
+@media (min-width: 700px) { .corrections { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .corrections { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; } }
+@media (min-width: 1500px) { .corrections { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  .corrections-page { padding: 16px; }
+  .correction-ticket__cols { display: none; }
+  .correction-ticket__row { grid-template-columns: 1fr auto; }
+  .correction-ticket__tag { grid-column: 1 / -1; justify-self: start; min-width: 0; }
+}
