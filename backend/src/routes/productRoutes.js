@@ -138,7 +138,9 @@ productRoutes.get("/", adminOnly, async (req, res) => {
       all: all.length,
       available: all.filter((p) => p.available).length,
       incomplete: all.filter((p) => !p.archived && !p.available).length,
-      archived: all.filter((p) => p.archived).length
+      archived: all.filter((p) => p.archived).length,
+      // Waiting on a super-admin: the only thing (or one of the things) missing is a price.
+      needsPrice: all.filter((p) => !p.archived && p.missing.some((code) => code === "price" || code === "packPrice")).length
     };
     const matchesStatus = (p) => status === "all" || (status === "available" && p.available)
       || (status === "incomplete" && !p.archived && !p.available) || (status === "archived" && p.archived);

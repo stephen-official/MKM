@@ -17,6 +17,13 @@ const STATUS_TABS = [
   { value: "incomplete", label: "Incomplete" },
   { value: "archived", label: "Archived" }
 ];
+const REQUEST_TABS = [
+  { value: "pending", label: "Waiting" },
+  { value: "approved", label: "Approved" },
+  { value: "rejected", label: "Rejected" },
+  { value: "all", label: "All" }
+];
+const IMPORT_ACTION = { created: "Added", updated: "Updated", error: "Needs attention" };
 const SEARCH_DEBOUNCE_MS = 250;
 const errorOf = (error, fallback) => error?.response?.data?.message || fallback;
 
@@ -46,7 +53,10 @@ export function ProductsPage({ view = "products" }) {
   const [tracker] = useState(createRequestTracker);
   const importInput = useRef(null);
   const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null); // { imported, failed, results } after an import, shown row by row
   const [downloading, setDownloading] = useState(false);
+  const [requestStatus, setRequestStatus] = useState("pending");
+  const [requestSearch, setRequestSearch] = useState("");
 
   useEffect(() => {
     const timer = setTimeout(() => setQ(search.trim()), SEARCH_DEBOUNCE_MS);
@@ -106,10 +116,9 @@ export function ProductsPage({ view = "products" }) {
     try {
       const form = new FormData(); form.append("file", file);
       const { data: outcome } = await api.post("/products/import", form, { headers: { "Content-Type": "multipart/form-data" } });
-      if (outcome.failed) {
-        const detail = outcome.results.filter((row) => row.action === "error").slice(0, 3).map((row) => `Row ${row.row}: ${row.message}`).join(" ");
-        showToast(`${outcome.imported} imported; ${outcome.failed} need attention. ${detail}`, "error");
-      } else showToast(`${outcome.imported} product${outcome.imported === 1 ? "" : "s"} imported.`, "success");
+      setImportResult(outcome);
+      if (outcome.failed) showToast(`${outcome.imported} imported; ${outcome.failed} ${outcome.failed === 1 ? "row needs" : "rows need"} attention.`, "error");
+      else showToast(`${outcome.imported} product${outcome.imported === 1 ? "" : "s"} imported.`, "success");
       loadProducts();
     } catch (error) { showToast(errorOf(error, "Could not import the spreadsheet."), "error"); }
     finally { setImporting(false); }
@@ -256,11 +265,19 @@ export function ProductsPage({ view = "products" }) {
     );
   }
 
-  const requestBody = requests === null ? <div className="kg-glass products-loading" role="status"><Loader2 size={18} className="animate-spin" aria-hidden="true" /> Loading requests…</div> : requests.length === 0 ? (
-    <EmptyState className="kg-glass products-empty" title="No product requests">Kitchens can ask for a product that is not listed yet from their stock screen.</EmptyState>
+  // Kitchen requests: waiting ones first by default; the chips and the search narrow the list.
+  const requestQuery = requestSearch.trim().toLowerCase();
+  const requestCounts = { all: (requests || []).length, pending: 0, approved: 0, rejected: 0 };
+  (requests || []).forEach((r) => { if (r.status in requestCounts) requestCounts[r.status] += 1; });
+  const visibleRequests = (requests || []).filter((r) => (requestStatus === "all" || r.status === requestStatus)
+    && (!requestQuery || [r.name, r.brand, r.kitchen?.name, r.requestedBy].some((text) => String(text || "").toLowerCase().includes(requestQuery))));
+  const requestList = visibleRequests.length === 0 ? (
+    <EmptyState className="kg-glass products-empty" title={requestCounts.all === 0 ? "No product requests" : requestQuery ? `No requests match “${requestSearch.trim()}”` : requestStatus === "pending" ? "Nothing waiting" : "Nothing here"}>
+      {requestCounts.all === 0 ? "Kitchens can ask for a product that is not listed yet from their stock screen." : requestQuery ? "Try a different name or kitchen." : "No requests have this status."}
+    </EmptyState>
   ) : (
     <ul className="product-requests">
-      {requests.map((r) => (
+      {visibleRequests.map((r) => (
         <li key={r._id} className={`kg-glass product-request product-request--${r.status}${r.status === "pending" ? " kg-glass--cool" : ""}`}>
           <div>
             <p className="kg-label">{r.status === "pending" ? "Waiting for a decision" : r.status}</p>
@@ -285,6 +302,26 @@ export function ProductsPage({ view = "products" }) {
         </li>
       ))}
     </ul>
+  );
+  const requestBody = requests === null ? <div className="kg-glass products-loading" role="status"><Loader2 size={18} className="animate-spin" aria-hidden="true" /> Loading requests…</div> : (
+    <>
+      <label className="ks-search kg-float">
+        <Search size={16} aria-hidden="true" />
+        <input type="search" aria-label="Search requests" placeholder="Product, brand or kitchen" value={requestSearch} onChange={(e) => setRequestSearch(e.target.value)} />
+        {requestSearch && <button type="button" aria-label="Clear search" onClick={() => setRequestSearch("")}><X size={16} aria-hidden="true" /></button>}
+      </label>
+      <section className="kg-glass ks-controls" aria-label="Filter requests">
+        <div className="ks-filters" role="group" aria-label="Filter by status">
+          {REQUEST_TABS.map((tab) => (
+            <button type="button" key={tab.value} aria-pressed={requestStatus === tab.value} className={requestStatus === tab.value ? "ks-filter ks-filter--active" : "ks-filter"} onClick={() => setRequestStatus(tab.value)}>
+              {tab.label}<span>{requestCounts[tab.value]}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+      <p className="products-results" aria-live="polite"><strong>{visibleRequests.length}</strong> {visibleRequests.length === 1 ? "request" : "requests"}{requestQuery ? ` matching “${requestSearch.trim()}”` : ""}</p>
+      {requestList}
+    </>
   );
 
   return (
@@ -313,7 +350,12 @@ export function ProductsPage({ view = "products" }) {
             </label>
             {counts.incomplete > 0 && status !== "incomplete" && (
               <Banner variant="warn">
-                {counts.incomplete} {counts.incomplete === 1 ? "product is" : "products are"} hidden from kitchens until the missing details are filled in{canPrice ? "" : " (prices are set by a super-admin)"}.{" "}
+                {canPrice && counts.needsPrice > 0 ? (
+                  <>{counts.needsPrice} {counts.needsPrice === 1 ? "product needs" : "products need"} a price from you before kitchens can use {counts.needsPrice === 1 ? "it" : "them"}
+                    {counts.incomplete > counts.needsPrice ? `; ${counts.incomplete - counts.needsPrice} more ${counts.incomplete - counts.needsPrice === 1 ? "is" : "are"} missing other details` : ""}.</>
+                ) : (
+                  <>{counts.incomplete} {counts.incomplete === 1 ? "product is" : "products are"} hidden from kitchens until the missing details are filled in{canPrice ? "" : " (prices are set by a super-admin)"}.</>
+                )}{" "}
                 <button type="button" className="exec-link" onClick={() => setStatus("incomplete")}>Show {counts.incomplete === 1 ? "it" : "them"}</button>
               </Banner>
             )}
@@ -365,6 +407,25 @@ export function ProductsPage({ view = "products" }) {
           <Field label="Reason the kitchen will see">
             <textarea rows={3} value={rejecting.note} maxLength={300} onChange={(e) => setRejecting({ ...rejecting, note: e.target.value })} />
           </Field>
+        </Modal>
+      )}
+
+      {importResult && (
+        <Modal title="Import finished" onClose={() => setImportResult(null)} wide actions={<Button onClick={() => setImportResult(null)}>Close</Button>}>
+          <p className="product-form__hint">
+            {importResult.imported} {importResult.imported === 1 ? "row" : "rows"} saved, {importResult.failed} {importResult.failed === 1 ? "row needs" : "rows need"} attention.
+            {importResult.failed > 0 && " Fix those rows in the spreadsheet and import it again; the rows that went through are already saved."}
+          </p>
+          <ul className="import-results" aria-label="Import results">
+            {[...importResult.results].sort((a, b) => Number(b.action === "error") - Number(a.action === "error") || a.row - b.row).map((row) => (
+              <li key={row.row} className={`kg-row import-result import-result--${row.action}`}>
+                <span className="import-result__row">Row {row.row}</span>
+                <strong>{IMPORT_ACTION[row.action] || row.action}</strong>
+                <span className="import-result__text">{row.action === "error" ? row.message : row.name}</span>
+              </li>
+            ))}
+            {importResult.results.length === 0 && <li className="kg-row import-result"><span className="import-result__text">The sheet had no rows to import.</span></li>}
+          </ul>
         </Modal>
       )}
 

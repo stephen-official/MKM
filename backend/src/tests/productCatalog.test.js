@@ -140,7 +140,7 @@ test("the list filters by status and search and always returns the counts", asyn
   await as("admin", "post", "/api/products").send(base({ name: "Dal", brand: "Tata" }));
   const res = await as("admin", "get", "/api/products?status=incomplete");
   assert.deepEqual(res.body.items.map((p) => p.name), ["Dal"]);
-  assert.deepEqual(res.body.counts, { all: 2, available: 1, incomplete: 1, archived: 0 });
+  assert.deepEqual(res.body.counts, { all: 2, available: 1, incomplete: 1, archived: 0, needsPrice: 1 });
   assert.deepEqual((await as("admin", "get", "/api/products?q=tata")).body.items.map((p) => p.name), ["Dal"]);
   assert.equal((await as("cook", "get", "/api/products")).status, 403);
 });
