@@ -108,7 +108,11 @@ productRoutes.post("/import", adminOnly, workbookUpload.single("file"), async (r
           results.push({ row: index, action: "created", name: created.name });
         }
       } catch (error) {
-        results.push({ row: index, action: "error", message: error.message || "Could not import this row." });
+        // Name the fields that failed ("Pack 1: Enter how much one pack holds."), not just "Some details need attention."
+        const fields = error.errors ? Object.entries(error.errors).flatMap(([key, value]) => (key === "packList"
+          ? (value || []).flatMap((problems, i) => Object.values(problems || {}).map((text) => `Pack ${i + 1}: ${text}`))
+          : [value])) : [];
+        results.push({ row: index, action: "error", message: fields.length ? fields.join(" ") : error.message || "Could not import this row." });
       }
     }
     const failed = results.filter((result) => result.action === "error");

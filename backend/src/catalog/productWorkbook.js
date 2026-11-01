@@ -34,7 +34,7 @@ export const rowToProduct = (row) => {
     id: cell(values["Product ID"]), name: cell(values.Name), groupName: cell(values["Product Group"]), unitSymbol: cell(values.Unit),
     itemType: cell(values.Type) || "stock", kind: choice(values.Kind), form: choice(values.Form), vegMark: choice(values["Veg Mark"]),
     allergens: list(values.Allergens), storage: choice(values.Storage),
-    defaultThreshold: number(values["Low Stock Threshold"]), brand: cell(values.Brand),
+    defaultThreshold: cell(values["Low Stock Threshold"]) === "" ? undefined : Number(values["Low Stock Threshold"]), // blank = keep, or 0 for a new product brand: cell(values.Brand),
     productCode: cell(values["Product Code"]), imageUrl: cell(values["Image URL"]), pricePerUnit: number(values["Price per Unit"]),
     soldInPacks: bool(values["Ordered in Packs"]), packs: parsePacks(values.Packs), archived: bool(values.Archived)
   };

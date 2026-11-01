@@ -271,3 +271,18 @@ test("the Other group is always there, listed last, and can be neither renamed n
   assert.equal((await as("admin", "put", `/api/inventory/stock-groups/${ctx.group._id}`).send({ name: "other" })).body.code, "GROUP_BUILT_IN");
   assert.equal((await as("admin", "get", "/api/inventory/stock-groups")).body.length, 3);
 });
+
+test("an import row names what is wrong, and a pack price that is not a number is refused, not saved", async () => {
+  const ExcelJS = (await import("exceljs")).default;
+  const template = await as("root", "get", "/api/products/import-template").buffer(true).parse((res, done) => { const c = []; res.on("data", (x) => c.push(x)); res.on("end", () => done(null, Buffer.concat(c))); });
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(template.body);
+  const sheet = book.getWorksheet("Products");
+  const headers = sheet.getRow(1).values.slice(1);
+  const row = (values) => headers.map((h) => values[h] ?? "");
+  sheet.addRow(row({ Name: "Tomato", "Product Group": "Grains", Unit: "kg", Kind: "food", "Veg Mark": "veg", Storage: "room", Allergens: "none", "Ordered in Packs": "Yes", Packs: "Box/Carton|?|300" }));
+  sheet.addRow(row({ Name: "Masala", "Product Group": "Grains", Unit: "kg", Kind: "food", "Veg Mark": "veg", Storage: "room", Allergens: "unknown", "Ordered in Packs": "Yes", Packs: "Packet|0.05|?" }));
+  const res = await as("root", "post", "/api/products/import").attach("file", Buffer.from(await book.xlsx.writeBuffer()), "p.xlsx");
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.deepEqual(res.body.results.map((r) => r.message), ["Pack 1: Enter how much one pack holds.", "Pack 1: Enter the pack price as a number."]);
+});

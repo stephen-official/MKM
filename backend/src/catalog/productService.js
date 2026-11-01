@@ -112,7 +112,8 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
   // --- price per unit ---
   const priceInput = body.pricePerUnit === undefined ? existing?.pricePerUnit ?? null : toNumber(body.pricePerUnit);
   if (canPrice) {
-    if (!isValidPrice(priceInput) && !allowBlankPrice) errors.pricePerUnit = "Enter a price per unit greater than zero.";
+    if (priceInput !== null && !Number.isFinite(priceInput)) errors.pricePerUnit = "Enter the price as a number.";
+    else if (!isValidPrice(priceInput) && !allowBlankPrice) errors.pricePerUnit = "Enter a price per unit greater than zero.";
     else update.pricePerUnit = priceInput;
   } else if (!samePrice(priceInput, existing?.pricePerUnit ?? null)) {
     throw new CatalogError(403, "PRICE_SUPER_ADMIN_ONLY", "Only a super-admin can set or change prices.");
@@ -145,7 +146,8 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
     if (!Number.isFinite(size) || size <= 0) problems.size = "Enter how much one pack holds.";
     let price = input.price === undefined ? before?.price ?? null : toNumber(input.price);
     if (canPrice) {
-      if (!isValidPrice(price) && !allowBlankPrice) problems.price = "Enter the pack price.";
+      if (price !== null && !Number.isFinite(price)) problems.price = "Enter the pack price as a number.";
+      else if (!isValidPrice(price) && !allowBlankPrice) problems.price = "Enter the pack price.";
     } else {
       if (!samePrice(price, before?.price ?? null)) throw new CatalogError(403, "PRICE_SUPER_ADMIN_ONLY", "Only a super-admin can set or change prices.");
       if (before && size !== before.size) price = null; // a resized pack must be re-priced by a super-admin
