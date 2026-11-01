@@ -421,6 +421,8 @@ setItems(formatted);
 
   // Products a kitchen may pick for usage, requests and transfers; the stock screen still lists the rest.
   const usableItems = useMemo(() => items.filter((item) => item.available !== false), [items]);
+  // Products the kitchen holds but may not use any more (archived or incomplete): a correction keeps their old lines, reduce-only.
+  const lockedItems = useMemo(() => items.filter((item) => item.available === false), [items]);
 
   const filteredItems = useMemo(() => {
   return usableItems.filter(item =>
@@ -934,6 +936,7 @@ setEditIndentId(indent._id);
             onEditDay={editDay}
             correction={correction}
             onCancelCorrection={cancelCorrection}
+            lockedItems={correction ? lockedItems : undefined}
           />
         </>
       ) : ["requests", "new-order", "orders-history"].includes(activeTab) ? (

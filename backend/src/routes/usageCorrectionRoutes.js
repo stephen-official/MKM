@@ -6,7 +6,7 @@ import { NoUsageDay } from "../models/NoUsageDayModel.js";
 import { CORRECTION_KINDS, UsageCorrection } from "../models/UsageCorrectionModel.js";
 import { isIsoDate } from "../executive/params.js";
 import { io, notifyKitchen } from "../realtime.js";
-import { requireAvailableProducts, stockRecordItemIds } from "../catalog/productService.js";
+import { CatalogError, assertKitchenCanUse } from "../catalog/productService.js";
 import { applyConsumptionEdit, recordConsumption, removeConsumption } from "./operationsRoutes.js";
 
 /**
@@ -25,6 +25,7 @@ class CorrectionError extends Error {
 }
 const send = (res, error) => {
   if (error instanceof CorrectionError) return res.status(error.status).json({ code: error.code, message: error.message });
+  if (error instanceof CatalogError) return res.status(error.status).json({ code: error.code, message: error.message, products: error.products });
   return res.status(500).json({ code: "CORRECTION_FAILED", message: error.message });
 };
 
@@ -91,7 +92,8 @@ const sameLines = (a, b) => {
 };
 
 // POST / { kind, date, items, consumptionId? } → the kitchen asks for a day to be reopened with this usage, or for a record's lines to be replaced.
-usageCorrectionRoutes.post("/", kitchenOnly, requireAvailableProducts(stockRecordItemIds), async (req, res) => {
+// A product that is no longer available to kitchens may stay or go down (it was already used); only a new or larger line needs an available product.
+usageCorrectionRoutes.post("/", kitchenOnly, async (req, res) => {
   try {
     const godownId = req.user.godownId;
     if (!godownId) throw new CorrectionError(400, "NO_KITCHEN", "Your account is not linked to a kitchen");
@@ -105,6 +107,7 @@ usageCorrectionRoutes.post("/", kitchenOnly, requireAvailableProducts(stockRecor
       if (lines.length === 0) throw new CorrectionError(400, "INVALID_ITEMS", "Add what was used that day");
       if (!(await NoUsageDay.exists({ godownId, date }))) throw new CorrectionError(409, "NOT_MARKED", "That day is not marked as no usage");
       if (await UsageCorrection.exists({ godownId, kind, date, status: "pending" })) throw new CorrectionError(409, "ALREADY_PENDING", "The admin has already been asked about this day");
+      await assertKitchenCanUse(req.user, lines.map((line) => line.stockItemId));
       message = `A kitchen asks to record usage on ${date} (marked no usage)`;
     } else {
       if (!mongoose.isValidObjectId(consumptionId)) throw new CorrectionError(404, "NOT_FOUND", "Usage record not found");
@@ -113,6 +116,8 @@ usageCorrectionRoutes.post("/", kitchenOnly, requireAvailableProducts(stockRecor
       if (await UsageCorrection.exists({ godownId, consumptionId, status: "pending" })) throw new CorrectionError(409, "ALREADY_PENDING", "The admin has already been asked about this record");
       doc.before = snapshot(consumption);
       if (sameLines(doc.before, lines)) throw new CorrectionError(400, "NO_CHANGE", "Nothing was changed");
+      const wasUsed = new Map(doc.before.map((line) => [String(line.stockItemId), Number(line.qtyBaseUnit) || 0]));
+      await assertKitchenCanUse(req.user, lines.filter((line) => line.qtyBaseUnit > (wasUsed.get(String(line.stockItemId)) || 0)).map((line) => line.stockItemId));
       doc.date = consumption.date;
       doc.consumptionId = consumption._id;
       doc.recordUpdatedAt = consumption.updatedAt;

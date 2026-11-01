@@ -6,6 +6,7 @@ import { createUser } from "./helpers/auth.js";
 import { kitchen, seedCatalog, stockRow } from "./helpers/fixtures.js";
 import { addDays, businessDateOf } from "../executive/params.js";
 import { Consumption, GodownStock } from "../models/FlowModels.js";
+import { StockItem } from "../models/InventoryModels.js";
 import { NoUsageDay } from "../models/NoUsageDayModel.js";
 import { UsageCorrection } from "../models/UsageCorrectionModel.js";
 
@@ -191,4 +192,26 @@ test("a record that was deleted after the ask cannot be approved", async () => {
   const { body: created } = await askEdit(ctx.cook, recorded._id, [line(ctx.rice, 8)]);
   assert.equal((await request(app).delete(`/api/consumptions/${recorded._id}`).set(...auth(ctx.admin))).status, 200);
   assert.equal((await approve(ctx.admin, created._id)).body.code, "RECORD_GONE");
+});
+
+test("a product archived after it was used may stay or go down on a correction, but not go up, be added, or be recorded afresh", async () => {
+  const { body: recorded } = await recordUsage(ctx.cook, today, [line(ctx.rice, 10), line(ctx.dal, 2)]);
+  await StockItem.updateOne({ _id: ctx.items.Dal._id }, { $set: { archived: true } });
+
+  const up = await askEdit(ctx.cook, recorded._id, [line(ctx.rice, 10), line(ctx.dal, 3)]);
+  assert.equal(up.status, 409, JSON.stringify(up.body));
+  assert.equal(up.body.code, "PRODUCT_UNAVAILABLE");
+  assert.match(up.body.message, /Dal/);
+  assert.equal((await askReopen(ctx.cook, { items: [line(ctx.dal, 1)] })).body.code, "PRODUCT_UNAVAILABLE");
+
+  const down = await askEdit(ctx.cook, recorded._id, [line(ctx.rice, 8), line(ctx.dal, 1)]);
+  assert.equal(down.status, 201, JSON.stringify(down.body));
+  assert.equal((await approve(ctx.admin, down.body._id)).status, 200);
+  assert.equal(await stockOf(ctx.dal), 9);
+
+  // Removed entirely: still fine. Added back afterwards: refused, it is a new line now.
+  const gone = await askEdit(ctx.cook, recorded._id, [line(ctx.rice, 8)]);
+  assert.equal(gone.status, 201, JSON.stringify(gone.body));
+  assert.equal((await approve(ctx.admin, gone.body._id)).status, 200);
+  assert.equal((await askEdit(ctx.cook, recorded._id, [line(ctx.rice, 8), line(ctx.dal, 1)])).body.code, "PRODUCT_UNAVAILABLE");
 });

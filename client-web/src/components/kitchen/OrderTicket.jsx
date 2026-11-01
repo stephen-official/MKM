@@ -29,8 +29,8 @@ function TicketQty({ row, onChange }) {
 /**
  * Receipt-style list of what the cook has added, with no prices: one row per item with its own stepper, so the whole
  * request or usage entry is visible at once. Folds away on a phone; wide screens show it beside the list.
- * rows: [{ id, name, amount, unit, locked?, needsQty? }] in the order they were added; needsQty marks an item added from Home
- * that still has no amount. meta: [{ label, value }] shown under the title.
+ * rows: [{ id, name, amount, unit, locked?, needsQty?, noIncrease? }] in the order they were added; needsQty marks an item added from Home
+ * that still has no amount; noIncrease (a correction line for a product kitchens may no longer use) may only go down. meta: [{ label, value }] shown under the title.
  */
 export default function OrderTicket({ title = "Order ticket", badge = "", rows = [], meta = [], emptyText = "Tap “Add” on an item below and it will be listed here.", open = true, onToggle, onChange, onClear, clearLabel = "Remove all items",
   onSubmit, submitLabel = "Done", submittingLabel = "Saving…", submitting = false, submitDisabled = false, allowEmpty = false, note = "" }) {
@@ -51,7 +51,7 @@ export default function OrderTicket({ title = "Order ticket", badge = "", rows =
             <div className="kt-ticket__stepper">
               <button type="button" disabled={row.locked} onClick={() => onChange(row.id, Math.max(0, row.amount - 1))} aria-label={row.amount <= 1 ? `Remove ${row.name}` : `Less ${row.name}`}>{row.amount <= 1 ? <X size={15} /> : <Minus size={15} />}</button>
               <TicketQty row={row} onChange={onChange} />
-              <button type="button" disabled={row.locked} onClick={() => onChange(row.id, row.amount + 1)} aria-label={`More ${row.name}`}><Plus size={15} /></button>
+              <button type="button" disabled={row.locked || row.noIncrease} onClick={() => onChange(row.id, row.amount + 1)} aria-label={`More ${row.name}`}><Plus size={15} /></button>
             </div>
           </li>)}
         </ul>}

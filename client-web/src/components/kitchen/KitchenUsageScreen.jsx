@@ -1,5 +1,5 @@
 import { AlertTriangle, CalendarOff, Check, ChevronUp, Pencil, Plus, Search, Utensils, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import { expiryStatus, formatStockQuantity, getStockHealth, productPacks, sortByExpiry, withPackaging } from "../../features/kitchen";
@@ -92,6 +92,8 @@ export default function KitchenUsageScreen({
   // original = { [stockItemId]: qtyBaseUnit } of the record being changed.
   correction = null,
   onCancelCorrection,
+  // Correction mode only: products on the record that kitchens may no longer use. They stay on the ticket, reduce-only, and are not listed below.
+  lockedItems = [],
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -110,14 +112,16 @@ export default function KitchenUsageScreen({
   const quantitySource = cart ?? quantities;
   const today = toLocalDateKey();
   // Correcting a usage record: its quantities already left the stock, so on this ticket they count as available again.
-  const items = useMemo(() => {
-    const original = correction?.original;
-    if (!original) return stockItems;
-    return stockItems.map((item) => {
-      const back = Number(original[String(item._id)] || 0);
-      return back > 0 ? { ...item, currentQty: Number(item.currentQty || 0) + back } : item;
-    });
-  }, [stockItems, correction]);
+  const original = correction?.original || null;
+  const giveBack = useCallback((list) => (!original ? list : list.map((item) => {
+    const back = Number(original[String(item._id)] || 0);
+    return back > 0 ? { ...item, currentQty: Number(item.currentQty || 0) + back } : item;
+  })), [original]);
+  const items = useMemo(() => giveBack(stockItems), [giveBack, stockItems]);
+  const lockedIds = useMemo(() => new Set(lockedItems.map((item) => String(itemId(item)))), [lockedItems]);
+  // The ticket knows every product on the cart; the list below shows only the usable ones.
+  const ticketItems = useMemo(() => (lockedItems.length ? [...items, ...giveBack(lockedItems)] : items), [giveBack, items, lockedItems]);
+  const isLocked = (item) => lockedIds.has(String(itemId(item)));
 
   // Expired and soon-to-expire stock first, so the cook uses it first; the deduction on the server follows the same order.
   const visibleItems = useMemo(() => {
@@ -140,12 +144,14 @@ export default function KitchenUsageScreen({
   const ticketRows = useMemo(() => {
     const source = Array.isArray(quantitySource) ? quantitySource : selectedItems;
     return source.flatMap((entry) => {
-      const item = items.find((candidate) => itemId(candidate) === itemId(entry));
+      const item = ticketItems.find((candidate) => itemId(candidate) === itemId(entry));
       const amount = numericQuantity(quantityFor(quantitySource, entry));
       const pack = packFor(quantitySource, entry);
-      return item && amount > 0 ? [{ id: itemId(item), name: item.name || "Unnamed supply", amount, unit: pack ? `${packLabel(pack, amount)} · ${displayNumber(amount * pack.packSize)} ${unitOf(item)}` : unitOf(item) }] : [];
+      const unit = pack ? `${packLabel(pack, amount)} · ${displayNumber(amount * pack.packSize)} ${unitOf(item)}` : unitOf(item);
+      const locked = Boolean(item) && lockedIds.has(String(itemId(item)));
+      return item && amount > 0 ? [{ id: itemId(item), name: item.name || "Unnamed supply", amount, unit: locked ? `${unit} · no longer in your stock list` : unit, noIncrease: locked }] : [];
     });
-  }, [items, quantitySource, selectedItems]);
+  }, [lockedIds, ticketItems, quantitySource, selectedItems]);
 
   // Quantities are entered in the unit the cook chose (bags or kg); the cap and the cart entry carry that pack.
   const updateQuantity = (item, nextValue, pack = packFor(quantitySource, item)) => {
@@ -199,8 +205,14 @@ export default function KitchenUsageScreen({
     if (converted > 0) setAmount(item, converted, next);
   };
   const changeRow = (id, amount) => {
-    const item = items.find((candidate) => itemId(candidate) === id);
-    if (item) setAmount(item, amount);
+    const item = ticketItems.find((candidate) => itemId(candidate) === id);
+    if (!item) return;
+    // A product kitchens may no longer use: its old line may only go down.
+    if (isLocked(item) && amount > numericQuantity(quantityFor(quantitySource, item))) {
+      toast.error(`${item.name} is no longer in your stock list. It can only be reduced.`, { id: `locked-${id}` });
+      return;
+    }
+    setAmount(item, amount);
   };
   const clearTicket = async () => {
     if (await confirm({ title: "Remove all items from the ticket?", message: "Nothing has been recorded yet.", confirmLabel: "Remove all", danger: true })) onClear?.();
