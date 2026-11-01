@@ -7,6 +7,11 @@
 .correction strong { color: var(--ink); font-size: 15px; }
 .correction p { margin: 3px 0 0; color: var(--ink-soft); font-size: 13px; }
 .correction__note { font-style: italic; }
+.correction__line { color: var(--ink) !important; }
+.correction-table { margin-top: 12px; }
+.correction-table__row--changed td:nth-child(3), .correction-table__row--added td:nth-child(3) { font-weight: 600; }
+.correction-table__row--removed td:nth-child(2) { text-decoration: line-through; color: var(--muted); }
+.correction-table__row--same td { color: var(--muted); }
 .correction__decision { color: var(--muted) !important; }
 .correction .row-actions { display: flex; flex: none; gap: 8px; }
 .correction > .badge { flex: none; }

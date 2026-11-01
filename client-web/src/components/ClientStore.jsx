@@ -15,7 +15,6 @@ import KitchenUsageScreen from "./kitchen/KitchenUsageScreen";
 import SupplyRequestsDeliveries from "./kitchen/SupplyRequestsDeliveries";
 import KitchenOrders from "./kitchen/KitchenOrders";
 import KitchenActivity from "./kitchen/KitchenActivity";
-import ReportMistakeSheet from "./kitchen/ReportMistakeSheet";
 import KitchenTransfers from "./kitchen/KitchenTransfers";
 import KitchenReceiveDelivery from "./kitchen/KitchenReceiveDelivery";
 import KitchenItemBuilder from "./kitchen/KitchenItemBuilder";
@@ -23,7 +22,7 @@ import KitchenReviewPanel from "./kitchen/KitchenReviewPanel";
 import KitchenSectionNav from "./kitchen/KitchenSectionNav";
 import { isSameLocalDate, localDateFromKey, toLocalDateKey } from "../utils/date";
 import { buildReceiptPayload, buildTransactionItems, canRecordUsage } from "../features/kitchen/workflows";
-import { historyEntries } from "../features/kitchen/corrections";
+import { cartFromRecord, historyEntries } from "../features/kitchen/corrections";
 import { withPackaging } from "../features/kitchen";
 import { clearSession } from "../utils/session";
 import { FEATURE_DISABLED_EVENT, canOpenView, draftFeature, featureForView, fetchKitchenFlags, hiddenTabs as computeHidden, isDraftBlocked, isFeatureOn, isViewHidden, sameFlags, tabTarget } from "../features.js";
@@ -62,6 +61,13 @@ const DISCARD_DRAFT = Object.freeze({
   danger: true,
 });
 const DELETE_REQUEST = Object.freeze({ title: "Delete this request?", message: "This can’t be undone.", confirmLabel: "Delete", danger: true });
+const CORRECTION_CONFIRM = Object.freeze({
+  title: "Change a recorded day?",
+  message: "Edit the ticket as you need, then send it. Nothing changes until the admin approves.",
+  confirmLabel: "Edit",
+  cancelLabel: "Not now",
+});
+const WITHDRAW_CORRECTION = Object.freeze({ title: "Take back this request?", message: "The admin will not see it any more.", confirmLabel: "Take back", danger: true });
 
 // The supply-order draft is kept on the phone (per kitchen, so another kitchen logging in here never sees it) until the order
 // is placed or the ticket is cleared. Storage can be missing or full: then the draft simply lives in memory for this visit.
@@ -97,10 +103,10 @@ const ClientStore = () => {
   const [orders, setOrders] = useState([]); 
   // Day-by-day usage account from GET /usage-days (today, missed, days); null while loading or when usage is off.
   const [usageDays, setUsageDays] = useState(null);
-  // Corrections this kitchen asked for (GET /usage-corrections/me): today only "reopen a no-usage day".
+  // Corrections this kitchen asked for (GET /usage-corrections/me): reopen a no-usage day with usage, or change a usage record.
   const [corrections, setCorrections] = useState([]);
-  // { date, reason } while the "Report a mistake" sheet is open for a no-usage day.
-  const [mistakeDay, setMistakeDay] = useState(null);
+  // While the Record screen edits a past record for the admin: { kind, date, consumptionId, reason, from } (from = the view to go back to).
+  const [correction, setCorrection] = useState(null);
   const [requests, setRequests] = useState([]); 
   const [indents, setIndents] = useState([]);
   // Shared orders, kept here only to count deliveries waiting on the header bell and the home screen.
@@ -495,6 +501,7 @@ if (isNaN(parsedQty)) return;
 
 
   const handleSubmit = async () => {
+  if (correction) return sendCorrection();
 
   console.log("===== SUBMIT =====");
   if (activeTransactionType === "usage" && !selectedDate) {
@@ -695,6 +702,7 @@ setEditIndentId(indent._id);
     const go = () => {
       setActiveTab("usage");
       setActiveTransactionType("usage");
+      setCorrection(null);
       setCart([]);
       setSelectedDate(date);
       fetchItems(false);
@@ -715,19 +723,63 @@ setEditIndentId(indent._id);
       return false;
     }
   };
-  // A "no usage" mark is not undone on the phone: the kitchen reports the mistake and an admin reopens the day.
-  const requestReopen = async (date, reason, note = "") => {
-    try {
-      await api.post("/usage-corrections", { kind: "reopen_day", date, reason, note });
-      toast.success("Sent to the admin. You can record usage once they reopen the day.");
-      await fetchCorrections();
+  // Editing a past record for the admin: the Record screen opens on that day with the lines as they were entered, and
+  // "Send to admin" asks for the change instead of recording it. Nothing changes on the phone until the admin approves.
+  const startCorrection = (target) => {
+    if (isBlocked("usage")) return false;
+    const go = async () => {
+      if (!(await confirm(CORRECTION_CONFIRM))) return false;
+      const { cart: prefilled, missing } = target.kind === "edit_usage" ? cartFromRecord(target.items, items) : { cart: [], missing: [] };
+      if (missing.length) toast.error(`${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} no longer in your stock list and cannot be changed here.`);
+      setCorrection({ kind: target.kind, date: target.date, consumptionId: target.consumptionId || null, reason: target.reason || "", from: activeTab });
+      setActiveTransactionType("usage");
+      setCart(prefilled);
+      setSelectedDate(target.date);
+      setActiveTab("usage");
+      fetchItems(false);
       return true;
+    };
+    return leaveDraft(go);
+  };
+  const editDay = (date, reason = "") => startCorrection({ kind: "reopen_day", date, reason });
+  const editRecord = (entry) => startCorrection({ kind: "edit_usage", date: entry.date, consumptionId: entry._id, items: entry.items });
+  const leaveCorrection = () => {
+    const back = correction?.from && correction.from !== "usage" ? correction.from : "activity";
+    setCorrection(null);
+    setCart([]);
+    setSelectedDate(toLocalDateKey());
+    setActiveTab(back);
+    return true;
+  };
+  const cancelCorrection = () => leaveDraft(leaveCorrection);
+  const sendCorrection = async () => {
+    const lines = buildTransactionItems(cart, "stock");
+    if (correction.kind === "reopen_day" && lines.length === 0) return toast.error("Add what was used that day");
+    const loadingToast = toast.loading("Sending…");
+    try {
+      await api.post("/usage-corrections", { kind: correction.kind, date: correction.date, consumptionId: correction.consumptionId, items: lines });
+      toast.success("Sent to the admin. Nothing changes until they approve it.");
+      leaveCorrection();
+      await fetchCorrections();
     } catch (error) {
-      toast.error(error.response?.data?.message || "Could not send. Try again.");
-      return false;
+      toast.error(error.response?.data?.message || error.response?.data?.error || "Could not send. Try again.");
+    } finally {
+      toast.dismiss(loadingToast);
     }
   };
-  const openMistake = (date, reason = "") => setMistakeDay({ date, reason });
+  // Taking back a pending ask: the admin never sees it.
+  const withdrawCorrection = async (id) => {
+    if (!(await confirm(WITHDRAW_CORRECTION))) return;
+    try {
+      await api.delete(`/usage-corrections/${id}`);
+      toast.success("Request taken back");
+      await fetchCorrections();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Could not take it back. Try again.");
+    }
+  };
+  // A correction lives only on the Record screen: leaving it (back button, another tab) drops it.
+  useEffect(() => { if (correction && activeTab !== "usage") setCorrection(null); }, [activeTab, correction]);
 
   const openDeliveries = () => {
     if (isBlocked("past-requests")) return false;
@@ -816,10 +868,6 @@ setEditIndentId(indent._id);
   return (
     <div className="kitchen-app-shell min-h-screen bg-[#F8F9FA] pb-24 font-sans text-slate-900">
       {confirmDialog}
-      {mistakeDay && (
-        <ReportMistakeSheet date={mistakeDay.date} markReason={mistakeDay.reason} onClose={() => setMistakeDay(null)}
-          onSubmit={(reason, note) => requestReopen(mistakeDay.date, reason, note)} />
-      )}
       <KitchenHeader
         kitchenName={userInfo?.godown?.name || "Kitchen"}
         onLogout={handleLogout}
@@ -836,7 +884,7 @@ setEditIndentId(indent._id);
           onRecordUsageOn={(date) => openUsage(false, date)}
           usageDays={usageDays}
           corrections={corrections}
-          onReportMistake={openMistake}
+          onEditDay={editDay}
           onViewStock={openStock}
           onRequestSupplies={() => openOrders()}
           sharedToReceive={sharedToReceive}
@@ -876,7 +924,9 @@ setEditIndentId(indent._id);
             usageDays={usageDays}
             onNoUsage={markNoUsage}
             corrections={corrections}
-            onReportMistake={openMistake}
+            onEditDay={editDay}
+            correction={correction}
+            onCancelCorrection={cancelCorrection}
           />
         </>
       ) : ["requests", "new-order", "orders-history"].includes(activeTab) ? (
@@ -910,7 +960,7 @@ setEditIndentId(indent._id);
       ) : activeTab === "activity" ? (
         <>
           <KitchenSectionNav label="History sections" value="activity" items={historySections} onChange={(view) => setActiveTab(view)} />
-          <KitchenActivity entries={usageHistory} corrections={corrections} onReportMistake={openMistake} />
+          <KitchenActivity entries={usageHistory} corrections={corrections} onEditDay={editDay} onEditRecord={editRecord} onWithdraw={withdrawCorrection} />
         </>
       ) : activeTab === "transfers" ? (
         <>

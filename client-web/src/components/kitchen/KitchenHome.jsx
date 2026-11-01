@@ -1,4 +1,4 @@
-import { AlertCircle, AlertTriangle, ArrowRight, ArrowUpRight, CalendarDays, CalendarOff, Check, CheckCircle2, ChevronDown, Plus } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowRight, ArrowUpRight, CalendarDays, CalendarOff, Check, CheckCircle2, ChevronDown, Pencil, Plus } from "lucide-react";
 import { useState } from "react";
 import { useConfirm } from "../ui/ConfirmDialog";
 import { useWide } from "./useWide";
@@ -177,7 +177,7 @@ export default function KitchenHome({
   onRecordUsageOn,
   usageDays = null,
   corrections = NO_CORRECTIONS,
-  onReportMistake,
+  onEditDay,
   onViewStock,
   onRequestSupplies,
   sharedToReceive = 0,
@@ -235,7 +235,7 @@ export default function KitchenHome({
   const todayRow = usageDays?.days?.find((day) => day.date === today) || null;
   const usageComplete = todayRow ? todayRow.status === "recorded" : todaysEntries.length > 0;
   const todayNone = todayRow?.status === "none";
-  // A marked day stays closed until an admin reopens it; the kitchen can only report the mistake.
+  // A marked day stays closed until an admin approves a change; the kitchen edits the day and sends the usage for approval.
   const todayCorrection = todayNone ? correctionForDay(corrections, today) : null;
   const entryCount = todayRow ? todayRow.entries : todaysEntries.length;
   const missedDays = (usageDays?.days || []).filter((day) => day.status === "missed" && day.date !== today);
@@ -252,8 +252,8 @@ export default function KitchenHome({
           <div className="kh-day__actions">
             {todayNone ? (
               todayCorrection?.status === "pending"
-                ? <span className="kg-pill kg-pill--soon">Reopen request sent</span>
-                : onReportMistake && <button type="button" className="kg-btn" onClick={() => onReportMistake(today, todayRow.reason)}>Report a mistake<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" /></button>
+                ? <span className="kg-pill kg-pill--soon">Waiting for the admin</span>
+                : onEditDay && <button type="button" className="kg-btn" onClick={() => onEditDay(today, todayRow.reason)}><Pencil size={16} strokeWidth={1.8} aria-hidden="true" />Edit</button>
             ) : (
               <button type="button" className="kg-btn" onClick={onRecordUsage}>
                 {usageComplete ? "Add more" : "Record"}<ArrowRight size={17} strokeWidth={1.8} aria-hidden="true" />

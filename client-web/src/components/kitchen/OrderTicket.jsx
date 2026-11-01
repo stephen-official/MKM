@@ -33,7 +33,7 @@ function TicketQty({ row, onChange }) {
  * that still has no amount. meta: [{ label, value }] shown under the title.
  */
 export default function OrderTicket({ title = "Order ticket", badge = "", rows = [], meta = [], emptyText = "Tap “Add” on an item below and it will be listed here.", open = true, onToggle, onChange, onClear, clearLabel = "Remove all items",
-  onSubmit, submitLabel = "Done", submittingLabel = "Saving…", submitting = false, submitDisabled = false, note = "" }) {
+  onSubmit, submitLabel = "Done", submittingLabel = "Saving…", submitting = false, submitDisabled = false, allowEmpty = false, note = "" }) {
   const count = rows.length;
   const heading = <span><p>{badge && <span className="kt-ticket__badge">{badge}</span>}{title}</p><h2 id="kt-ticket-title">{count === 0 ? "Nothing added yet" : `${count} ${count === 1 ? "item" : "items"}`}</h2></span>;
   return <section className="kg-glass kt-ticket" id="kitchen-ticket" aria-labelledby="kt-ticket-title">
@@ -56,7 +56,7 @@ export default function OrderTicket({ title = "Order ticket", badge = "", rows =
           </li>)}
         </ul>}
       {note && <p className="kt-ticket__note" role="status">{note}</p>}
-      {onSubmit && <button type="button" className="kg-btn kt-ticket__submit" disabled={count === 0 || submitting || submitDisabled} onClick={onSubmit}>{submitting ? submittingLabel : submitLabel}</button>}
+      {onSubmit && <button type="button" className="kg-btn kt-ticket__submit" disabled={(count === 0 && !allowEmpty) || submitting || submitDisabled} onClick={onSubmit}>{submitting ? submittingLabel : submitLabel}</button>}
       {onClear && rows.some((row) => !row.locked) && <button type="button" className="kt-ticket__clear" onClick={onClear}>{clearLabel}</button>}
     </div>}
   </section>;

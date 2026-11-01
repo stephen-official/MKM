@@ -1,7 +1,7 @@
-import { CalendarOff, ClipboardCheck, History, Search, X } from "lucide-react";
+import { CalendarOff, ClipboardCheck, History, Pencil, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
-import { CORRECTION_STATUS, NO_USAGE_REASON_LABEL, correctionForDay } from "../../features/kitchen/corrections";
+import { CORRECTION_STATUS, NO_USAGE_REASON_LABEL, correctionForDay, correctionForRecord } from "../../features/kitchen/corrections";
 import DateField from "../ui/DateField";
 import "./KitchenLists.css";
 
@@ -11,8 +11,11 @@ const formatDateTime = (value) => new Intl.DateTimeFormat("en-IN", {
 
 const itemName = (item) => item.stockItemId?.name || item.name || "Unknown item";
 
-/** History: every usage entry and every "no usage" day this kitchen recorded, newest first, filtered by item name and/or a single day. */
-export default function KitchenActivity({ entries = [], corrections = [], onReportMistake }) {
+/**
+ * History: every usage entry and every "no usage" day this kitchen recorded, newest first, filtered by item name and/or a single day.
+ * Edit on a card opens the Record screen on that day for the admin to approve; while the ask waits, the card shows it and can take it back.
+ */
+export default function KitchenActivity({ entries = [], corrections = [], onEditDay, onEditRecord, onWithdraw }) {
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
   const query = search.trim().toLowerCase();
@@ -54,19 +57,26 @@ export default function KitchenActivity({ entries = [], corrections = [], onRepo
                   </header>
                   {entry.note && <p className="kl-card__note">“{entry.note}”</p>}
                   {correction?.status === "rejected" && correction.decisionNote && <p className="kl-card__note">Admin: {correction.decisionNote}</p>}
-                  {onReportMistake && correction?.status !== "pending" && (
-                    <div className="kl-card__foot"><button type="button" className="kg-chip" onClick={() => onReportMistake(entry.date, entry.reason)}>Report a mistake</button></div>
-                  )}
+                  {correction?.status === "pending"
+                    ? onWithdraw && <div className="kl-card__foot"><button type="button" className="kg-chip" onClick={() => onWithdraw(correction._id)}>Take back</button></div>
+                    : onEditDay && <div className="kl-card__foot"><button type="button" className="kg-chip" onClick={() => onEditDay(entry.date, entry.reason)}><Pencil size={15} strokeWidth={1.8} aria-hidden="true" />Edit</button></div>}
                 </article>
               );
             }
+            // A usage record: the pill shows the admin's answer to the last edit, if any; "Take back" withdraws a waiting one.
+            const correction = entry.type === "consumption" ? correctionForRecord(corrections, entry._id) : null;
+            const status = correction ? CORRECTION_STATUS[correction.status] : null;
             return (
             <article className="kg-glass kl-card" key={`${entry.type}-${entry._id}`}>
               <header className="kl-card__head">
                 <div><p>{entry.type === "daily" ? "Daily-use record" : "Stock usage"}</p><h2>{formatDateTime(entry.historyTime)}</h2></div>
-                <span className="kg-pill kg-pill--low">Recorded</span>
+                <span className={`kg-pill kg-pill--${status ? status.tone : "low"} kl-pill--plain`}>{status ? status.label : "Recorded"}</span>
               </header>
               <ul>{(entry.items || []).map((item, index) => <li key={item.stockItemId?._id || index}><span>{itemName(item)}</span><strong>{Number(item.qtyBaseUnit || item.quantity || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {item.stockItemId?.unitId?.symbol || item.unit || "units"}</strong></li>)}</ul>
+              {correction?.status === "rejected" && correction.decisionNote && <p className="kl-card__note">Admin: {correction.decisionNote}</p>}
+              {entry.type === "consumption" && (correction?.status === "pending"
+                ? onWithdraw && <div className="kl-card__foot"><button type="button" className="kg-chip" onClick={() => onWithdraw(correction._id)}>Take back</button></div>
+                : onEditRecord && <div className="kl-card__foot"><button type="button" className="kg-chip" onClick={() => onEditRecord(entry)}><Pencil size={15} strokeWidth={1.8} aria-hidden="true" />Edit</button></div>)}
             </article>
             );
           })}

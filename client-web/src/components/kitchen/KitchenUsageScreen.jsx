@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarOff, Check, ChevronUp, Plus, Search, Utensils, X } from "lucide-react";
+import { AlertTriangle, CalendarOff, Check, ChevronUp, Pencil, Plus, Search, Utensils, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
@@ -87,7 +87,10 @@ export default function KitchenUsageScreen({
   usageDays = null,
   onNoUsage,
   corrections = [],
-  onReportMistake,
+  onEditDay,
+  // { kind: "reopen_day" | "edit_usage", date, reason } while a past record is being edited for the admin (ClientStore).
+  correction = null,
+  onCancelCorrection,
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -213,7 +216,7 @@ export default function KitchenUsageScreen({
 
   const dayStatus = usageDays?.days?.find((day) => day.date === selectedDate) || null;
   // A day already marked "no usage" is closed: no list, no ticket, one card that says so and offers "Report a mistake".
-  const alreadyNone = dayStatus?.status === "none";
+  const alreadyNone = !correction && dayStatus?.status === "none";
   const dayCorrection = alreadyNone ? correctionForDay(corrections, selectedDate) : null;
   const toggleNoUsage = (checked) => {
     setNoUsage(checked);
@@ -250,10 +253,12 @@ export default function KitchenUsageScreen({
       <button type="button" className="kt-ticket__clear" disabled={savingNoUsage} onClick={closeSheet}>Cancel</button>
     </section>
   );
-  const ticket = <OrderTicket title="Usage ticket" rows={ticketRows} meta={[{ label: "Usage date", value: formatDateKey(selectedDate) }]}
-    emptyText="Tap “Add” on a supply below and it will be listed here." open={wide ? ticketOpen : true} onToggle={wide ? () => setTicketOpen((value) => !value) : undefined}
+  const ticket = <OrderTicket title={correction ? "Correction ticket" : "Usage ticket"} rows={ticketRows} meta={[{ label: "Usage date", value: formatDateKey(selectedDate) }]}
+    emptyText={correction?.kind === "edit_usage" ? "Every item was removed. “Send to admin” asks to cancel this record." : "Tap “Add” on a supply below and it will be listed here."}
+    open={wide ? ticketOpen : true} onToggle={wide ? () => setTicketOpen((value) => !value) : undefined}
     onChange={changeRow} onClear={onClear ? clearTicket : undefined}
-    onSubmit={onSubmit} submitLabel="Record" submitting={submitting} submitDisabled={!selectedDate} />;
+    onSubmit={onSubmit} submitLabel={correction ? "Send to admin" : "Record"} submittingLabel={correction ? "Sending…" : "Saving…"}
+    allowEmpty={correction?.kind === "edit_usage"} submitting={submitting} submitDisabled={!selectedDate} />;
 
   const ticketPanel = noUsage ? noUsageTicket : ticket;
   const closedDay = alreadyNone && (
@@ -263,14 +268,28 @@ export default function KitchenUsageScreen({
         <p className="kg-label">{REASON_LABEL[dayStatus.reason] || "No usage"}{dayStatus.note ? ` · ${dayStatus.note}` : ""}</p>
         <h2 id="kus-closed-title">No usage recorded for {formatDateKey(selectedDate)}</h2>
         {dayCorrection?.status === "pending"
-          ? <span>Reopen request sent. Nothing can be recorded until the admin approves.</span>
+          ? <span>Your change was sent to the admin. Nothing can be recorded until they approve it.</span>
           : dayCorrection?.status === "rejected"
-            ? <span>The admin did not reopen this day{dayCorrection.decisionNote ? `: ${dayCorrection.decisionNote}` : ""}.</span>
-            : <span>Made a mistake? Ask the admin to reopen this day.</span>}
+            ? <span>The admin did not approve the change{dayCorrection.decisionNote ? `: ${dayCorrection.decisionNote}` : ""}.</span>
+            : <span>Made a mistake? Edit this day and send the change to the admin.</span>}
       </div>
       {dayCorrection?.status === "pending"
         ? <span className="kg-pill kg-pill--soon">Waiting for the admin</span>
-        : onReportMistake && <button type="button" className="kg-btn" onClick={() => onReportMistake(selectedDate, dayStatus.reason)}>Report a mistake</button>}
+        : onEditDay && <button type="button" className="kg-btn" onClick={() => onEditDay(selectedDate, dayStatus.reason)}><Pencil size={16} strokeWidth={1.8} aria-hidden="true" />Edit</button>}
+    </section>
+  );
+  // Editing a past record: the day is fixed, "No usage" is out of the way, and the ticket is sent to the admin instead of recorded.
+  const correctingBanner = correction && (
+    <section className="kg-glass kus-closed kus-correcting" aria-labelledby="kus-correcting-title">
+      <span className="kg-orb kus-closed__icon" aria-hidden="true"><Pencil size={20} strokeWidth={1.6} /></span>
+      <div className="kus-closed__text">
+        <p className="kg-label">Correction · needs the admin’s approval</p>
+        <h2 id="kus-correcting-title">{correction.kind === "reopen_day" ? `Recording usage for ${formatDateKey(selectedDate)}` : `Editing the usage of ${formatDateKey(selectedDate)}`}</h2>
+        <span>{correction.kind === "reopen_day"
+          ? `This day was marked “${REASON_LABEL[correction.reason] || "No usage"}”. Add what was used, then send it.`
+          : "Change amounts, add or remove items, then send it. Nothing changes until the admin approves."}</span>
+      </div>
+      {onCancelCorrection && <button type="button" className="kg-chip" onClick={onCancelCorrection}>Cancel</button>}
     </section>
   );
 
@@ -305,7 +324,7 @@ export default function KitchenUsageScreen({
         <label className="kus-date">
           <span>Usage date</span>
           <DateField value={selectedDate} max={today} required label="Usage date"
-            onChange={(value) => onDateChange?.(value)} disabled={submitting} />
+            onChange={(value) => onDateChange?.(value)} disabled={submitting || Boolean(correction)} />
         </label>
         {!alreadyNone && <div className="kus-filters" role="group" aria-label="Show only">
           {FILTERS.map(({ key, label }) => (
@@ -316,9 +335,10 @@ export default function KitchenUsageScreen({
         </div>}
       </section>
 
+      {correctingBanner}
       {closedDay}
 
-      {onNoUsage && !alreadyNone && (
+      {onNoUsage && !alreadyNone && !correction && (
         <label className={`kg-glass kus-none${noUsage ? " is-on" : ""}`}>
           <input type="checkbox" checked={noUsage} disabled={submitting || rowCount > 0} onChange={(event) => toggleNoUsage(event.target.checked)} />
           <span>
@@ -464,7 +484,7 @@ export default function KitchenUsageScreen({
         <button type="button" className="kus-bar" onClick={() => setSheetOpen(true)} aria-haspopup="dialog" aria-expanded={sheetOpen}
           aria-label={`${rowCount} ${rowCount === 1 ? "item" : "items"} on the usage ticket. Open the ticket.`}>
           <span className="kus-bar__count" aria-hidden="true">{noUsage ? "!" : rowCount}</span>
-          <span className="kus-bar__text" aria-hidden="true"><strong>{noUsage ? "No usage" : "Usage ticket"}</strong> · Review</span>
+          <span className="kus-bar__text" aria-hidden="true"><strong>{noUsage ? "No usage" : correction ? "Correction" : "Usage ticket"}</strong> · Review</span>
           <ChevronUp size={20} aria-hidden="true" />
         </button>
       )}
@@ -473,7 +493,7 @@ export default function KitchenUsageScreen({
           <button type="button" className="kus-sheet__backdrop" onClick={closeSheet} aria-label="Close the ticket" />
           <section className="kus-sheet__panel" role="dialog" aria-modal="true" aria-label="Usage ticket">
             <header className="kus-sheet__head">
-              <p className="kg-label">Record</p>
+              <p className="kg-label">{correction ? "Send to admin" : "Record"}</p>
               <button type="button" className="kg-chip kus-sheet__close" onClick={closeSheet} aria-label="Close the ticket"><X size={18} /></button>
             </header>
             <div className="kus-sheet__body">{ticketPanel}</div>
