@@ -429,7 +429,7 @@ export function ProductsPage({ view = "products" }) {
       )}
 
       {sheet === "export" && (
-        <Modal title="Export products" onClose={() => !downloading && setSheet("")} actions={<Button variant="ghost" disabled={downloading} onClick={() => setSheet("")}>Cancel</Button>}>
+        <Modal title="Export products" onClose={() => !downloading && setSheet("")} closeButton="right">
           <p className="product-form__hint">Please pick the format for exporting.</p>
           <div className="export-choices">
             <button type="button" className="kg-glass export-choice" disabled={downloading} onClick={() => exportAs("/products/export/excel", "products-export.xlsx")}>
@@ -446,20 +446,17 @@ export function ProductsPage({ view = "products" }) {
       )}
 
       {sheet === "bulk" && (
-        <Modal title="Bulk add products" onClose={() => !importing && setSheet("")} actions={(
-          <>
-            <Button variant="ghost" disabled={importing} onClick={() => setSheet("")}>Cancel</Button>
-            <Button disabled={importing || downloading} onClick={() => importInput.current?.click()}><Upload size={15} aria-hidden="true" /> {importing ? "Uploading…" : "Choose file"}</Button>
-          </>
+        <Modal title="Bulk add products" onClose={() => !importing && setSheet("")} closeButton="right" actions={(
+          <Button disabled={importing || downloading} onClick={() => importInput.current?.click()}><Upload size={15} aria-hidden="true" /> {importing ? "Uploading…" : "Choose file"}</Button>
         )}>
           <ol className="bulk-steps">
             <li>Download the template. To change existing products, use <strong>Export › Excel</strong> instead.</li>
             <li>Fill one row per product. Use the dropdowns; the grey line under each heading says what goes there.</li>
             <li>Upload it here. A row with a Product ID updates that product; a row without one adds a new product.</li>
           </ol>
-          <Button variant="ghost" disabled={downloading || importing} onClick={() => downloadWorkbook("/products/import-template", "products-bulk-add-template.xlsx")}>
-            <FileSpreadsheet size={15} aria-hidden="true" /> {downloading ? "Preparing…" : "Download template"}
-          </Button>
+          <button type="button" className="bulk-template-link" disabled={downloading || importing} onClick={() => downloadWorkbook("/products/import-template", "products-bulk-add-template.xlsx")}>
+            <FileSpreadsheet size={15} aria-hidden="true" /> <span>{downloading ? "Preparing…" : "Download template"}</span>
+          </button>
         </Modal>
       )}
 

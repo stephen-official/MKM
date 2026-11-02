@@ -290,7 +290,7 @@ export function Select({ value, onChange, children, disabled = false, className,
 }
 
 /* dismissible=false keeps a long form open on an outside tap or Escape (only the cross and the buttons close it);
-   closeButton adds a cross at the top left of the title row. */
+   closeButton adds a cross at the top left of the title row; closeButton="right" puts it at the top right. */
 export function Modal({ title, onClose, children, actions, wide = false, dismissible = true, closeButton = false }) {
   useEffect(() => {
     if (!dismissible) return undefined;
@@ -309,7 +309,7 @@ export function Modal({ title, onClose, children, actions, wide = false, dismiss
       >
         {(title || closeButton) && (
           <div className="modal-head">
-            {closeButton && <button type="button" className="modal-close" onClick={onClose} aria-label="Close"><X size={18} aria-hidden="true" /></button>}
+            {closeButton && <button type="button" className={cx("modal-close", closeButton === "right" && "modal-close--right")} onClick={onClose} aria-label="Close"><X size={18} aria-hidden="true" /></button>}
             {title && <h2 className="modal-title">{title}</h2>}
           </div>
         )}

@@ -175,3 +175,8 @@
 .export-choice:disabled { opacity: .6; cursor: progress; }
 .bulk-steps { display: grid; gap: 8px; margin: 0 0 14px; padding-left: 20px; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
 @media (max-width: 520px) { .export-choices { grid-template-columns: 1fr; } }
+/* Download template: a plain underlined link, no button box. */
+.bulk-template-link, .bulk-template-link:hover, .bulk-template-link:focus-visible { display: inline-flex; align-items: center; gap: 6px; padding: 2px 0; color: var(--blue-deep); background: none; border: 0; box-shadow: none; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transform: none; }
+.bulk-template-link span { text-decoration: underline; text-underline-offset: 3px; }
+.bulk-template-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+.bulk-template-link:disabled { opacity: .6; cursor: progress; }
