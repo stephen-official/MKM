@@ -1,4 +1,4 @@
-/* Groups & godowns: glass rows on the wash, like the Products page. Primitives (.kg-*, .ks-*) come from glass.css. */
+/* Master data › Kitchens: glass rows on the wash, like the Products page. Primitives (.kg-*, .ks-*) come from glass.css. */
 .setup-shell { display: flex; flex-direction: column; min-height: 100%; }
 .setup-page { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 8px var(--page-gutter) 28px; }
 .setup-page > * { min-width: 0; max-width: 100%; }

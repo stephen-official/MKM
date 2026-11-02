@@ -222,7 +222,7 @@ inventoryRoutes.delete("/:type/:id", adminOnly, refuseCatalogWrites, async (req,
     if (req.params.type === "godowns") {
       const uses = await godownUses(req.params.id);
       if (uses.length) {
-        return res.status(409).json({ code: "GODOWN_IN_USE", uses, message: `This godown still has ${uses.join(", ")} pointing at it. It cannot be deleted while any of those exist.` });
+        return res.status(409).json({ code: "GODOWN_IN_USE", uses, message: `This kitchen still has ${uses.join(", ")} pointing at it. It cannot be deleted while any of those exist.` });
       }
     }
 
