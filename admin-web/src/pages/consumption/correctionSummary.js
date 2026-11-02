@@ -16,6 +16,7 @@ const brief = (parts, max = 3) => parts.length <= max ? parts.join(" · ") : `${
 /**
  * Every item the correction touches, in the order: changed/removed lines as they were, then added lines.
  * kind: "same" | "changed" | "removed" | "added".
+ * The kitchen app's adminChanges (client-web/src/features/kitchen/orders.js) uses the same idea — keep the two in step.
  */
 export const correctionChanges = (row) => {
   const before = row.before || [];
