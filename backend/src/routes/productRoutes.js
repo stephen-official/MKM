@@ -12,7 +12,7 @@ import {
 } from "../catalog/productService.js";
 import { canonicalPackName, isPresetPackType, packNameMatch, summarizePackTypeUsage } from "../catalog/packTypes.js";
 import { spellingHints } from "../catalog/spellcheck.js";
-import { createProductWorkbook, headersMatch, isBlankRow, isNotesRow, rowToProduct } from "../catalog/productWorkbook.js";
+import { PACK_SLOTS, createProductWorkbook, headersMatch, isBlankRow, isNotesRow, rowToProduct } from "../catalog/productWorkbook.js";
 import { ensureOtherGroup, sortGroups } from "../catalog/groups.js";
 import { renderProductsPdf } from "../catalog/productPdf.js";
 
@@ -48,6 +48,10 @@ productRoutes.get("/units", adminOnly, async (_req, res) => {
   }
 });
 
+// Download names read Section_Date_MKM, e.g. Products_02-Nov-2026_MKM.xlsx (today in business time). Keep in step with admin-web businessTime.js downloadName.
+const fileDate = (now = new Date()) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }).format(now).replace(/ /g, "-");
+export const downloadName = (section, ext, now) => `${section}_${fileDate(now)}_MKM.${ext}`;
+
 // The dropdown sources for the workbook, read at download time: every group, and the custom pack names in use.
 const workbookLists = async () => {
   await ensureOtherGroup();
@@ -68,7 +72,7 @@ productRoutes.get("/export/excel", adminOnly, async (_req, res) => {
   try {
     await assignMissingProductNos();
     const docs = await StockItem.find().populate("unitId", "name symbol").populate("stockGroupId", "name").sort({ name: 1 }).lean();
-    await sendWorkbook(res, await createProductWorkbook(docs.map((doc) => serializeProduct(doc)), await workbookLists()), "products-export.xlsx");
+    await sendWorkbook(res, await createProductWorkbook(docs.map((doc) => serializeProduct(doc)), await workbookLists()), downloadName("Products", "xlsx"));
   } catch (error) { sendCatalogError(res, error); }
 });
 
@@ -80,14 +84,14 @@ productRoutes.get("/export/pdf", adminOnly, async (_req, res) => {
       .sort((a, b) => String(a.group?.name || "").localeCompare(String(b.group?.name || "")) || a.name.localeCompare(b.name));
     const pdf = await renderProductsPdf(products);
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", 'attachment; filename="products.pdf"');
+    res.setHeader("Content-Disposition", `attachment; filename="${downloadName("Products", "pdf")}"`);
     res.send(pdf);
   } catch (error) { sendCatalogError(res, error); }
 });
 
 productRoutes.get("/import-template", adminOnly, async (_req, res) => {
   try {
-    await sendWorkbook(res, await createProductWorkbook([], await workbookLists()), "products-bulk-add-template.xlsx");
+    await sendWorkbook(res, await createProductWorkbook([], await workbookLists()), downloadName("Products-template", "xlsx"));
   } catch (error) { sendCatalogError(res, error); }
 });
 
@@ -126,18 +130,18 @@ productRoutes.post("/import", adminOnly, workbookUpload.single("file"), async (r
           const held = await kitchensHolding([existing._id]);
           if ((held.get(String(existing._id)) || 0) > 0) throw new CatalogError(409, "STOCK_HELD", "This product cannot be archived while a kitchen still holds it.");
         }
-        // A pack is the same pack when its name matches, so an upload keeps its price unless the file changes it.
+        // A pack is the same pack when its name matches, so it keeps its price (a resized pack waits for a new one).
+        // The file has PACK_SLOTS pack columns; a product's further packs are edited in the app, so they are kept as they are.
+        const samePack = (a, b) => canonicalPackName(a.name).toLowerCase() === canonicalPackName(b.name).toLowerCase();
         const packs = row.packs.map((pack) => {
-          const before = (existing?.packs || []).find((p) => canonicalPackName(p.name).toLowerCase() === canonicalPackName(pack.name).toLowerCase());
-          const priced = superAdmin && pack.price !== "" ? { price: pack.price } : {};
-          return { ...(before ? { _id: before._id } : {}), name: pack.name, size: pack.size, ...priced };
+          const before = (existing?.packs || []).find((p) => samePack(p, pack));
+          return { ...(before ? { _id: before._id } : {}), name: pack.name, size: pack.size };
         });
+        if (row.soldInPacks) packs.push(...(existing?.packs || []).slice(PACK_SLOTS).filter((p) => !packs.some((pack) => samePack(p, pack))));
         const { productNo, ...fields } = row;
-        const body = {
-          ...fields, stockGroupId: group?._id, unitId: unit?._id, packs,
-          ...(superAdmin ? {} : { pricePerUnit: undefined })
-        };
-        const update = await buildProductUpdate(body, { canPrice: superAdmin, existing, userId: req.user.sub, allowBlankPrice: true });
+        // Prices are not in the file and an upload never changes them, whoever sends it (canPrice: false keeps them as they are).
+        const body = { ...fields, stockGroupId: group?._id, unitId: unit?._id, packs };
+        const update = await buildProductUpdate(body, { canPrice: false, existing, userId: req.user.sub, allowBlankPrice: true });
         if (existing) {
           await StockItem.updateOne({ _id: existing._id }, { $set: { ...update, archived: row.archived, archivedAt: row.archived ? existing.archivedAt || new Date() : null, archivedBy: row.archived ? existing.archivedBy || req.user.sub : null } });
           results.push({ row: index, action: "updated", name: update.name, productNo });

@@ -29,7 +29,8 @@ const ALLERGEN_COLUMNS = [
   ["soy", "Soy", "Yes if it contains soya."],
   ["sulphite", "Sulphites", "Yes if it contains sulphite preservatives."]
 ];
-export const PACK_SLOTS = 3;
+// One pack per row in the file; a product's further packs are edited in the app and left alone by an upload.
+export const PACK_SLOTS = 1;
 
 // list: which Lists column feeds the dropdown; open: a value not in the list is allowed (after a warning).
 export const PRODUCT_COLUMNS = [
@@ -46,13 +47,9 @@ export const PRODUCT_COLUMNS = [
   { key: "defaultThreshold", header: "Low stock alert", note: "Optional. Warn when stock falls to this amount.", width: 12, number: true },
   { key: "brand", header: "Brand", note: "Optional. Brand name, if the kitchen should know it.", width: 16 },
   { key: "imageUrl", header: "Image URL", note: "Optional. Web link to a photo; blank keeps the photo.", width: 30 },
-  { key: "pricePerUnit", header: "Price per unit (₹)", note: "Super-admin only. Price of one unit; blank = not priced.", width: 13, number: true },
-  { key: "soldInPacks", header: "Ordered in packs", note: "Yes if bought in packs; then fill Pack 1 below.", width: 12, list: "yesNo" },
-  ...Array.from({ length: PACK_SLOTS }, (_, i) => [
-    { key: `pack${i + 1}:name`, header: `Pack ${i + 1} name`, note: "Pick a pack name, or type a new one.", width: 14, list: "packs", open: true },
-    { key: `pack${i + 1}:size`, header: `Pack ${i + 1} size`, note: "How much one pack holds, in the product's unit.", width: 10, number: true },
-    { key: `pack${i + 1}:price`, header: `Pack ${i + 1} price (₹)`, note: "Super-admin only. Price of one whole pack.", width: 12, number: true }
-  ]).flat(),
+  { key: "soldInPacks", header: "Ordered in packs", note: "Yes if the store buys it in packs, e.g. bags.", width: 12, list: "yesNo" },
+  { key: "pack1:name", header: "Pack name", note: "Pick a pack name, or type a new one.", width: 14, list: "packs", open: true },
+  { key: "pack1:size", header: "Pack size", note: "How much one pack holds, in the product's unit.", width: 10, number: true },
   { key: "archived", header: "Archived", note: "Super-admin only. Yes hides it from kitchens.", width: 10, list: "yesNo" }
 ];
 const COLUMN_INDEX = Object.fromEntries(PRODUCT_COLUMNS.map((column, index) => [column.key, index + 1]));
@@ -84,8 +81,8 @@ export const rowToProduct = (row) => {
   const unitText = cell(get("unit"));
   const allergens = ALLERGEN_COLUMNS.filter(([code]) => isYes(get(`allergen:${code}`))).map(([code]) => code);
   const packs = Array.from({ length: PACK_SLOTS }, (_, i) => ({
-    name: cell(get(`pack${i + 1}:name`)), size: number(get(`pack${i + 1}:size`)), price: number(get(`pack${i + 1}:price`))
-  })).filter((pack) => pack.name || pack.size !== "" || pack.price !== "");
+    name: cell(get(`pack${i + 1}:name`)), size: number(get(`pack${i + 1}:size`))
+  })).filter((pack) => pack.name || pack.size !== "");
   const threshold = cell(get("defaultThreshold"));
   const image = cell(get("imageUrl"));
   return {
@@ -103,7 +100,7 @@ export const rowToProduct = (row) => {
     defaultThreshold: threshold === "" ? undefined : Number(threshold), // blank = keep, or 0 for a new product
     brand: cell(get("brand")),
     imageUrl: image || undefined, // blank keeps the photo
-    pricePerUnit: number(get("pricePerUnit")),
+    // No prices in the file: they change often and are set in the app by a super-admin.
     soldInPacks: isYes(get("soldInPacks")),
     packs,
     archived: isYes(get("archived"))
@@ -124,14 +121,13 @@ const productCells = (p) => {
     productNo: p.productNo || "", name: p.name, group: p.group?.name || "", unit: p.unit?.symbol || "",
     itemType: labelOf("itemType", p.itemType || "stock"), kind: labelOf("kind", p.kind), form: labelOf("form", p.form),
     vegMark: labelOf("vegMark", p.vegMark), storage: labelOf("storage", p.storage),
-    defaultThreshold: p.defaultThreshold ?? "", brand: p.brand || "", imageUrl: p.imageUrl || "", pricePerUnit: p.pricePerUnit ?? "",
+    defaultThreshold: p.defaultThreshold ?? "", brand: p.brand || "", imageUrl: p.imageUrl || "",
     soldInPacks: p.soldInPacks ? "Yes" : "No", archived: p.archived ? "Yes" : "No"
   };
   ALLERGEN_COLUMNS.forEach(([code]) => { values[`allergen:${code}`] = (p.allergens || []).includes(code) ? "Yes" : ""; });
   for (let i = 0; i < PACK_SLOTS; i += 1) {
     values[`pack${i + 1}:name`] = packs[i]?.name || "";
     values[`pack${i + 1}:size`] = packs[i]?.size ?? "";
-    values[`pack${i + 1}:price`] = packs[i]?.price ?? "";
   }
   return PRODUCT_COLUMNS.map((column) => values[column.key]);
 };
@@ -145,26 +141,27 @@ export const createProductWorkbook = async (products = [], { groups = [], packNa
   workbook.creator = "MKM Inventory";
   const sheet = workbook.addWorksheet("Products", { views: [{ state: "frozen", xSplit: 2, ySplit: 2 }] });
   sheet.columns = PRODUCT_COLUMNS.map((column) => ({
-    width: column.width,
+    // Wide enough for the heading on one line and the note on about three.
+    width: Math.max(column.width + 4, column.header.length + 6, Math.ceil(column.note.length / 3) + 4),
     style: column.locked ? { fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFE8ECF2" } } } : { protection: { locked: false } }
   }));
 
   sheet.addRow(HEADERS);
   sheet.addRow(PRODUCT_COLUMNS.map((column) => column.note));
   const head = sheet.getRow(1);
-  head.height = 30;
+  head.height = 36;
   head.eachCell((c) => {
     c.font = { bold: true, color: { argb: "FFFFFFFF" } };
     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2F6FD6" } };
-    c.alignment = { vertical: "middle", wrapText: true };
+    c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
     c.protection = { locked: true };
   });
   const notes = sheet.getRow(2);
-  notes.height = 42;
+  notes.height = 48;
   notes.eachCell((c) => {
     c.font = { italic: true, size: 9, color: { argb: "FF5B6475" } };
     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F6FA" } };
-    c.alignment = { vertical: "top", wrapText: true };
+    c.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
     c.protection = { locked: true };
   });
   products.forEach((p) => {

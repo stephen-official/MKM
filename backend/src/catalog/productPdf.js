@@ -3,24 +3,21 @@ import { formatGeneratedAt } from "../executive/exportCommon.js";
 import { CHOICES } from "./productWorkbook.js";
 
 // The Products list as a PDF to read or print (the Excel export is the one to edit and upload back).
-// Standard PDF fonts have no ₹ sign, so amounts read "INR" as in the executive report.
-const money = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
-const inr = (n) => (typeof n === "number" ? `INR ${money.format(n)}` : "Not priced");
+// No prices: they change often and live in the app only.
 const label = (field, code) => CHOICES[field].find(([value]) => value === code)?.[1] || "";
 const ALLERGEN_WORDS = { none: "None", unknown: "Not sure", gluten: "Gluten", milk: "Milk", egg: "Egg", fish: "Fish", crustacean: "Crustaceans", peanut: "Peanut", tree_nut: "Tree nuts", soy: "Soy", sulphite: "Sulphites" };
 
 // [heading, share of the page width, one-line description]
 export const PDF_COLUMNS = [
   ["ID", 0.06, "Permanent Product ID; matches the Excel file."],
-  ["Name", 0.15, "The product name kitchens see."],
-  ["Group", 0.11, "The product group it is listed under."],
+  ["Name", 0.17, "The product name kitchens see."],
+  ["Group", 0.12, "The product group it is listed under."],
   ["Unit", 0.05, "The unit kitchens count it in."],
   ["Food facts", 0.15, "Food or non-food, veg mark, packaged or loose, storage."],
-  ["Allergens", 0.11, "Allergens it contains, as answered on the product."],
-  ["Low stock", 0.06, "Kitchens are warned at or below this amount."],
-  ["Price", 0.08, "Price of one unit."],
-  ["Packs", 0.15, "Packs it is bought in: name, size and price."],
-  ["Status", 0.08, "Archived, or what it still needs before kitchens see it."]
+  ["Allergens", 0.12, "Allergens it contains, as answered on the product."],
+  ["Low stock", 0.07, "Kitchens are warned at or below this amount."],
+  ["Packs", 0.15, "Packs the store buys it in: name and size."],
+  ["Status", 0.11, "Archived, or what it still needs before kitchens see it."]
 ];
 
 const NEEDS = { group: "group", unit: "unit", price: "price", packs: "packs", packDetails: "pack details", packPrice: "pack price" };
@@ -36,11 +33,11 @@ export const productPdfRow = (p) => {
   const facts = p.kind === "food"
     ? [label("kind", p.kind), label("vegMark", p.vegMark), label("form", p.form), label("storage", p.storage)].filter(Boolean).join(", ")
     : label("kind", p.kind) || "Not answered";
-  const packs = (p.packs || []).map((pack) => `${pack.name} ${pack.size} ${unit}, ${inr(pack.price)}`).join("; ");
+  const packs = (p.packs || []).map((pack) => `${pack.name} of ${pack.size} ${unit}`).join("; ");
   return [
     p.productNo || "", p.name, p.group?.name || "", unit, facts,
     p.kind === "food" ? (p.allergens || []).map((a) => ALLERGEN_WORDS[a] || a).join(", ") || "Not answered" : "",
-    p.defaultThreshold ? `${p.defaultThreshold} ${unit}` : "", inr(p.pricePerUnit), packs || "", statusText(p)
+    p.defaultThreshold ? `${p.defaultThreshold} ${unit}` : "", packs || "", statusText(p)
   ];
 };
 
@@ -57,7 +54,7 @@ export const renderProductsPdf = (products, { generatedAt = new Date().toISOStri
 
   doc.font("Helvetica-Bold").fontSize(18).text("Products", left);
   doc.font("Helvetica").fontSize(9).fillColor("#444")
-    .text(`${products.length} products · Generated ${formatGeneratedAt(generatedAt, timezone)} · Amounts in INR`).fillColor("#000").moveDown(0.6);
+    .text(`${products.length} products · Generated ${formatGeneratedAt(generatedAt, timezone)}`).fillColor("#000").moveDown(0.6);
 
   doc.font("Helvetica-Bold").fontSize(10).text("What each column means", left).moveDown(0.2);
   PDF_COLUMNS.forEach(([heading, , description]) => {

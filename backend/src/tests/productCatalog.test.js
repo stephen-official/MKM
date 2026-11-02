@@ -314,11 +314,11 @@ const food = { "Product group *": "Grains", "Unit *": "kg", "Food or non-food *"
 
 test("an import row names what is wrong, and a pack price that is not a number is refused, not saved", async () => {
   const { addRow, upload } = await fetchBook("/api/products/import-template");
-  addRow({ "Name *": "Tomato", ...food, "Ordered in packs": "Yes", "Pack 1 name": "Box/Carton", "Pack 1 size": "?", "Pack 1 price (₹)": 300 });
-  addRow({ "Name *": "Masala", ...food, "Ordered in packs": "Yes", "Pack 1 name": "Packet", "Pack 1 size": 0.05, "Pack 1 price (₹)": "?" });
+  addRow({ "Name *": "Tomato", ...food, "Ordered in packs": "Yes", "Pack name": "Box/Carton", "Pack size": "?" });
+  addRow({ "Name *": "Masala", ...food, "Unit *": "tray" });
   const res = await upload();
   assert.equal(res.status, 200, JSON.stringify(res.body));
-  assert.deepEqual(res.body.results.map((r) => r.message), ["Pack 1: Enter how much one pack holds.", "Pack 1: Enter the pack price as a number."]);
+  assert.deepEqual(res.body.results.map((r) => r.message), ["Pack 1: Enter how much one pack holds.", "Choose a unit from the preset list."]);
 });
 
 test("the template carries a note per column and dropdowns fed by the current groups and pack names", async () => {
@@ -326,6 +326,9 @@ test("the template carries a note per column and dropdowns fed by the current gr
   const { book, sheet, headers } = await fetchBook("/api/products/import-template");
   assert.equal(headers[0], "Product ID");
   assert.ok(!headers.includes("Product Code"));
+  assert.ok(!headers.some((h) => /price/i.test(h)), "no prices in the file");
+  assert.deepEqual(headers.filter((h) => /^Pack /.test(h)), ["Pack name", "Pack size"]);
+  assert.deepEqual(sheet.getRow(1).getCell(1).alignment, { horizontal: "center", vertical: "middle", wrapText: true });
   const notes = sheet.getRow(2).values.slice(1);
   assert.equal(notes.length, headers.length);
   assert.ok(notes.every((note) => note.split(/\s+/).length <= 12), "every note is short");
@@ -341,7 +344,7 @@ test("the template carries a note per column and dropdowns fed by the current gr
 test("bulk add: plain words, allergen columns and packs are read; a typed new group is created; Product ID updates; old layouts are refused", async () => {
   const { addRow, upload } = await fetchBook("/api/products/import-template");
   addRow({ "Name *": "Paneer", ...food, "Product group *": "Dairy", "Unit *": "Kgs", "Packaged or loose": "Loose or fresh", "No allergens": "", Milk: "Yes", Storage: "Fridge", Type: "Daily use" });
-  addRow({ "Name *": "Phenyl", "Product group *": "Cleaning", "Unit *": "L", "Food or non-food *": "Non-food", "Ordered in packs": "Yes", "Pack 1 name": "Can", "Pack 1 size": 5, "Pack 1 price (₹)": 450, "Price per unit (₹)": 90 });
+  addRow({ "Name *": "Phenyl", "Product group *": "Cleaning", "Unit *": "L", "Food or non-food *": "Non-food", "Ordered in packs": "Yes", "Pack name": "Can", "Pack size": 5 });
   addRow({ "Name *": "Broken", "Product group *": "Typo group", "Unit *": "kg" });
   const res = await upload();
   assert.equal(res.status, 200, JSON.stringify(res.body));
@@ -351,15 +354,17 @@ test("bulk add: plain words, allergen columns and packs are read; a typed new gr
   assert.match(paneer.productNo, /^P-\d{4}$/);
   assert.equal(await StockGroup.exists({ name: "Typo group" }), null, "a group no row ended up in is removed again");
 
-  // Export, change a cell, upload: the row with that Product ID is updated, and an admin's upload keeps the pack price.
-  const round = await fetchBook("/api/products/export/excel", "admin");
+  // Export, change a cell, upload: the row with that Product ID is updated; prices and a second pack (not in the file) stay.
+  await StockItem.updateOne({ name: "Phenyl" }, { $set: { pricePerUnit: 90, packs: [{ name: "Can", size: 5, price: 450 }, { name: "Drum", size: 50, price: 4000 }] } });
+  const round = await fetchBook("/api/products/export/excel", "root");
   const phenylRow = round.sheet.getRows(3, round.sheet.rowCount).find((r) => r.getCell(2).value === "Phenyl");
   phenylRow.getCell(round.headers.indexOf("Brand") + 1).value = "Clean Co";
-  const again = await round.upload("admin");
+  const again = await round.upload("root");
   assert.equal(again.body.failed, 0, JSON.stringify(again.body));
   const phenyl = await StockItem.findOne({ name: "Phenyl" }).lean();
   assert.equal(phenyl.brand, "Clean Co");
-  assert.equal(phenyl.packs[0].price, 450);
+  assert.equal(phenyl.pricePerUnit, 90);
+  assert.deepEqual(phenyl.packs.map((p) => [p.name, p.size, p.price]), [["Can", 5, 450], ["Drum", 50, 4000]]);
   assert.equal(await StockItem.countDocuments(), 2);
 
   const old = new ((await import("exceljs")).default.Workbook)();
@@ -370,9 +375,10 @@ test("bulk add: plain words, allergen columns and packs are read; a typed new gr
 
 test("the PDF export lists every product with plain words and a note per column", async () => {
   const rice = (await as("root", "post", "/api/products").send(base({ pricePerUnit: 60, allergens: ["gluten"], soldInPacks: true, packs: [{ name: "Bag", size: 25, price: 1400 }] }))).body;
-  assert.deepEqual(productPdfRow(rice), ["P-0001", "Rice", "Grains", "kg", "Food, Veg, Room temperature", "Gluten", "5 kg", "INR 60", "Bag 25 kg, INR 1,400", "Available"]);
+  assert.deepEqual(productPdfRow(rice), ["P-0001", "Rice", "Grains", "kg", "Food, Veg, Room temperature", "Gluten", "5 kg", "Bag of 25 kg", "Available"]);
   const res = await as("admin", "get", "/api/products/export/pdf").buffer(true).parse((r, done) => { const c = []; r.on("data", (x) => c.push(x)); r.on("end", () => done(null, Buffer.concat(c))); });
   assert.equal(res.status, 200);
   assert.equal(res.headers["content-type"], "application/pdf");
+  assert.match(res.headers["content-disposition"], /filename="Products_\d{2}-[A-Z][a-z]{2}-\d{4}_MKM\.pdf"/);
   assert.equal(res.body.subarray(0, 4).toString(), "%PDF");
 });

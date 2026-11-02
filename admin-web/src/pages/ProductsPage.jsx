@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Archive, ArchiveRestore, Download, Edit3, FileSpreadsheet, FileText, Loader2, Package, Plus, Search, Upload, X } from "lucide-react";
 import { api } from "../api.js";
 import { useToast } from "../useToast.js";
-import { formatDateTime } from "../businessTime.js";
+import { downloadName, formatDateTime } from "../businessTime.js";
 import { useFeatureFlags } from "../features/FeatureFlagsContext.js";
 import { Badge, Banner, Button, EmptyState, ErrorState, Field, Modal, PageHeader, Select } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
@@ -432,11 +432,11 @@ export function ProductsPage({ view = "products" }) {
         <Modal title="Export products" onClose={() => !downloading && setSheet("")} closeButton="right">
           <p className="product-form__hint">Please pick the format for exporting.</p>
           <div className="export-choices">
-            <button type="button" className="kg-glass export-choice" disabled={downloading} onClick={() => exportAs("/products/export/excel", "products-export.xlsx")}>
+            <button type="button" className="kg-glass export-choice" disabled={downloading} onClick={() => exportAs("/products/export/excel", downloadName("Products", "xlsx"))}>
               <FileSpreadsheet size={22} aria-hidden="true" />
               <span><strong>Excel</strong><small>To change many products: edit it, then upload it with Bulk add.</small></span>
             </button>
-            <button type="button" className="kg-glass export-choice" disabled={downloading} onClick={() => exportAs("/products/export/pdf", "products.pdf")}>
+            <button type="button" className="kg-glass export-choice" disabled={downloading} onClick={() => exportAs("/products/export/pdf", downloadName("Products", "pdf"))}>
               <FileText size={22} aria-hidden="true" />
               <span><strong>PDF</strong><small>To read or print. Every column is explained at the top.</small></span>
             </button>
@@ -454,7 +454,7 @@ export function ProductsPage({ view = "products" }) {
             <li>Fill one row per product. Use the dropdowns; the grey line under each heading says what goes there.</li>
             <li>Upload it here. A row with a Product ID updates that product; a row without one adds a new product.</li>
           </ol>
-          <button type="button" className="bulk-template-link" disabled={downloading || importing} onClick={() => downloadWorkbook("/products/import-template", "products-bulk-add-template.xlsx")}>
+          <button type="button" className="bulk-template-link" disabled={downloading || importing} onClick={() => downloadWorkbook("/products/import-template", downloadName("Products-template", "xlsx"))}>
             <FileSpreadsheet size={15} aria-hidden="true" /> <span>{downloading ? "Preparing…" : "Download template"}</span>
           </button>
         </Modal>
