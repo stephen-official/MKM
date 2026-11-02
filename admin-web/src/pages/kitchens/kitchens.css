@@ -58,3 +58,6 @@
   .kp-card__body { padding: 4px 14px 16px; }
   .kp-add > .kg-btn { flex: 1 1 100%; }
 }
+.kp-dialog { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.kp-dialog > .kp-hint { margin: 0; }
+.kp-optional { color: var(--muted-2); font-weight: 400; }
