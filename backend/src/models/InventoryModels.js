@@ -99,6 +99,9 @@ export const nextProductNo = async (session) => {
 stockItemSchema.pre("save", async function giveProductNo() {
   if (this.isNew && !this.productNo) this.productNo = await nextProductNo(this.$session());
 });
+// Custom pack names added in Settings before any product uses them (names in use on products count too; see /products/pack-names).
+const packNameSchema = new mongoose.Schema({ name: { type: String, required: true }, key: { type: String, required: true, unique: true } }, { timestamps: true });
+export const PackName = mongoose.model("PackName", packNameSchema);
 export const StockGroup = mongoose.model("StockGroup", stockGroupSchema);
 export const Unit = mongoose.model("Unit", unitSchema);
 export const Godown = mongoose.model("Godown", godownSchema);

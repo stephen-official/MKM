@@ -409,3 +409,19 @@ test("Settings › Units: a super-admin adds a unit; duplicates, look-alikes, bu
   assert.equal((await as("root", "delete", `/api/products/units/${bunch.body._id}`)).status, 200);
   assert.ok(!(await as("cook", "get", "/api/inventory/units")).body.some((u) => u.symbol === "bunch"));
 });
+
+test("Settings › Pack names: a super-admin adds one before any product uses it; it shows in the Excel dropdown and leaves the list when deleted", async () => {
+  assert.equal((await as("admin", "post", "/api/products/pack-names").send({ name: "Sack" })).status, 403);
+  assert.equal((await as("root", "post", "/api/products/pack-names").send({ name: "sack" })).status, 201);
+  assert.equal((await as("root", "post", "/api/products/pack-names").send({ name: "SACK" })).body.code, "PACK_NAME_EXISTS");
+  assert.equal((await as("root", "post", "/api/products/pack-names").send({ name: "bag" })).body.code, "PACK_NAME_EXISTS");
+  await as("root", "post", "/api/products").send(base({ pricePerUnit: 60, soldInPacks: true, packs: [{ name: "Crate", size: 20, price: 1000 }] }));
+  const listed = (await as("admin", "get", "/api/products/pack-names")).body.filter((row) => !row.builtIn);
+  assert.deepEqual(listed.map((row) => [row.name, row.productCount]), [["Crate", 1], ["Sack", 0]]);
+  const { book } = await fetchBook("/api/products/import-template");
+  const lists = book.getWorksheet("Lists");
+  const packs = lists.getColumn(lists.getRow(1).values.indexOf("packs")).values;
+  assert.ok(packs.includes("Sack") && packs.includes("Crate"));
+  await as("root", "post", "/api/products/pack-types/remove").send({ name: "Sack" });
+  assert.ok(!(await as("admin", "get", "/api/products/pack-names")).body.some((row) => row.name === "Sack"));
+});

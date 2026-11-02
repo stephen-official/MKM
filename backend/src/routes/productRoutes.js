@@ -4,14 +4,14 @@ import mongoose from "mongoose";
 import multer from "multer";
 import { storePhoto } from "../stock/photoStorage.js";
 import { authorize } from "../middleware/auth.js";
-import { StockItem, Unit } from "../models/InventoryModels.js";
+import { PackName, StockItem, Unit } from "../models/InventoryModels.js";
 import { isPresetSymbol, presetFor, refreshOfferedUnits } from "../catalog/units.js";
 import { StockGroup } from "../models/InventoryModels.js";
 import { isSuperAdmin } from "../utils/roles.js";
 import {
   CatalogError, assignMissingProductNos, buildProductUpdate, ensurePresetUnits, kitchensHolding, sendCatalogError, serializeProduct
 } from "../catalog/productService.js";
-import { canonicalPackName, isPresetPackType, packNameMatch, summarizePackTypeUsage } from "../catalog/packTypes.js";
+import { MAX_PACK_NAME_LENGTH, PRESET_PACK_TYPES, canonicalPackName, isPresetPackType, packNameMatch, summarizePackTypeUsage } from "../catalog/packTypes.js";
 import { spellingHints } from "../catalog/spellcheck.js";
 import { PACK_SLOTS, createProductWorkbook, headersMatch, isBlankRow, isNotesRow, rowToProduct } from "../catalog/productWorkbook.js";
 import { ensureOtherGroup, sortGroups } from "../catalog/groups.js";
@@ -87,12 +87,25 @@ productRoutes.delete("/units/:id", superAdminOnly, async (req, res) => {
 const fileDate = (now = new Date()) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }).format(now).replace(/ /g, "-");
 export const downloadName = (section, ext, now) => `${section}_${fileDate(now)}_MKM.${ext}`;
 
+/** Custom pack names: those added in Settings and those typed on products, once each (A–Z), with how many products use each. */
+const customPackNames = async () => {
+  const byKey = new Map();
+  (await PackName.find().lean()).forEach((row) => byKey.set(row.key, { name: row.name, productCount: 0, stored: true }));
+  (await StockItem.find({ "packs.0": { $exists: true } }).select("packs.name").lean()).forEach((product) => {
+    new Set(product.packs.map((pack) => canonicalPackName(pack.name)).filter((name) => name && !isPresetPackType(name))).forEach((name) => {
+      const row = byKey.get(name.toLowerCase()) || { name, productCount: 0, stored: false };
+      row.productCount += 1;
+      byKey.set(name.toLowerCase(), row);
+    });
+  });
+  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name));
+};
+
 // The dropdown sources for the workbook, read at download time: every group, and the custom pack names in use.
 const workbookLists = async () => {
   await ensureOtherGroup();
   const groups = sortGroups(await StockGroup.find().lean()).map((group) => group.name);
-  const packNames = [...new Set((await StockItem.distinct("packs.name")).map((name) => canonicalPackName(name)).filter((name) => name && !isPresetPackType(name)))]
-    .sort((a, b) => a.localeCompare(b));
+  const packNames = (await customPackNames()).map((row) => row.name);
   const units = (await ensurePresetUnits()).map((unit) => unit.symbol);
   return { groups, packNames, units };
 };
@@ -242,6 +255,25 @@ productRoutes.get("/", adminOnly, async (req, res) => {
   }
 });
 
+// Settings › Pack names: the built-in names, then the custom ones (added here or typed on a product).
+productRoutes.get("/pack-names", adminOnly, async (_req, res) => {
+  try {
+    res.json([...PRESET_PACK_TYPES.map((name) => ({ name, builtIn: true })), ...(await customPackNames()).map(({ name, productCount }) => ({ name, builtIn: false, productCount }))]);
+  } catch (error) { sendCatalogError(res, error); }
+});
+
+productRoutes.post("/pack-names", superAdminOnly, async (req, res) => {
+  try {
+    const name = canonicalPackName(req.body?.name);
+    if (!name || name.length > MAX_PACK_NAME_LENGTH) throw new CatalogError(400, "PACK_NAME", `Give a pack name of up to ${MAX_PACK_NAME_LENGTH} characters, e.g. Sack.`);
+    if (isPresetPackType(name) || (await customPackNames()).some((row) => row.name.toLowerCase() === name.toLowerCase())) {
+      throw new CatalogError(409, "PACK_NAME_EXISTS", `“${name}” is already in the list.`);
+    }
+    await PackName.create({ name, key: name.toLowerCase() });
+    res.status(201).json({ name, builtIn: false, productCount: 0 });
+  } catch (error) { sendCatalogError(res, error); }
+});
+
 productRoutes.get("/:id", adminOnly, async (req, res) => {
   try {
     res.json(await loadOne(req.params.id));
@@ -289,6 +321,7 @@ productRoutes.post("/pack-types/remove", adminOnly, async (req, res) => {
     const name = packTypeName(req.body?.name);
     const products = await packTypeUsage(name);
     await StockItem.updateMany({ _id: { $in: products.map((p) => p._id) } }, { $pull: { packs: { name: packNameMatch(name) } } });
+    await PackName.deleteOne({ key: name.toLowerCase() }); // a name added in Settings leaves the list too
     res.json({ name, updated: products.length, disabled: products.filter((p) => p.disabled).length, products });
   } catch (error) {
     sendCatalogError(res, error);

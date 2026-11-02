@@ -91,6 +91,9 @@ export function ProductsPage({ view = "products" }) {
 
   // The product form adds and deletes groups; it waits for this reload before choosing the new one.
   const loadGroups = useCallback(() => api.get("/inventory/stock-groups").then(({ data: rows }) => setGroups(rows)).catch(() => setGroups([])), []);
+  // Custom pack names, including those added in Settings before any product uses them.
+  const [savedPackNames, setSavedPackNames] = useState([]);
+  const loadPackNames = useCallback(() => api.get("/products/pack-names").then(({ data: rows }) => setSavedPackNames(rows.filter((r) => !r.builtIn).map((r) => r.name))).catch(() => setSavedPackNames([])), []);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
   useEffect(() => () => tracker.cancel(), [tracker]);
@@ -98,7 +101,8 @@ export function ProductsPage({ view = "products" }) {
     loadRequests();
     api.get("/products/units").then(({ data: rows }) => setUnits(rows)).catch(() => setUnits([]));
     loadGroups();
-  }, [loadRequests, loadGroups]);
+    loadPackNames();
+  }, [loadRequests, loadGroups, loadPackNames]);
 
   const openEditor = (next) => { setServerErrors({}); setEditing(next); };
 
@@ -400,8 +404,8 @@ export function ProductsPage({ view = "products" }) {
           groups={groups}
           onGroupsChanged={loadGroups}
           canPrice={canPrice}
-          onPackTypeRemoved={() => loadProducts()}
-          knownPackNames={products.flatMap((p) => (p.packs || []).map((pack) => pack.name))}
+          onPackTypeRemoved={() => { loadProducts(); loadPackNames(); }}
+          knownPackNames={[...products.flatMap((p) => (p.packs || []).map((pack) => pack.name)), ...savedPackNames]}
           busy={busy}
           serverErrors={serverErrors}
           submitLabel={editing.request ? "Create and approve" : "Save product"}

@@ -57,6 +57,8 @@ export const ROUTE_RULES = Object.freeze([
   feature("GET", "/api/products/import-template", ["products"], "read"),
   feature("POST", "/api/products/import", ["products"], "mutation"),
   feature("POST", "/api/products/upload-image", ["products"], "mutation"),
+  feature("GET", "/api/products/pack-names", ["products"], "read"),
+  feature("POST", "/api/products/pack-names", ["products"], "mutation"),
   feature("GET", "/api/products/pack-types/spellcheck", ["products"], "read"),
   feature("GET", "/api/products/pack-types/usage", ["products"], "read"),
   feature("POST", "/api/products/pack-types/remove", ["products"], "mutation"),
