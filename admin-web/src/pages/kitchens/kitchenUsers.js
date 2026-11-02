@@ -13,3 +13,9 @@ export const suggestPassword = (random = cryptoRandom) => {
   const digits = String(Math.floor(random() * 10_000)).padStart(4, "0");
   return `${word}-${digits}`;
 };
+
+/** "+919876543210" → "+91 98765 43210"; other countries are shown as stored. */
+export const formatPhone = (phone) => {
+  const match = /^\+91(\d{5})(\d{5})$/.exec(String(phone || ""));
+  return match ? `+91 ${match[1]} ${match[2]}` : String(phone || "");
+};
