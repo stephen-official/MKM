@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Archive, ArchiveRestore, Download, Edit3, FileSpreadsheet, Loader2, Package, Plus, Search, Upload, X } from "lucide-react";
+import { Archive, ArchiveRestore, Download, Edit3, FileSpreadsheet, FileText, Loader2, Package, Plus, Search, Upload, X } from "lucide-react";
 import { api } from "../api.js";
 import { useToast } from "../useToast.js";
 import { formatDateTime } from "../businessTime.js";
@@ -57,6 +57,7 @@ export function ProductsPage({ view = "products" }) {
   const importInput = useRef(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null); // { imported, failed, results } after an import, shown row by row
+  const [sheet, setSheet] = useState(""); // "export" (pick Excel or PDF) or "bulk" (Bulk add explained), "" when closed
   const [downloading, setDownloading] = useState(false);
   const [requestStatus, setRequestStatus] = useState("pending");
   const [requestSearch, setRequestSearch] = useState("");
@@ -109,24 +110,27 @@ export function ProductsPage({ view = "products" }) {
       const link = document.createElement("a");
       link.href = url; link.download = name; link.click();
       URL.revokeObjectURL(url);
-    } catch (error) { showToast(errorOf(error, "Could not download the spreadsheet."), "error"); }
+      return true;
+    } catch (error) { showToast(errorOf(error, "Could not download the file."), "error"); return false; }
     finally { setDownloading(false); }
   };
+  const exportAs = async (path, name) => { if (await downloadWorkbook(path, name)) setSheet(""); };
 
   const importWorkbook = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".xlsx")) { showToast("Choose an .xlsx Excel workbook.", "error"); return; }
+    if (!file.name.toLowerCase().endsWith(".xlsx")) { showToast("Choose an Excel (.xlsx) file.", "error"); return; }
     setImporting(true);
     try {
       const form = new FormData(); form.append("file", file);
       const { data: outcome } = await api.post("/products/import", form, { headers: { "Content-Type": "multipart/form-data" } });
+      setSheet("");
       setImportResult(outcome);
-      if (outcome.failed) showToast(`${outcome.imported} imported; ${outcome.failed} ${outcome.failed === 1 ? "row needs" : "rows need"} attention.`, "error");
-      else showToast(`${outcome.imported} product${outcome.imported === 1 ? "" : "s"} imported.`, "success");
+      if (outcome.failed) showToast(`${outcome.imported} saved; ${outcome.failed} ${outcome.failed === 1 ? "row needs" : "rows need"} attention.`, "error");
+      else showToast(`${outcome.imported} product${outcome.imported === 1 ? "" : "s"} saved.`, "success");
       loadProducts();
-    } catch (error) { showToast(errorOf(error, "Could not import the spreadsheet."), "error"); }
+    } catch (error) { showToast(errorOf(error, "Could not read the file."), "error"); }
     finally { setImporting(false); }
   };
 
@@ -340,9 +344,8 @@ export function ProductsPage({ view = "products" }) {
         actions={view === "products" && (
           <>
             <input ref={importInput} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={importWorkbook} />
-            <Button size="sm" variant="ghost" disabled={downloading} onClick={() => downloadWorkbook("/products/import-template", "products-import-template.xlsx")}><FileSpreadsheet size={14} aria-hidden="true" /> Template</Button>
-            <Button size="sm" variant="ghost" disabled={downloading} onClick={() => downloadWorkbook("/products/export/excel", "products-export.xlsx")}><Download size={14} aria-hidden="true" /> Export</Button>
-            <Button size="sm" variant="ghost" disabled={importing} onClick={() => importInput.current?.click()}><Upload size={14} aria-hidden="true" /> {importing ? "Importing…" : "Import"}</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSheet("export")}><Download size={14} aria-hidden="true" /> Export</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSheet("bulk")}><Upload size={14} aria-hidden="true" /> Bulk add</Button>
             <Button onClick={() => openEditor({ initial: emptyProductForm() })}><Plus size={16} aria-hidden="true" /> Add product</Button>
           </>
         )}
@@ -425,11 +428,46 @@ export function ProductsPage({ view = "products" }) {
         </Modal>
       )}
 
+      {sheet === "export" && (
+        <Modal title="Export products" onClose={() => !downloading && setSheet("")} actions={<Button variant="ghost" disabled={downloading} onClick={() => setSheet("")}>Cancel</Button>}>
+          <p className="product-form__hint">Please pick the format for exporting.</p>
+          <div className="export-choices">
+            <button type="button" className="kg-glass export-choice" disabled={downloading} onClick={() => exportAs("/products/export/excel", "products-export.xlsx")}>
+              <FileSpreadsheet size={22} aria-hidden="true" />
+              <span><strong>Excel</strong><small>To change many products: edit it, then upload it with Bulk add.</small></span>
+            </button>
+            <button type="button" className="kg-glass export-choice" disabled={downloading} onClick={() => exportAs("/products/export/pdf", "products.pdf")}>
+              <FileText size={22} aria-hidden="true" />
+              <span><strong>PDF</strong><small>To read or print. Every column is explained at the top.</small></span>
+            </button>
+          </div>
+          {downloading && <p className="product-form__hint" role="status">Preparing the file…</p>}
+        </Modal>
+      )}
+
+      {sheet === "bulk" && (
+        <Modal title="Bulk add products" onClose={() => !importing && setSheet("")} actions={(
+          <>
+            <Button variant="ghost" disabled={importing} onClick={() => setSheet("")}>Cancel</Button>
+            <Button disabled={importing || downloading} onClick={() => importInput.current?.click()}><Upload size={15} aria-hidden="true" /> {importing ? "Uploading…" : "Choose file"}</Button>
+          </>
+        )}>
+          <ol className="bulk-steps">
+            <li>Download the template. To change existing products, use <strong>Export › Excel</strong> instead.</li>
+            <li>Fill one row per product. Use the dropdowns; the grey line under each heading says what goes there.</li>
+            <li>Upload it here. A row with a Product ID updates that product; a row without one adds a new product.</li>
+          </ol>
+          <Button variant="ghost" disabled={downloading || importing} onClick={() => downloadWorkbook("/products/import-template", "products-bulk-add-template.xlsx")}>
+            <FileSpreadsheet size={15} aria-hidden="true" /> {downloading ? "Preparing…" : "Download template"}
+          </Button>
+        </Modal>
+      )}
+
       {importResult && (
-        <Modal title="Import finished" onClose={() => setImportResult(null)} wide actions={<Button onClick={() => setImportResult(null)}>Close</Button>}>
+        <Modal title="Bulk add finished" onClose={() => setImportResult(null)} wide actions={<Button onClick={() => setImportResult(null)}>Close</Button>}>
           <p className="product-form__hint">
             {importResult.imported} {importResult.imported === 1 ? "row" : "rows"} saved, {importResult.failed} {importResult.failed === 1 ? "row needs" : "rows need"} attention.
-            {importResult.failed > 0 && " Fix those rows in the spreadsheet and import it again; the rows that went through are already saved."}
+            {importResult.failed > 0 && " Fix those rows in the file and upload it again; the rows that went through are already saved."}
           </p>
           <ul className="import-results" aria-label="Import results">
             {[...importResult.results].sort((a, b) => Number(b.action === "error") - Number(a.action === "error") || a.row - b.row).map((row) => (
@@ -439,7 +477,7 @@ export function ProductsPage({ view = "products" }) {
                 <span className="import-result__text">{row.action === "error" ? row.message : row.name}</span>
               </li>
             ))}
-            {importResult.results.length === 0 && <li className="kg-row import-result"><span className="import-result__text">The sheet had no rows to import.</span></li>}
+            {importResult.results.length === 0 && <li className="kg-row import-result"><span className="import-result__text">The file had no product rows.</span></li>}
           </ul>
         </Modal>
       )}
