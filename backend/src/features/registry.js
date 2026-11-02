@@ -51,6 +51,7 @@ export const ROUTE_RULES = Object.freeze([
   // --- products (master catalog) + kitchen product requests ---
   feature("GET", "/api/products/units", ["products"], "read"),
   feature("GET", "/api/products/export/excel", ["products"], "read"),
+  feature("GET", "/api/products/export/pdf", ["products"], "read"),
   feature("GET", "/api/products/import-template", ["products"], "read"),
   feature("POST", "/api/products/import", ["products"], "mutation"),
   feature("POST", "/api/products/upload-image", ["products"], "mutation"),

@@ -14,6 +14,7 @@ import { canonicalPackName, isPresetPackType, packNameMatch, summarizePackTypeUs
 import { spellingHints } from "../catalog/spellcheck.js";
 import { createProductWorkbook, headersMatch, isBlankRow, isNotesRow, rowToProduct } from "../catalog/productWorkbook.js";
 import { ensureOtherGroup, sortGroups } from "../catalog/groups.js";
+import { renderProductsPdf } from "../catalog/productPdf.js";
 
 export const productRoutes = express.Router();
 // Any successful catalogue write (create, edit, archive, restore, import, pack types, image) changes the kitchens' stock lists.
@@ -68,6 +69,19 @@ productRoutes.get("/export/excel", adminOnly, async (_req, res) => {
     await assignMissingProductNos();
     const docs = await StockItem.find().populate("unitId", "name symbol").populate("stockGroupId", "name").sort({ name: 1 }).lean();
     await sendWorkbook(res, await createProductWorkbook(docs.map((doc) => serializeProduct(doc)), await workbookLists()), "products-export.xlsx");
+  } catch (error) { sendCatalogError(res, error); }
+});
+
+productRoutes.get("/export/pdf", adminOnly, async (_req, res) => {
+  try {
+    await assignMissingProductNos();
+    const docs = await StockItem.find().populate("unitId", "name symbol").populate("stockGroupId", "name").lean();
+    const products = docs.map((doc) => serializeProduct(doc))
+      .sort((a, b) => String(a.group?.name || "").localeCompare(String(b.group?.name || "")) || a.name.localeCompare(b.name));
+    const pdf = await renderProductsPdf(products);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'attachment; filename="products.pdf"');
+    res.send(pdf);
   } catch (error) { sendCatalogError(res, error); }
 });
 
