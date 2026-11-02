@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allItems, closingRange, editableLines, fromIstInput, linesPayload, linesReady, newLine, orderTitle, planningOrders, planningStep, timeLeft, toIstInput } from "./planning.js";
+import { allItems, changeCount, closingRange, editableLines, fromIstInput, linesPayload, linesReady, newLine, rowChange, stepAmount, orderTitle, planningOrders, planningStep, timeLeft, toIstInput } from "./planning.js";
 
 const now = new Date("2026-11-02T12:00:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
@@ -97,16 +97,38 @@ describe("editing a kitchen's lines", () => {
   it("turns rows back into server lines, packs converted to the base unit", () => {
     const rows = editableLines(share).map((row) => (row.name === "Rice" ? { ...row, amount: "3" } : row));
     const added = { ...newLine({ _id: "o", name: "Oil", unitId: { symbol: "L" } }), amount: "5" };
-    expect(linesPayload([...rows, added])).toEqual([
+    const dropped = { ...newLine({ _id: "x", name: "Salt", unitId: { symbol: "kg" } }), removed: true };
+    expect(linesPayload([...rows, added, dropped])).toEqual([
       { stockItemId: "r", packId: "p1", packName: "25 kg bag", packSize: 25, packQuantity: 3, qtyBaseUnit: 75 },
       { stockItemId: "d", qtyBaseUnit: 4 },
       { stockItemId: "o", qtyBaseUnit: 5 },
     ]);
   });
 
-  it("is ready only with at least one row and every amount above 0", () => {
+  it("is ready only with at least one kept row and every kept amount above 0", () => {
     expect(linesReady([])).toBe(false);
     expect(linesReady([{ amount: "0" }])).toBe(false);
-    expect(linesReady([{ amount: "2.5" }, { amount: "1" }])).toBe(true);
+    expect(linesReady([{ amount: "3", removed: true }])).toBe(false);
+    expect(linesReady([{ amount: "2.5" }, { amount: "", removed: true }])).toBe(true);
+  });
+
+  it("says what each row will show the kitchen, and counts the changes", () => {
+    const rows = [
+      { amount: "12", original: "10", removed: false },
+      { amount: "3", original: "4", removed: false },
+      { amount: "5", original: "5", removed: false },
+      { amount: "2", original: "2", removed: true },
+      { amount: "1", original: null, removed: false },
+      { amount: "1", original: null, removed: true },
+    ];
+    expect(rows.map(rowChange)).toEqual(["up", "down", "same", "removed", "added", "same"]);
+    expect(changeCount(rows)).toBe(4);
+  });
+
+  it("steps by 1 and never below 1", () => {
+    expect(stepAmount("2", 1)).toBe("3");
+    expect(stepAmount("2.5", -1)).toBe("1.5");
+    expect(stepAmount("1", -1)).toBe("1");
+    expect(stepAmount("", 1)).toBe("1");
   });
 });

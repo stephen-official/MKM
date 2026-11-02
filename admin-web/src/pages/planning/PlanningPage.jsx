@@ -5,7 +5,8 @@ import { useToast } from "../../useToast.js";
 import { EmptyState, ErrorState, PageHeader } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
 import { PlanningCard } from "./PlanningCard.jsx";
-import { planningOrders } from "./planning.js";
+import { KitchenItemsEditor } from "./KitchenItemsEditor.jsx";
+import { orderTitle, planningOrders } from "./planning.js";
 import "../InventorySetup.css";
 import "../kitchens/kitchens.css";
 import "./planning.css";
@@ -28,6 +29,9 @@ export function PlanningPage({ superAdmin = false }) {
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [products, setProducts] = useState([]); // for adding items to a kitchen (super-admins only)
+  // { order, share } whose items the super-admin is changing. The popup lives here, not in the card: the card's glass
+  // (backdrop-filter) would trap its fixed position.
+  const [editing, setEditing] = useState(null);
   const requestRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -125,7 +129,7 @@ export function PlanningPage({ superAdmin = false }) {
       <ul className="pl-cards" aria-label="Orders being gathered">
         {orders.map((order) => (
           <PlanningCard key={order._id} order={order} now={now} open={open.has(order._id)} onToggle={() => toggle(order._id)}
-            superAdmin={superAdmin} products={products} busy={busy} onClose={closeNow} onMoveClosing={moveClosing} onSaveItems={saveItems} />
+            superAdmin={superAdmin} busy={busy} onClose={closeNow} onMoveClosing={moveClosing} onEditItems={(picked, share) => setEditing({ order: picked, share })} />
         ))}
       </ul>
     );
@@ -141,6 +145,13 @@ export function PlanningPage({ superAdmin = false }) {
         </p>
         {body}
       </div>
+      {editing && (
+        <KitchenItemsEditor kitchenName={editing.share.godownId?.name || "Kitchen"} orderName={orderTitle(editing.order)} share={editing.share}
+          products={products} busy={busy} onClose={() => setEditing(null)}
+          onSave={async (items) => {
+            if (await saveItems(editing.order, String(editing.share.godownId?._id || editing.share.godownId), items)) setEditing(null);
+          }} />
+      )}
       {dialog}
     </div>
   );

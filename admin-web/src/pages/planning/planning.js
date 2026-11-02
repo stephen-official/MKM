@@ -114,20 +114,43 @@ export const editableLines = (share) => (share?.items || []).map((line) => ({
   packName: line.packName || "",
   packSize: line.packSize || null,
   amount: String(line.packId ? line.packQuantity ?? "" : line.qtyBaseUnit ?? ""),
+  original: String(line.packId ? line.packQuantity ?? "" : line.qtyBaseUnit ?? ""),
   approved: Boolean(line.approvedAt),
+  removed: false,
 }));
 
 /** A new row for a product picked from the catalogue, counted in its base unit. */
 export const newLine = (product) => ({
   key: `${product._id}:base`, stockItemId: String(product._id), name: product.name, unit: product.unitId?.symbol || "",
-  packId: null, packName: "", packSize: null, amount: "", approved: false,
+  packId: null, packName: "", packSize: null, amount: "1", original: null, approved: false, removed: false,
 });
 
+/** What the kitchen will be shown for this row: "removed" | "added" | "up" | "down" | "same" (as in its change list). */
+export const rowChange = (row) => {
+  if (row.removed) return row.original === null ? "same" : "removed";
+  if (row.original === null) return "added";
+  const [now, was] = [Number(row.amount), Number(row.original)];
+  if (!(now > 0) || now === was) return "same";
+  return now > was ? "up" : "down";
+};
+
+/** How many rows the save would change. */
+export const changeCount = (rows) => rows.filter((row) => rowChange(row) !== "same").length;
+
+/** Step an amount up or down by 1, never below 1 (the bin removes an item); keeps up to 3 decimals. */
+export const stepAmount = (amount, delta) => {
+  const next = Math.round(((Number(amount) || 0) + delta) * 1000) / 1000;
+  return String(Math.max(1, next));
+};
+
 const positive = (value) => Number.isFinite(Number(value)) && Number(value) > 0;
-/** True when every row has an amount above 0 and there is at least one row. */
-export const linesReady = (rows) => rows.length > 0 && rows.every((row) => positive(row.amount));
+/** True when at least one row is kept and every kept row has an amount above 0. */
+export const linesReady = (rows) => {
+  const kept = rows.filter((row) => !row.removed);
+  return kept.length > 0 && kept.every((row) => positive(row.amount));
+};
 
 /** The rows as the items list the server takes (PUT /:id/kitchens/:godownId/items). */
-export const linesPayload = (rows) => rows.map((row) => (row.packId
+export const linesPayload = (rows) => rows.filter((row) => !row.removed).map((row) => (row.packId
   ? { stockItemId: row.stockItemId, packId: row.packId, packName: row.packName, packSize: Number(row.packSize), packQuantity: Number(row.amount), qtyBaseUnit: Number(row.amount) * Number(row.packSize) }
   : { stockItemId: row.stockItemId, qtyBaseUnit: Number(row.amount) }));
