@@ -105,7 +105,7 @@ realtime.js      io proxy so routes can emit without importing server.js
 
 ### Models (`models/`)
 - `InventoryModels.js`: StockGroup, Unit, Godown, StockItem (catalog fields: `pricePerUnit`, `brand`, `productCode`, `soldInPacks` + `packs[{name,size,price}]`, `expiryRequired` (default true; kitchens must enter an expiry when receiving), `archived`)
-- `CollaborativePurchaseOrderModel.js`: shared orders (`contributions[]` per kitchen with lines; `neededBy`, `closesAt`, `supplierId`, `invoiceNo`; lines carry approval, dispatch, delivery times and the `trackingId` of the batch they became)
+- `CollaborativePurchaseOrderModel.js`: shared orders (`contributions[]` per kitchen with lines; `neededBy`, `closesAt` (a super-admin may move it, see `PATCH /:id/closing-time`), `supplierId`, `invoiceNo`; lines carry approval, dispatch, delivery times and the `trackingId` of the batch they became)
 - `SupplierModel.js`: Supplier (name unique ignoring case, `fssaiLicence` 14 digits, phone, active)
 - `DeliveryTicketModel.js`: DeliveryTicket (one problem line: reason short/excess/damaged/wrong_item/expired, usable `receivedQtyBaseUnit`, note, voice note URL, the receiving details for the usable part, `resolution` once settled)
 - `CounterModel.js`: named running numbers; `stock/trackingId.js` turns `batch-YYMM` into `MKM-YYMM-NNNN`

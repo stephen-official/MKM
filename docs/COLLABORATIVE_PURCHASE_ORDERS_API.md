@@ -202,6 +202,16 @@ A closed order is never reopened; a kitchen that still needs items starts a new 
 
 Closing the order immediately prevents kitchens from adding, editing, or removing contributions. Once `closesAt` passes, the order is closed automatically (with `statusChangedBy: null`) the next time any order is read or changed.
 
+### Change the closing time (super-admin only)
+
+`PATCH /:id/closing-time`
+
+```json
+{ "closesAt": "2026-11-09T18:00:00+05:30" }
+```
+
+Moves an `open` order's closing time later or earlier. The new time must be in the future (400 `INVALID_INPUT`; to close now, use `PATCH /:id/status`) and at least 2 days before `neededBy` (400 `TOO_CLOSE_TO_NEEDED_BY`, so an order needed within 2 days cannot be kept open longer). A closed, approved, ordered or cancelled order, or one whose window has just run out, gives 409 `ORDER_CLOSED`. Admins and kitchens get 403. Returns the order, like the other admin actions.
+
 ## Delivery problems (admin only)
 
 Base path: `/api/delivery-tickets`. Part of the `purchase-orders` feature.
@@ -225,4 +235,4 @@ Errors use the shared `{ code, message }` shape: `INVALID_INPUT` (400), `NOT_FOU
 
 ## Errors
 
-Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `SUPPLIER_REQUIRED` (400), `ALREADY_SETTLED` (409), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `TOO_CLOSE_TO_NEEDED_BY` (400, a closing time less than 2 days before needed-by), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `SUPPLIER_REQUIRED` (400), `ALREADY_SETTLED` (409), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).

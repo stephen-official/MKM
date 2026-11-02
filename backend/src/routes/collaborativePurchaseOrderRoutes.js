@@ -652,3 +652,31 @@ collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
+
+// Kitchens need time to be supplied after joining closes, so a moved closing time stays this far before needed-by (Anand, 2026-11-02).
+const CLOSING_LEAD_MS = 48 * 3_600_000;
+
+/** Super-admin: move an open order's closing time later or earlier. Closing it right now stays PATCH /:id/status. */
+collaborativePurchaseOrderRoutes.patch("/:id/closing-time", authorize(["super_admin"]), async (req, res) => {
+  try {
+    await closeExpiredOrders();
+    const closesAt = new Date(req.body?.closesAt ?? "");
+    if (Number.isNaN(closesAt.getTime())) throw fail(400, "Send closesAt as a date and time");
+    const now = new Date();
+    if (closesAt <= now) throw fail(400, "The closing time must be in the future. To close the order now, close it instead.");
+    const order = await CollaborativePurchaseOrder.findById(req.params.id).select("status neededBy");
+    if (!order) throw fail(404, "Collaborative purchase order not found");
+    if (order.status !== "open") throw fail(409, "This order is no longer open", "ORDER_CLOSED");
+    if (!order.neededBy || closesAt.getTime() > order.neededBy.getTime() - CLOSING_LEAD_MS) {
+      throw fail(400, "The order must close at least 2 days before it is needed", "TOO_CLOSE_TO_NEEDED_BY");
+    }
+    // Only if it is still open at this moment: a kitchen may not slip in after a close that happened meanwhile.
+    const updated = await CollaborativePurchaseOrder.updateOne(
+      { _id: order._id, status: "open", $or: [{ closesAt: null }, { closesAt: { $gt: now } }] },
+      { $set: { closesAt } },
+    );
+    if (updated.matchedCount === 0) throw fail(409, "This order is no longer open", "ORDER_CLOSED");
+    notifyKitchens("orders");
+    return res.json(responseOrder(await loadOrder(order._id), req.user));
+  } catch (error) { return sendError(res, error); }
+});
