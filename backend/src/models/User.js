@@ -12,6 +12,9 @@ const userSchema = new mongoose.Schema(
     refreshToken: { type: String, default: null },
     resetToken: { type: String, default: null },
     resetTokenExpiry: { type: Date, default: null },
+    // A kitchen password a super-admin set, sealed so super-admins can view it again (utils/passwordVault.js).
+    // Never selected unless asked for; cleared when the user sets their own password or stops being a kitchen account.
+    viewablePassword: { type: String, default: null, select: false },
     // Optimistic-concurrency token for admin edits. Not updatedAt: sign-in, sign-out and
     // password resets also write the document and must not make a pending edit conflict.
     version: { type: Number, default: 0 }

@@ -6,7 +6,7 @@ const userAdminAuditSchema = new mongoose.Schema(
     actorEmail: { type: String, default: "" },
     at: { type: Date, default: Date.now, required: true },
     targetUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    action: { type: String, enum: ["create", "update", "send-reset"], required: true },
+    action: { type: String, enum: ["create", "update", "send-reset", "set-password", "view-password"], required: true },
     before: { type: Object, default: null },
     after: { type: Object, default: null }
   },

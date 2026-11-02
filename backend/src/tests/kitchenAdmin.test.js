@@ -3,6 +3,12 @@ import { after, before, beforeEach, test } from "node:test";
 import request from "supertest";
 import { startDb, clearDb, stopDb, syncAllIndexes } from "./helpers/db.js";
 import { createGodown, createUser } from "./helpers/auth.js";
+import { User } from "../models/User.js";
+import { UserAdminAudit } from "../models/AdminAuditModels.js";
+import { createResetToken, hashResetToken } from "../utils/tokens.js";
+
+const KEY = Buffer.alloc(32, 7).toString("base64");
+process.env.PASSWORD_VIEW_KEY = KEY;
 
 // Master data › Kitchens: a kitchen's logo, and (super-admin) the kitchen's users and their passwords.
 let app;
@@ -31,4 +37,62 @@ test("a kitchen's logo: an admin sets it, the kitchen app gets it from /me, and 
   assert.equal((await as("cook", "get", "/api/auth/me")).body.godown.logoUrl, set.body.logoUrl);
   assert.equal((await as("admin", "post", `/api/inventory/godowns/${ctx.kitchen._id}/logo`).attach("logo", Buffer.from("not an image"), "x.txt")).status, 400);
   assert.equal((await as("admin", "delete", `/api/inventory/godowns/${ctx.kitchen._id}/logo`)).body.logoUrl, "");
+});
+
+const login = (email, password) => request(app).post("/api/auth/login").send({ email, password });
+
+test("a super-admin adds a kitchen user with a password (no email), can view it later, and every look is audited; admins cannot", async () => {
+  const added = await as("root", "post", "/api/users").send({ name: "Lakshmi", email: "lakshmi@kitchen.test", role: "user", godownId: String(ctx.kitchen._id), password: "Rice-4821" });
+  assert.equal(added.status, 201, JSON.stringify(added.body));
+  assert.deepEqual([added.body.inviteSent, added.body.passwordSet, added.body.user.passwordViewable], [false, true, true]);
+  assert.equal((await login("lakshmi@kitchen.test", "Rice-4821")).status, 200);
+
+  const id = added.body.user._id;
+  assert.equal((await as("admin", "get", `/api/users/${id}/password`)).status, 403);
+  const shown = await as("root", "get", `/api/users/${id}/password`);
+  assert.equal(shown.body.password, "Rice-4821");
+  assert.equal(await UserAdminAudit.countDocuments({ targetUserId: id, action: "view-password" }), 1);
+
+  const list = await as("root", "get", "/api/users").query({ godownId: String(ctx.kitchen._id) });
+  const stored = (await User.findById(id).select("+viewablePassword").lean()).viewablePassword;
+  assert.ok(stored && !JSON.stringify(list.body).includes(stored) && !JSON.stringify(list.body).includes("Rice-4821"), "the list never carries the password");
+  assert.equal(list.body.items.find((u) => u._id === id).passwordViewable, true);
+  assert.equal((await as("root", "post", "/api/users").send({ name: "X", email: "x@kitchen.test", role: "user", godownId: String(ctx.kitchen._id), password: "short" })).body.code, "INVALID_PASSWORD");
+});
+
+test("setting a password signs the user out, the old one stops working, and an admin account's password is never viewable", async () => {
+  const set = await as("root", "post", `/api/users/${ctx.cook.user._id}/password`).send({ password: "Dal-77777" });
+  assert.deepEqual(set.body, { viewable: true });
+  assert.equal((await User.findById(ctx.cook.user._id).lean()).refreshToken, null);
+  assert.equal((await login(ctx.cook.user.email, ctx.cook.password)).status, 401);
+  assert.equal((await login(ctx.cook.user.email, "Dal-77777")).status, 200);
+  assert.equal(await UserAdminAudit.countDocuments({ targetUserId: ctx.cook.user._id, action: "set-password" }), 1);
+
+  assert.deepEqual((await as("root", "post", `/api/users/${ctx.admin.user._id}/password`).send({ password: "Admin-12345" })).body, { viewable: false });
+  assert.equal((await as("root", "get", `/api/users/${ctx.admin.user._id}/password`)).body.code, "NOT_VIEWABLE");
+});
+
+test("a user who chooses their own password (reset link) hides it from super-admins; without the key nothing is stored", async () => {
+  await as("root", "post", `/api/users/${ctx.cook.user._id}/password`).send({ password: "Dal-77777" });
+  const token = createResetToken();
+  await User.updateOne({ _id: ctx.cook.user._id }, { resetToken: hashResetToken(token), resetTokenExpiry: new Date(Date.now() + 60_000) });
+  assert.equal((await request(app).post("/api/auth/reset-password").send({ token, newPassword: "MyOwn-9999" })).status, 200);
+  assert.equal((await as("root", "get", `/api/users/${ctx.cook.user._id}/password`)).body.code, "PASSWORD_NOT_VIEWABLE");
+
+  delete process.env.PASSWORD_VIEW_KEY;
+  try {
+    assert.deepEqual((await as("root", "post", `/api/users/${ctx.cook.user._id}/password`).send({ password: "Dal-88888" })).body, { viewable: false });
+    assert.equal((await as("root", "get", `/api/users/${ctx.cook.user._id}/password`)).body.code, "PASSWORD_VIEW_OFF");
+  } finally {
+    process.env.PASSWORD_VIEW_KEY = KEY;
+  }
+});
+
+test("a super-admin can change a kitchen user's email; one already in use is refused", async () => {
+  const other = await createUser({ role: "user", godownId: ctx.kitchen._id });
+  const user = await User.findById(ctx.cook.user._id).lean();
+  const moved = await as("root", "patch", `/api/users/${user._id}`).send({ email: "New@Kitchen.test", expectedVersion: user.version ?? 0 });
+  assert.equal(moved.body.user.email, "new@kitchen.test");
+  const clash = await as("root", "patch", `/api/users/${user._id}`).send({ email: other.user.email, expectedVersion: moved.body.user.version });
+  assert.equal(clash.body.code, "EMAIL_EXISTS");
 });

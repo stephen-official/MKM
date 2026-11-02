@@ -134,6 +134,7 @@ authRoutes.post("/reset-password", async (req, res) => {
   if (!user) return res.status(400).json({ message: "Invalid or expired token" });
   
   user.passwordHash = await bcrypt.hash(newPassword, 10);
+  user.viewablePassword = null; // the user chose this one: super-admins no longer see it
   user.resetToken = null;
   user.resetTokenExpiry = null;
   user.refreshToken = null;
