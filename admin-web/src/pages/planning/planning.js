@@ -98,3 +98,36 @@ export const fromIstInput = (value) => {
 export const dayText = (value, withTime = false) => (value ? new Intl.DateTimeFormat("en-IN", {
   timeZone: IST, weekday: "short", day: "numeric", month: "short", ...(withTime ? { hour: "numeric", minute: "2-digit" } : {}),
 }).format(new Date(value)) : "Not set");
+
+const idOf = (ref) => String(ref?._id || ref || "");
+
+/**
+ * One kitchen's lines as rows a super-admin can edit. A line ordered in packs is edited as a number of packs
+ * (amount), others in the base unit. Approved lines are locked.
+ */
+export const editableLines = (share) => (share?.items || []).map((line) => ({
+  key: `${idOf(line.stockItemId)}:${line.packId || "base"}`,
+  stockItemId: idOf(line.stockItemId),
+  name: line.stockItemId?.name || "Product",
+  unit: line.packId ? line.packName : line.stockItemId?.unitId?.symbol || "",
+  packId: line.packId || null,
+  packName: line.packName || "",
+  packSize: line.packSize || null,
+  amount: String(line.packId ? line.packQuantity ?? "" : line.qtyBaseUnit ?? ""),
+  approved: Boolean(line.approvedAt),
+}));
+
+/** A new row for a product picked from the catalogue, counted in its base unit. */
+export const newLine = (product) => ({
+  key: `${product._id}:base`, stockItemId: String(product._id), name: product.name, unit: product.unitId?.symbol || "",
+  packId: null, packName: "", packSize: null, amount: "", approved: false,
+});
+
+const positive = (value) => Number.isFinite(Number(value)) && Number(value) > 0;
+/** True when every row has an amount above 0 and there is at least one row. */
+export const linesReady = (rows) => rows.length > 0 && rows.every((row) => positive(row.amount));
+
+/** The rows as the items list the server takes (PUT /:id/kitchens/:godownId/items). */
+export const linesPayload = (rows) => rows.map((row) => (row.packId
+  ? { stockItemId: row.stockItemId, packId: row.packId, packName: row.packName, packSize: Number(row.packSize), packQuantity: Number(row.amount), qtyBaseUnit: Number(row.amount) * Number(row.packSize) }
+  : { stockItemId: row.stockItemId, qtyBaseUnit: Number(row.amount) }));

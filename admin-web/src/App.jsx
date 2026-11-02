@@ -101,7 +101,7 @@ export const App = () => {
       "/products": <ProductsPage />,
       "/products/requests": <ProductsPage view="requests" />,
       "/inventory-info": <InventoryPage canManageUsers={isSuperAdmin(session.role)} />,
-      "/indent": <PlanningPage canChangeClosing={isSuperAdmin(session.role)} />,
+      "/indent": <PlanningPage superAdmin={isSuperAdmin(session.role)} />,
       "/purchase-orders": <PurchaseOrdersPage />,
       "/stock-distribution": <StockDistributionPage />,
       "/godowns": <GodownsPage canSetOpeningBalance={isSuperAdmin(session.role)} />,

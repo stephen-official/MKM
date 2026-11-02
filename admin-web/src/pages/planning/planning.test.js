@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allItems, closingRange, fromIstInput, orderTitle, planningOrders, planningStep, timeLeft, toIstInput } from "./planning.js";
+import { allItems, closingRange, editableLines, fromIstInput, linesPayload, linesReady, newLine, orderTitle, planningOrders, planningStep, timeLeft, toIstInput } from "./planning.js";
 
 const now = new Date("2026-11-02T12:00:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
@@ -78,5 +78,35 @@ describe("India-time input values", () => {
     expect(fromIstInput("2026-11-06T23:46")).toBe("2026-11-06T18:16:00.000Z");
     expect(fromIstInput("2026-11-06")).toBeNull();
     expect(fromIstInput("")).toBeNull();
+  });
+});
+
+describe("editing a kitchen's lines", () => {
+  const share = {
+    items: [
+      { stockItemId: { _id: "r", name: "Rice", unitId: { symbol: "kg" } }, packId: "p1", packName: "25 kg bag", packSize: 25, packQuantity: 2, qtyBaseUnit: 50, approvedAt: "2026-11-03" },
+      { stockItemId: { _id: "d", name: "Dal", unitId: { symbol: "kg" } }, qtyBaseUnit: 4 },
+    ],
+  };
+
+  it("edits pack lines in packs and other lines in the base unit, approved ones locked", () => {
+    const rows = editableLines(share);
+    expect(rows.map((row) => [row.name, row.unit, row.amount, row.approved])).toEqual([["Rice", "25 kg bag", "2", true], ["Dal", "kg", "4", false]]);
+  });
+
+  it("turns rows back into server lines, packs converted to the base unit", () => {
+    const rows = editableLines(share).map((row) => (row.name === "Rice" ? { ...row, amount: "3" } : row));
+    const added = { ...newLine({ _id: "o", name: "Oil", unitId: { symbol: "L" } }), amount: "5" };
+    expect(linesPayload([...rows, added])).toEqual([
+      { stockItemId: "r", packId: "p1", packName: "25 kg bag", packSize: 25, packQuantity: 3, qtyBaseUnit: 75 },
+      { stockItemId: "d", qtyBaseUnit: 4 },
+      { stockItemId: "o", qtyBaseUnit: 5 },
+    ]);
+  });
+
+  it("is ready only with at least one row and every amount above 0", () => {
+    expect(linesReady([])).toBe(false);
+    expect(linesReady([{ amount: "0" }])).toBe(false);
+    expect(linesReady([{ amount: "2.5" }, { amount: "1" }])).toBe(true);
   });
 });

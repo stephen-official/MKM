@@ -53,3 +53,16 @@
   .pl-card__head { padding: 14px 14px 10px; }
   .pl-card__body { padding: 0 14px 16px; }
 }
+
+/* A kitchen's tile: name with the super-admin's pencil; the edit form in place of the list. */
+.pl-share__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; }
+.pl-share__changed { color: var(--blue-deep); font-size: 12px; }
+.pl-edit { display: grid; gap: 10px; }
+.pl-edit__rows { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.pl-edit__row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pl-edit__name { flex: 1 1 120px; min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
+.pl-edit__amount { display: inline-flex; align-items: center; gap: 6px; color: var(--muted-2); font-size: 13px; }
+.pl-edit__amount input { width: 80px; height: 38px; padding: 0 12px; color: var(--ink-2); background: rgba(255,255,255,.7); border: 1px solid var(--glass-border); border-radius: 999px; font: inherit; font-size: 14px; text-align: right; }
+.pl-edit__locked { display: inline-flex; align-items: center; gap: 5px; color: var(--muted-2); font-size: 13px; }
+.pl-edit__add { display: flex; align-items: center; gap: 8px; color: var(--muted-2); }
+.pl-edit__add > div { max-width: 100%; }

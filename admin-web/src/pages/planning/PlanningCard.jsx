@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { Check, ChevronDown, Edit3, Lock, X } from "lucide-react";
 import { lineLabel } from "../sharedOrders/sharedOrders.js";
+import { KitchenItemsEditor } from "./KitchenItemsEditor.jsx";
 import {
   ORDER_STEPS, allItems, closingRange, dayText, fromIstInput, kitchenCount, orderTitle, planningStep, timeLeft, toIstInput,
 } from "./planning.js";
@@ -25,12 +26,13 @@ function StepTracker({ step, caption }) {
 /**
  * One kitchen order still being gathered, as a fold-out glass card. Closed: its name (the needed-by day), who started it,
  * Urgent, a status tracker, and how many items and kitchens. Opened: each kitchen's tile, all items with totals, and the
- * ordering window (Close now; super-admins also change the closing time).
+ * ordering window (Close now). Super-admins also change the closing time and, until approval, each kitchen's items.
  */
-export function PlanningCard({ order, now, open, onToggle, canChangeClosing, busy, onClose, onMoveClosing }) {
+export function PlanningCard({ order, now, open, onToggle, superAdmin, products, busy, onClose, onMoveClosing, onSaveItems }) {
   const bodyId = useId();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [editingKitchen, setEditingKitchen] = useState(null); // godown id whose items are being changed
   const range = closingRange(order, now);
   const isOpen = order.status === "open";
   const step = planningStep(order);
@@ -66,9 +68,23 @@ export function PlanningCard({ order, now, open, onToggle, canChangeClosing, bus
           <section className="kp-section" aria-label="Each kitchen">
             <div className="kp-section__head"><h3>Each kitchen</h3></div>
             <ul className="pl-shares">
-              {(order.contributions || []).map((share) => (
-                <li key={share._id || share.godownId?._id} className="kg-row pl-share">
-                  <strong className="pl-share__name">{share.godownId?.name || "Kitchen"}</strong>
+              {(order.contributions || []).map((share) => {
+                const kitchenId = String(share.godownId?._id || share.godownId);
+                const canEdit = superAdmin && !share.approvedAt;
+                return (
+                <li key={share._id || kitchenId} className="kg-row pl-share">
+                  <div className="pl-share__head">
+                    <strong className="pl-share__name">{share.godownId?.name || "Kitchen"}</strong>
+                    {canEdit && editingKitchen !== kitchenId && (
+                      <button type="button" className="kg-chip kp-icon kp-chip--edit" disabled={busy} onClick={() => setEditingKitchen(kitchenId)}
+                        aria-label={`Change ${share.godownId?.name || "this kitchen"}'s items`} title="Change items"><Edit3 size={16} aria-hidden="true" /></button>
+                    )}
+                  </div>
+                  {share.adminChange && <small className="pl-share__changed">Changed by you · kitchen has not looked yet</small>}
+                  {editingKitchen === kitchenId ? (
+                    <KitchenItemsEditor share={share} products={products} busy={busy} onCancel={() => setEditingKitchen(null)}
+                      onSave={async (items) => { if (await onSaveItems(order, kitchenId, items)) setEditingKitchen(null); }} />
+                  ) : (
                   <ul className="pl-lines">
                     {(share.items || []).map((line) => (
                       <li key={`${line.stockItemId?._id || line.stockItemId}:${line.packId || "base"}`}>
@@ -77,9 +93,11 @@ export function PlanningCard({ order, now, open, onToggle, canChangeClosing, bus
                       </li>
                     ))}
                   </ul>
+                  )}
                   {share.note && <p className="pl-share__note">“{share.note}”</p>}
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </section>
 
@@ -103,7 +121,7 @@ export function PlanningCard({ order, now, open, onToggle, canChangeClosing, bus
               <h3>Ordering window</h3>
               {isOpen && !editing && (
                 <span className="kp-section__actions">
-                  {canChangeClosing && range && (
+                  {superAdmin && range && (
                     <button type="button" className="kg-chip kp-icon kp-chip--edit" disabled={busy} onClick={startEdit} aria-label="Change closing time" title="Change closing time"><Edit3 size={16} aria-hidden="true" /></button>
                   )}
                   <button type="button" className="kg-chip pl-close" disabled={busy} onClick={() => onClose(order)}><Lock size={14} aria-hidden="true" /> Close now</button>

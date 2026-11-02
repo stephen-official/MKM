@@ -18,7 +18,7 @@ const fetchStatus = (status) => api.get(BASE, { params: { status, limit: 100 } }
  * Purchasing › Planning: every kitchen order still being gathered (open, or closed and waiting for approval) as a card,
  * the soonest needed first. Approving, buying and dispatching stay in Orders & receiving.
  */
-export function PlanningPage({ canChangeClosing = false }) {
+export function PlanningPage({ superAdmin = false }) {
   const { showToast } = useToast();
   const { confirm, dialog } = useConfirm();
   const [orders, setOrders] = useState([]);
@@ -27,6 +27,7 @@ export function PlanningPage({ canChangeClosing = false }) {
   const [open, setOpen] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [products, setProducts] = useState([]); // for adding items to a kitchen (super-admins only)
   const requestRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -44,6 +45,12 @@ export function PlanningPage({ canChangeClosing = false }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!superAdmin) return;
+    api.get("/inventory/stock-items")
+      .then((res) => setProducts((res.data || []).filter((p) => !p.archived).map((p) => ({ ...p, stockGroup: p.stockGroupId?.name || "" }))))
+      .catch(() => setProducts([]));
+  }, [superAdmin]);
   // "Closes in …" counts down; an order whose time runs out moves to Closed on the next load.
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
 
@@ -86,6 +93,23 @@ export function PlanningPage({ canChangeClosing = false }) {
     }
   };
 
+  /** Returns true when saved, so the tile can leave its edit form. */
+  const saveItems = async (order, godownId, items) => {
+    if (busy) return false;
+    setBusy(true);
+    try {
+      await api.put(`${BASE}/${order._id}/kitchens/${godownId}/items`, { items });
+      showToast("Items changed. The kitchen will see what changed.", "success");
+      return true;
+    } catch (error) {
+      showToast(errorMessage(error, "Could not save the items. Try again."), "error");
+      return false;
+    } finally {
+      setBusy(false);
+      await load();
+    }
+  };
+
   const gathering = orders.filter((order) => order.status === "open").length;
   let body;
   if (loading && orders.length === 0) body = <div className="kg-glass setup-state" role="status"><Loader2 size={18} className="animate-spin" aria-hidden="true" /> Loading…</div>;
@@ -101,7 +125,7 @@ export function PlanningPage({ canChangeClosing = false }) {
       <ul className="pl-cards" aria-label="Orders being gathered">
         {orders.map((order) => (
           <PlanningCard key={order._id} order={order} now={now} open={open.has(order._id)} onToggle={() => toggle(order._id)}
-            canChangeClosing={canChangeClosing} busy={busy} onClose={closeNow} onMoveClosing={moveClosing} />
+            superAdmin={superAdmin} products={products} busy={busy} onClose={closeNow} onMoveClosing={moveClosing} onSaveItems={saveItems} />
         ))}
       </ul>
     );
