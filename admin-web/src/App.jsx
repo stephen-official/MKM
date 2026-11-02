@@ -100,7 +100,7 @@ export const App = () => {
     () => ({
       "/products": <ProductsPage />,
       "/products/requests": <ProductsPage view="requests" />,
-      "/inventory-info": <InventoryPage />,
+      "/inventory-info": <InventoryPage canManageUsers={isSuperAdmin(session.role)} />,
       "/indent": <IndentPage />,
       "/purchase-orders": <PurchaseOrdersPage />,
       "/stock-distribution": <StockDistributionPage />,
