@@ -25,6 +25,8 @@
 .kp-muted { color: var(--muted-2); font-size: 13px; font-style: italic; }
 .kp-wrap { overflow-wrap: anywhere; }
 .kp-chip--danger { color: var(--st-expired-fg); }
+.kg-chip.kp-icon { flex: none; width: 36px; height: 36px; padding: 0; }
+.kp-icon svg { flex: none; }
 
 /* Read-only facts: label on the left, value on the right; stacked on phones. */
 .kp-facts { display: grid; gap: 8px; margin: 0; }
@@ -51,12 +53,14 @@
 .kp-user { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 14px; }
 .kp-user--off { opacity: .72; }
 .kp-user__head { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.kp-user__head strong { flex: 1; min-width: 0; color: var(--ink-2); font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.kp-user__name { display: grid; flex: 1; justify-items: start; gap: 4px; min-width: 0; }
+.kp-user__name strong { color: var(--ink-2); font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
 .kp-user__icon { display: grid; flex: none; place-items: center; width: 32px; height: 32px; color: var(--blue-deep); background: var(--blue-soft); border-radius: 50%; }
 .kp-user__password { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .kp-user__dots { letter-spacing: .12em; }
 .kp-user__secret { padding: 2px 8px; color: var(--ink-2); background: var(--blue-soft); border-radius: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; user-select: all; }
-.kp-user__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.kp-user__tools { display: flex; flex: none; gap: 6px; }
+.kp-chip--ok { color: var(--st-ok-fg); }
 
 .kp-adduser { border: 1px dashed rgba(150,172,206,.6); border-radius: var(--radius-row); background: rgba(255,255,255,.4); }
 .kp-adduser__toggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 48px; padding: 0 14px; color: var(--blue-deep); background: none; border: 0; box-shadow: none; font: inherit; font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; transform: none; }
