@@ -6,6 +6,8 @@ import { toLocalDateKey, localDateFromKey } from "../../utils/date";
 import { expiryStatus, itemsToUseFirst } from "../../features/kitchen";
 import { closesInText, deliveryDateText, kitchenStage, myOrders, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
 import { correctionForDay } from "../../features/kitchen/corrections";
+import { AdminChangeDialog, AdminChangeNotice } from "./AdminChangeDialog";
+import { adminChanges, myShare as shareOf } from "../../features/kitchen/orders";
 import "./KitchenHome.css";
 
 const RECEIVABLE_STATUSES = new Set([
@@ -197,6 +199,7 @@ export default function KitchenHome({
   const toggle = (key) => setOpenSections((previous) => ({ ...previous, [key]: !previous[key] }));
   const godownId = userInfo?.godown?._id;
   const [confirm, confirmDialog] = useConfirm();
+  const [changedOrderId, setChangedOrderId] = useState(null); // the order whose "your admin changed items" list is open
   // "Add" on a stock row: the item goes on the supply-order ticket at once, without a quantity; the dialog offers to go and enter it now.
   const canAddToOrder = canUseRequests && Boolean(onAddToOrder);
   const addToOrder = async (item) => {
@@ -225,6 +228,10 @@ export default function KitchenHome({
     .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   // Orders other kitchens started that are still open for this kitchen to add its items to.
   const joinableOrders = canUseRequests ? otherOpenOrders(sharedOrders, godownId, new Date()) : [];
+  const isChanged = (order) => adminChanges(shareOf(order, godownId)).length > 0;
+  const changedOrders = inProgressOrders.filter(isChanged).length;
+  // Orders the central team changed come first, so their notice is never hidden below the first three.
+  const shownOrders = [...inProgressOrders.filter(isChanged), ...inProgressOrders.filter((order) => !isChanged(order))];
   const startedBy = (order) => order.createdByGodown?.name || "another kitchen";
   // Old-style deliveries plus shares of shared orders that have been dispatched to this kitchen.
   const toReceive = indents.filter(isReceivable).length + sharedToReceive;
@@ -314,8 +321,8 @@ export default function KitchenHome({
         </div>
 
         {canUseRequests && <div className="kh-col kh-col--side">
-          <Section id="incoming" title="Orders" groupTitle="Open orders" tint={toReceive > 0 || joinableOrders.length > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0 || joinableOrders.length > 0} wide={wide} onOpen={onRequestSupplies}
-            summary={toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} arriving</span> : joinableOrders.length > 0 ? <span className="kg-pill kg-pill--low">{joinableOrders.length} open to join</span> : <span className="kh-count">{inProgressOrders.length}</span>}
+          <Section id="incoming" title="Orders" groupTitle="Open orders" tint={toReceive > 0 || joinableOrders.length > 0 || changedOrders > 0 ? " kg-glass--cool" : ""} attention={toReceive > 0 || joinableOrders.length > 0 || changedOrders > 0} wide={wide} onOpen={onRequestSupplies}
+            summary={changedOrders > 0 ? <span className="kg-pill kg-pill--low">Items changed</span> : toReceive > 0 ? <span className="kg-pill kg-pill--low">{toReceive} arriving</span> : joinableOrders.length > 0 ? <span className="kg-pill kg-pill--low">{joinableOrders.length} open to join</span> : <span className="kh-count">{inProgressOrders.length}</span>}
             open={isOpen("incoming")} onToggle={() => toggle("incoming")}>
             {joinableOrders.slice(0, 3).map((order) => {
               const names = [...new Set(order.contributions.flatMap((share) => share.items.map((line) => line.stockItemId?.name || "Item")))];
@@ -328,8 +335,10 @@ export default function KitchenHome({
               </button>;
             })}
             {inProgressOrders.length === 0 && joinableOrders.length === 0 && <Row name="No open orders" hint="Start one when you run short of anything" tone="routine" status="None" onClick={onRequestSupplies} />}
-            {inProgressOrders.slice(0, 3).map((order) => (
-              <button type="button" key={order._id} className="kg-row kh-order" onClick={onRequestSupplies}>
+            {shownOrders.slice(0, 3).map((order) => (
+              // An unseen change by the central team opens its list first; otherwise the row goes to Orders.
+              <button type="button" key={order._id} className="kg-row kh-order"
+                onClick={isChanged(order) ? () => setChangedOrderId(order._id) : onRequestSupplies}>
                 <span className="kh-order__head">
                   <span className="kh-row__text">
                     <strong>{order.title || "Supply request"}</strong>
@@ -343,12 +352,16 @@ export default function KitchenHome({
                   </ol>
                   <small>{orderTimeline(order, godownId).find((step) => step.current)?.label || "Requested"}</small>
                 </span>
+                <AdminChangeNotice order={order} godownId={godownId} />
               </button>
             ))}
             <div className="kh-card__foot"><button type="button" className="kh-link" onClick={onRequestSupplies}>View all</button></div>
           </Section>
         </div>}
       </div>
+      {changedOrderId && sharedOrders.some((order) => order._id === changedOrderId) && (
+        <AdminChangeDialog order={sharedOrders.find((order) => order._id === changedOrderId)} godownId={godownId} onClose={() => setChangedOrderId(null)} />
+      )}
     </main>
   );
 }

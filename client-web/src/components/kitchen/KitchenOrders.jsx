@@ -4,12 +4,13 @@ import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { useKitchenChanges } from "../../liveUpdates";
 import { formatStockQuantity, getStockHealth, productPacks } from "../../features/kitchen";
-import { canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myOrders, myShare, needsQuantity, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
+import { adminChanges, canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myOrders, myShare, needsQuantity, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
 import { arrivingLines } from "../../features/kitchen/receiving";
 import KitchenReceiveItems from "./KitchenReceiveItems";
 import { TransferCard } from "./KitchenTransfers";
 import { fetchWaitingTransfers, respondToTransfer } from "./transfersApi";
 import OrderTicket from "./OrderTicket";
+import { AdminChangeDialog } from "./AdminChangeDialog";
 import { useWide } from "./useWide";
 import { useConfirm } from "../ui/ConfirmDialog";
 import "./KitchenOrders.css";
@@ -53,7 +54,7 @@ function Timeline({ order, godownId }) {
   </ol>;
 }
 
-function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
+function MyOrderCard({ order, godownId, now, onEdit, onReceive, onShowChange }) {
   const share = myShare(order, godownId);
   const stage = kitchenStage(order, godownId);
   const others = order.kitchenCount - 1;
@@ -70,6 +71,7 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
       {others > 0 && <span><Users size={15} aria-hidden="true" /> {others} other {others === 1 ? "kitchen" : "kitchens"}</span>}
     </div>
     {stage === "cancelled" ? <p className="ko-note">This order was cancelled by the central store.</p> : <Timeline order={order} godownId={godownId} />}
+    {adminChanges(share).length > 0 && <button type="button" className="kac-notice" onClick={() => onShowChange(order)}><span className="kac-notice__dot" aria-hidden="true" />Your admin changed items · Tap to see</button>}
     <ul className="ko-lines" aria-label="Your items">
       {share.items.map((line) => <li key={`${line.stockItemId?._id}:${line.packId || "base"}`} className="ko-line">
         <strong>{productName(line)}</strong><span>{lineAmount(line)}</span>
@@ -361,6 +363,7 @@ export default function KitchenOrders({ products = [], godownId, onOrdersLoaded,
   const [emergency, setEmergency] = useState(false);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [changedOrderId, setChangedOrderId] = useState(null); // the order whose "your admin changed items" list is open
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -437,7 +440,7 @@ export default function KitchenOrders({ products = [], godownId, onOrdersLoaded,
 
   const loadingState = <div className="ko-state" role="status"><span className="ko-spinner" aria-hidden="true" /><p>Loading orders…</p></div>;
   const failedState = <div className="kg-glass ko-empty"><h2>Could not load orders</h2><p>Check your connection and try again.</p><button type="button" className="kg-btn" onClick={load}>Try again</button></div>;
-  const orderCard = (order) => <MyOrderCard key={order._id} order={order} godownId={godownId} now={now} onEdit={(picked) => start("edit", picked)} onReceive={receive} />;
+  const orderCard = (order) => <MyOrderCard key={order._id} order={order} godownId={godownId} now={now} onEdit={(picked) => start("edit", picked)} onReceive={receive} onShowChange={(picked) => setChangedOrderId(picked._id)} />;
 
   // Orders history (under the History tab): delivered and cancelled orders.
   if (section === "history") {
@@ -488,5 +491,9 @@ export default function KitchenOrders({ products = [], godownId, onOrdersLoaded,
             : <div className="ko-list">{ongoing.map(orderCard)}</div>}
         </section>
       </>}
+    {changedOrderId && orders.some((order) => order._id === changedOrderId) && (
+      <AdminChangeDialog order={orders.find((order) => order._id === changedOrderId)} godownId={godownId}
+        onClose={(seen) => { setChangedOrderId(null); if (seen) load(); }} />
+    )}
   </main>;
 }
