@@ -297,17 +297,72 @@ test("the Other group is always there, listed last, and can be neither renamed n
   assert.equal((await as("admin", "get", "/api/inventory/stock-groups")).body.length, 3);
 });
 
-test("an import row names what is wrong, and a pack price that is not a number is refused, not saved", async () => {
+const fetchBook = async (path, who = "root") => {
   const ExcelJS = (await import("exceljs")).default;
-  const template = await as("root", "get", "/api/products/import-template").buffer(true).parse((res, done) => { const c = []; res.on("data", (x) => c.push(x)); res.on("end", () => done(null, Buffer.concat(c))); });
+  const res = await as(who, "get", path).buffer(true).parse((r, done) => { const c = []; r.on("data", (x) => c.push(x)); r.on("end", () => done(null, Buffer.concat(c))); });
+  assert.equal(res.status, 200);
   const book = new ExcelJS.Workbook();
-  await book.xlsx.load(template.body);
+  await book.xlsx.load(res.body);
   const sheet = book.getWorksheet("Products");
   const headers = sheet.getRow(1).values.slice(1);
-  const row = (values) => headers.map((h) => values[h] ?? "");
-  sheet.addRow(row({ Name: "Tomato", "Product Group": "Grains", Unit: "kg", Kind: "food", "Veg Mark": "veg", Storage: "room", Allergens: "none", "Ordered in Packs": "Yes", Packs: "Box/Carton|?|300" }));
-  sheet.addRow(row({ Name: "Masala", "Product Group": "Grains", Unit: "kg", Kind: "food", "Veg Mark": "veg", Storage: "room", Allergens: "unknown", "Ordered in Packs": "Yes", Packs: "Packet|0.05|?" }));
-  const res = await as("root", "post", "/api/products/import").attach("file", Buffer.from(await book.xlsx.writeBuffer()), "p.xlsx");
+  const addRow = (values) => sheet.addRow(headers.map((h) => values[h] ?? ""));
+  const upload = async (uploader = who) => as(uploader, "post", "/api/products/import").attach("file", Buffer.from(await book.xlsx.writeBuffer()), "p.xlsx");
+  return { book, sheet, headers, addRow, upload };
+};
+const food = { "Product group *": "Grains", "Unit *": "kg", "Food or non-food *": "Food", "Veg / Non-veg / Egg": "Veg", Storage: "Room temperature", "No allergens": "Yes" };
+
+test("an import row names what is wrong, and a pack price that is not a number is refused, not saved", async () => {
+  const { addRow, upload } = await fetchBook("/api/products/import-template");
+  addRow({ "Name *": "Tomato", ...food, "Ordered in packs": "Yes", "Pack 1 name": "Box/Carton", "Pack 1 size": "?", "Pack 1 price (₹)": 300 });
+  addRow({ "Name *": "Masala", ...food, "Ordered in packs": "Yes", "Pack 1 name": "Packet", "Pack 1 size": 0.05, "Pack 1 price (₹)": "?" });
+  const res = await upload();
   assert.equal(res.status, 200, JSON.stringify(res.body));
   assert.deepEqual(res.body.results.map((r) => r.message), ["Pack 1: Enter how much one pack holds.", "Pack 1: Enter the pack price as a number."]);
+});
+
+test("the template carries a note per column and dropdowns fed by the current groups and pack names", async () => {
+  await as("root", "post", "/api/products").send(base({ pricePerUnit: 60, soldInPacks: true, packs: [{ name: "Sack", size: 25, price: 1400 }] }));
+  const { book, sheet, headers } = await fetchBook("/api/products/import-template");
+  assert.equal(headers[0], "Product ID");
+  assert.ok(!headers.includes("Product Code"));
+  const notes = sheet.getRow(2).values.slice(1);
+  assert.equal(notes.length, headers.length);
+  assert.ok(notes.every((note) => note.split(/\s+/).length <= 12), "every note is short");
+  const lists = book.getWorksheet("Lists");
+  const column = (name) => lists.getColumn(lists.getRow(1).values.indexOf(name)).values.slice(2);
+  assert.deepEqual(column("groups"), ["Grains", "Other"]);
+  assert.ok(column("packs").includes("Sack") && column("packs").includes("Bag"));
+  assert.deepEqual(column("units"), ["kg", "g", "L", "mL", "pcs", "dozen", "packet"]);
+  assert.equal(sheet.dataValidations.find("C3")?.type, "list");
+  assert.equal(sheet.dataValidations.find("C1999")?.formulae[0], "Lists!$A$2:$A$3");
+});
+
+test("bulk add: plain words, allergen columns and packs are read; a typed new group is created; Product ID updates; old layouts are refused", async () => {
+  const { addRow, upload } = await fetchBook("/api/products/import-template");
+  addRow({ "Name *": "Paneer", ...food, "Product group *": "Dairy", "Unit *": "Kgs", "Packaged or loose": "Loose or fresh", "No allergens": "", Milk: "Yes", Storage: "Fridge", Type: "Daily use" });
+  addRow({ "Name *": "Phenyl", "Product group *": "Cleaning", "Unit *": "L", "Food or non-food *": "Non-food", "Ordered in packs": "Yes", "Pack 1 name": "Can", "Pack 1 size": 5, "Pack 1 price (₹)": 450, "Price per unit (₹)": 90 });
+  addRow({ "Name *": "Broken", "Product group *": "Typo group", "Unit *": "kg" });
+  const res = await upload();
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.deepEqual(res.body.results.map((r) => r.action), ["created", "created", "error"]);
+  const paneer = await StockItem.findOne({ name: "Paneer" }).populate("stockGroupId unitId").lean();
+  assert.deepEqual([paneer.stockGroupId.name, paneer.unitId.symbol, paneer.form, paneer.storage, paneer.itemType, paneer.allergens], ["Dairy", "kg", "loose", "fridge", "daily_use", ["milk"]]);
+  assert.match(paneer.productNo, /^P-\d{4}$/);
+  assert.equal(await StockGroup.exists({ name: "Typo group" }), null, "a group no row ended up in is removed again");
+
+  // Export, change a cell, upload: the row with that Product ID is updated, and an admin's upload keeps the pack price.
+  const round = await fetchBook("/api/products/export/excel", "admin");
+  const phenylRow = round.sheet.getRows(3, round.sheet.rowCount).find((r) => r.getCell(2).value === "Phenyl");
+  phenylRow.getCell(round.headers.indexOf("Brand") + 1).value = "Clean Co";
+  const again = await round.upload("admin");
+  assert.equal(again.body.failed, 0, JSON.stringify(again.body));
+  const phenyl = await StockItem.findOne({ name: "Phenyl" }).lean();
+  assert.equal(phenyl.brand, "Clean Co");
+  assert.equal(phenyl.packs[0].price, 450);
+  assert.equal(await StockItem.countDocuments(), 2);
+
+  const old = new ((await import("exceljs")).default.Workbook)();
+  old.addWorksheet("Products").addRow(["Product ID", "Name", "Product Group"]);
+  const refused = await as("root", "post", "/api/products/import").attach("file", Buffer.from(await old.xlsx.writeBuffer()), "old.xlsx");
+  assert.equal(refused.body.code, "INVALID_IMPORT");
 });

@@ -8,11 +8,12 @@ import { StockItem } from "../models/InventoryModels.js";
 import { StockGroup } from "../models/InventoryModels.js";
 import { isSuperAdmin } from "../utils/roles.js";
 import {
-  CatalogError, buildProductUpdate, ensurePresetUnits, kitchensHolding, sendCatalogError, serializeProduct
+  CatalogError, assignMissingProductNos, buildProductUpdate, ensurePresetUnits, kitchensHolding, sendCatalogError, serializeProduct
 } from "../catalog/productService.js";
 import { canonicalPackName, isPresetPackType, packNameMatch, summarizePackTypeUsage } from "../catalog/packTypes.js";
 import { spellingHints } from "../catalog/spellcheck.js";
-import { createProductWorkbook, PRODUCT_COLUMNS, rowToProduct } from "../catalog/productWorkbook.js";
+import { createProductWorkbook, headersMatch, isBlankRow, isNotesRow, rowToProduct } from "../catalog/productWorkbook.js";
+import { ensureOtherGroup, sortGroups } from "../catalog/groups.js";
 
 export const productRoutes = express.Router();
 // Any successful catalogue write (create, edit, archive, restore, import, pack types, image) changes the kitchens' stock lists.
@@ -46,74 +47,100 @@ productRoutes.get("/units", adminOnly, async (_req, res) => {
   }
 });
 
+// The dropdown sources for the workbook, read at download time: every group, and the custom pack names in use.
+const workbookLists = async () => {
+  await ensureOtherGroup();
+  const groups = sortGroups(await StockGroup.find().lean()).map((group) => group.name);
+  const packNames = [...new Set((await StockItem.distinct("packs.name")).map((name) => canonicalPackName(name)).filter((name) => name && !isPresetPackType(name)))]
+    .sort((a, b) => a.localeCompare(b));
+  return { groups, packNames };
+};
+const sendWorkbook = async (res, workbook, filename) => {
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  await workbook.xlsx.write(res);
+  res.end();
+};
+
+// Export and template are the same workbook: export it, edit it, upload it back through Bulk add.
 productRoutes.get("/export/excel", adminOnly, async (_req, res) => {
   try {
+    await assignMissingProductNos();
     const docs = await StockItem.find().populate("unitId", "name symbol").populate("stockGroupId", "name").sort({ name: 1 }).lean();
-    const workbook = await createProductWorkbook(docs.map((doc) => serializeProduct(doc)));
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", 'attachment; filename="products-export.xlsx"');
-    await workbook.xlsx.write(res);
-    res.end();
+    await sendWorkbook(res, await createProductWorkbook(docs.map((doc) => serializeProduct(doc)), await workbookLists()), "products-export.xlsx");
   } catch (error) { sendCatalogError(res, error); }
 });
 
 productRoutes.get("/import-template", adminOnly, async (_req, res) => {
-  const workbook = await createProductWorkbook([], { template: true });
-  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  res.setHeader("Content-Disposition", 'attachment; filename="products-import-template.xlsx"');
-  await workbook.xlsx.write(res);
-  res.end();
+  try {
+    await sendWorkbook(res, await createProductWorkbook([], await workbookLists()), "products-bulk-add-template.xlsx");
+  } catch (error) { sendCatalogError(res, error); }
 });
 
 productRoutes.post("/import", adminOnly, workbookUpload.single("file"), async (req, res) => {
   try {
-    if (!req.file) throw new CatalogError(400, "IMPORT_FILE_REQUIRED", "Choose an Excel (.xlsx) file to import.");
+    if (!req.file) throw new CatalogError(400, "IMPORT_FILE_REQUIRED", "Choose an Excel (.xlsx) file to upload.");
     const ExcelJS = (await import("exceljs")).default;
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(req.file.buffer);
+    try { await workbook.xlsx.load(req.file.buffer); } catch { throw new CatalogError(400, "INVALID_IMPORT", "This is not an Excel (.xlsx) file the app can read."); }
     const sheet = workbook.getWorksheet("Products");
-    if (!sheet) throw new CatalogError(400, "INVALID_IMPORT", "The workbook needs a sheet named Products.");
-    const headersMatch = PRODUCT_COLUMNS.every(([header], index) => String(sheet.getRow(1).getCell(index + 1).value || "").trim() === header);
-    if (!headersMatch) throw new CatalogError(400, "INVALID_IMPORT", "Use the current Products import template; its column headings must not be changed.");
+    if (!sheet) throw new CatalogError(400, "INVALID_IMPORT", "The workbook needs a sheet named Products. Download a new template.");
+    if (!headersMatch(sheet)) throw new CatalogError(400, "INVALID_IMPORT", "This file has an older or changed layout. Download a new template (or export again) and copy your rows into it.");
+    await assignMissingProductNos();
+    const superAdmin = isSuperAdmin(req.user.role);
     const units = await ensurePresetUnits();
     const unitBySymbol = new Map(units.map((unit) => [unit.symbol, unit]));
-    const groups = await StockGroup.find().lean();
-    const groupByName = new Map(groups.map((group) => [group.name.trim().toLowerCase(), group]));
+    const groupByName = new Map((await StockGroup.find().lean()).map((group) => [group.name.trim().toLowerCase(), group]));
+    const newGroups = []; // groups typed in this file; removed again at the end if no row ended up in them
     const results = [];
     for (let index = 2; index <= sheet.rowCount; index += 1) {
-      const row = rowToProduct(sheet.getRow(index));
-      if (!Object.values(row).some((value) => value !== "" && value !== false && (!Array.isArray(value) || value.length))) continue;
+      const sheetRow = sheet.getRow(index);
+      if (isBlankRow(sheetRow) || (index === 2 && isNotesRow(sheetRow))) continue;
+      const row = rowToProduct(sheetRow);
       try {
-        const existing = row.id ? await StockItem.findById(row.id).lean() : null;
-        if (row.id && !existing) throw new CatalogError(404, "NOT_FOUND", "Product ID was not found.");
-        const group = groupByName.get(row.groupName.toLowerCase());
+        const existing = row.productNo ? await StockItem.findOne({ productNo: row.productNo }).lean() : null;
+        if (row.productNo && !existing) throw new CatalogError(404, "NOT_FOUND", `Product ID ${row.productNo} was not found. Leave Product ID blank to add a new product.`);
+        let group = groupByName.get(row.groupName.toLowerCase());
+        if (!group && row.groupName) {
+          group = await StockGroup.create({ name: row.groupName });
+          groupByName.set(row.groupName.toLowerCase(), group);
+          newGroups.push(group);
+        }
         const unit = unitBySymbol.get(row.unitSymbol);
-        if ((row.archived || (existing && Boolean(row.archived) !== Boolean(existing.archived))) && !isSuperAdmin(req.user.role)) throw new CatalogError(403, "ARCHIVE_SUPER_ADMIN_ONLY", "Only a super-admin can archive or restore products.");
+        if ((row.archived || (existing && Boolean(row.archived) !== Boolean(existing.archived))) && !superAdmin) throw new CatalogError(403, "ARCHIVE_SUPER_ADMIN_ONLY", "Only a super-admin can archive or restore products.");
         if (existing && row.archived && !existing.archived) {
           const held = await kitchensHolding([existing._id]);
           if ((held.get(String(existing._id)) || 0) > 0) throw new CatalogError(409, "STOCK_HELD", "This product cannot be archived while a kitchen still holds it.");
         }
+        // A pack is the same pack when its name matches, so an upload keeps its price unless the file changes it.
+        const packs = row.packs.map((pack) => {
+          const before = (existing?.packs || []).find((p) => canonicalPackName(p.name).toLowerCase() === canonicalPackName(pack.name).toLowerCase());
+          const priced = superAdmin && pack.price !== "" ? { price: pack.price } : {};
+          return { ...(before ? { _id: before._id } : {}), name: pack.name, size: pack.size, ...priced };
+        });
+        const { productNo, ...fields } = row;
         const body = {
-          ...row, stockGroupId: group?._id, unitId: unit?._id,
-          ...(isSuperAdmin(req.user.role) ? { pricePerUnit: row.pricePerUnit, packs: row.packs } : {
-            packs: row.packs.map(({ price, ...pack }) => pack)
-          })
+          ...fields, stockGroupId: group?._id, unitId: unit?._id, packs,
+          ...(superAdmin ? {} : { pricePerUnit: undefined })
         };
-        const update = await buildProductUpdate(body, { canPrice: isSuperAdmin(req.user.role), existing, userId: req.user.sub, allowBlankPrice: true });
+        const update = await buildProductUpdate(body, { canPrice: superAdmin, existing, userId: req.user.sub, allowBlankPrice: true });
         if (existing) {
-          await StockItem.updateOne({ _id: existing._id }, { $set: { ...update, archived: row.archived, archivedAt: row.archived ? new Date() : null, archivedBy: row.archived ? req.user.sub : null } });
-          results.push({ row: index, action: "updated", name: update.name });
+          await StockItem.updateOne({ _id: existing._id }, { $set: { ...update, archived: row.archived, archivedAt: row.archived ? existing.archivedAt || new Date() : null, archivedBy: row.archived ? existing.archivedBy || req.user.sub : null } });
+          results.push({ row: index, action: "updated", name: update.name, productNo });
         } else {
           const created = await StockItem.create({ ...update, archived: row.archived, ...(row.archived ? { archivedAt: new Date(), archivedBy: req.user.sub } : {}) });
-          results.push({ row: index, action: "created", name: created.name });
+          results.push({ row: index, action: "created", name: created.name, productNo: created.productNo });
         }
       } catch (error) {
         // Name the fields that failed ("Pack 1: Enter how much one pack holds."), not just "Some details need attention."
         const fields = error.errors ? Object.entries(error.errors).flatMap(([key, value]) => (key === "packList"
           ? (value || []).flatMap((problems, i) => Object.values(problems || {}).map((text) => `Pack ${i + 1}: ${text}`))
           : [value])) : [];
-        results.push({ row: index, action: "error", message: fields.length ? fields.join(" ") : error.message || "Could not import this row." });
+        results.push({ row: index, action: "error", name: row.name, message: fields.length ? fields.join(" ") : error.message || "Could not add this row." });
       }
+    }
+    for (const group of newGroups) {
+      if (!(await StockItem.exists({ stockGroupId: group._id }))) await StockGroup.deleteOne({ _id: group._id });
     }
     const failed = results.filter((result) => result.action === "error");
     res.json({ imported: results.length - failed.length, failed: failed.length, results });
