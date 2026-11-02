@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { api } from "../../api.js";
 import { useToast } from "../../useToast.js";
-import { Button, ErrorState } from "../../components/ui/index.jsx";
+import { Button, ErrorState, Select } from "../../components/ui/index.jsx";
 
 // Settings › Ordering rules: the figures behind shared kitchen orders (backend ordering/settings.js validates them).
 const toAmount = (hours) => (hours >= 24 && hours % 24 === 0 ? { amount: String(hours / 24), unit: "days" } : { amount: String(hours), unit: "hours" });
@@ -20,10 +20,10 @@ function Amount({ value, onChange, label }) {
   return (
     <span className="rules-amount">
       <input type="number" min="0" step="any" inputMode="decimal" aria-label={label} value={value.amount} onChange={(e) => onChange({ ...value, amount: e.target.value })} />
-      <select aria-label={`${label} in`} value={value.unit} onChange={(e) => onChange({ ...value, unit: e.target.value })}>
+      <Select className="rules-unit" aria-label={`${label} in`} value={value.unit} onChange={(e) => onChange({ ...value, unit: e.target.value })}>
         <option value="hours">hours</option>
         <option value="days">days</option>
-      </select>
+      </Select>
     </span>
   );
 }
