@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPhone, suggestPassword } from "./kitchenUsers.js";
+import { formatPhone, isMobile, phoneDigits, phoneInput, suggestPassword } from "./kitchenUsers.js";
 
 describe("suggestPassword", () => {
   it("gives a kitchen word, a dash and four digits, always 8 characters or more", () => {
@@ -14,5 +14,19 @@ describe("formatPhone", () => {
     expect(formatPhone("+919876543210")).toBe("+91 98765 43210");
     expect(formatPhone("+447700900123")).toBe("+447700900123");
     expect(formatPhone("")).toBe("");
+  });
+});
+
+describe("WhatsApp box", () => {
+  it("keeps digits only, at most 10, and knows a full mobile number", () => {
+    expect(phoneInput("+91 98765-43210")).toBe("9876543210");
+    expect(phoneInput("098765 43210")).toBe("9876543210");
+    expect(phoneInput("98765432101")).toBe("9876543210");
+    expect(phoneInput("98765 43210abc")).toBe("9876543210");
+    expect(phoneDigits("+919876543210")).toBe("9876543210");
+    expect(phoneDigits("")).toBe("");
+    expect(isMobile("9876543210")).toBe(true);
+    expect(isMobile("987654321")).toBe(false);
+    expect(isMobile("5876543210")).toBe(false);
   });
 });

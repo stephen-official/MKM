@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 import { Check, ChevronDown, Copy, Edit3, Eye, EyeOff, Power, Sparkles, UserPlus, UserRound, X } from "lucide-react";
 import { api } from "../../api.js";
 import { useToast } from "../../useToast.js";
-import { formatPhone, suggestPassword } from "./kitchenUsers.js";
+import { formatPhone, isMobile, phoneDigits, phoneInput, suggestPassword } from "./kitchenUsers.js";
 
 const errorOf = (error, fallback) => error?.response?.data?.message || fallback;
 const MIN = 8; // backend authRoutes MIN_PASSWORD_LENGTH
@@ -27,7 +27,7 @@ function UserRow({ user, onChanged, confirm }) {
   const { showToast } = useToast();
   const uid = useId();
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ name: user.name, email: user.email, phone: user.phone || "" });
+  const [form, setForm] = useState({ name: user.name, email: user.email, phone: phoneDigits(user.phone) });
   const [password, setPassword] = useState("");
   const [shown, setShown] = useState(null); // the password while shown
   const [busy, setBusy] = useState(false);
@@ -44,14 +44,14 @@ function UserRow({ user, onChanged, confirm }) {
     try { await navigator.clipboard.writeText(shown); showToast("Password copied", "success"); }
     catch { showToast("Could not copy. Select it and copy by hand.", "error"); }
   };
-  const cancel = () => { setEditing(false); setForm({ name: user.name, email: user.email, phone: user.phone || "" }); setPassword(""); };
+  const cancel = () => { setEditing(false); setForm({ name: user.name, email: user.email, phone: phoneDigits(user.phone) }); setPassword(""); };
   // One Save for the details and, when typed, a new password (blank keeps the current one).
   const save = async (event) => {
     event.preventDefault();
     if (password && password.length < MIN) return showToast(`The new password needs at least ${MIN} characters, or leave it blank.`, "error");
-    const changed = form.name.trim() !== user.name || form.email.trim().toLowerCase() !== user.email || form.phone.trim() !== (user.phone || "");
+    const changed = form.name.trim() !== user.name || form.email.trim().toLowerCase() !== user.email || form.phone !== phoneDigits(user.phone);
     const ok = await run(async () => {
-      if (changed) await api.patch(`/users/${user._id}`, { name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), expectedVersion: user.version });
+      if (changed) await api.patch(`/users/${user._id}`, { name: form.name.trim(), email: form.email.trim(), phone: form.phone, expectedVersion: user.version });
       if (password) await api.post(`/users/${user._id}/password`, { password });
     }, password ? "Saved. Their phone is signed out; they sign in with the new password." : "Saved");
     if (ok) { if (password) setShown(password); setPassword(""); setEditing(false); onChanged(); }
@@ -82,11 +82,11 @@ function UserRow({ user, onChanged, confirm }) {
         <form className="kp-user__form" onSubmit={save}>
           <Field label="Name" id={`${uid}-name`}><input id={`${uid}-name`} value={form.name} maxLength={100} onChange={(e) => set({ name: e.target.value })} autoFocus /></Field>
           <Field label="Login ID" id={`${uid}-email`}><input id={`${uid}-email`} type="email" value={form.email} onChange={(e) => set({ email: e.target.value })} /></Field>
-          <Field label="WhatsApp" id={`${uid}-phone`}><input id={`${uid}-phone`} type="tel" inputMode="tel" placeholder="98765 43210" value={form.phone} onChange={(e) => set({ phone: e.target.value })} /></Field>
+          <Field label="WhatsApp" id={`${uid}-phone`}><input id={`${uid}-phone`} type="tel" inputMode="numeric" pattern="[0-9]*" placeholder="9876543210" value={form.phone} onChange={(e) => set({ phone: phoneInput(e.target.value) })} /></Field>
           <Field label="New password" id={`${uid}-pw`}><PasswordInput id={`${uid}-pw`} value={password} onChange={setPassword} placeholder="Leave blank to keep it" /></Field>
           <div className="kp-form-actions">
             <button type="button" className="kg-chip kp-icon" disabled={busy} onClick={cancel} aria-label="Cancel" title="Cancel"><X size={18} aria-hidden="true" /></button>
-            <button type="submit" className="kg-chip kp-icon kp-chip--save" disabled={busy || !form.name.trim() || !form.email.trim() || !form.phone.trim() || (password !== "" && password.length < MIN)} aria-label="Save" title="Save"><Check size={18} aria-hidden="true" /></button>
+            <button type="submit" className="kg-chip kp-icon kp-chip--save" disabled={busy || !form.name.trim() || !form.email.trim() || !(isMobile(form.phone) || (form.phone === "" && !user.phone)) || (password !== "" && password.length < MIN)} aria-label="Save" title="Save"><Check size={18} aria-hidden="true" /></button>
           </div>
         </form>
       ) : (
@@ -128,14 +128,14 @@ export function KitchenUsers({ kitchen, users, onChanged, confirm }) {
   const [adding, setAdding] = useState(false); // the Add user form is open
   const [saving, setSaving] = useState(false);
   const set = (patch) => setForm((prev) => ({ ...prev, ...patch }));
-  const ready = form.name.trim() && form.email.trim() && form.password.length >= MIN && form.phone.trim();
+  const ready = form.name.trim() && form.email.trim() && form.password.length >= MIN && isMobile(form.phone);
 
   const add = async (event) => {
     event.preventDefault();
     if (!ready || saving) return;
     setSaving(true);
     try {
-      await api.post("/users", { name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), role: "user", godownId: kitchen._id, password: form.password });
+      await api.post("/users", { name: form.name.trim(), email: form.email.trim(), phone: form.phone, role: "user", godownId: kitchen._id, password: form.password });
       showToast(`${form.name.trim()} can now sign in to ${kitchen.name}`, "success");
       setForm(empty);
       setAdding(false);
@@ -167,8 +167,8 @@ export function KitchenUsers({ kitchen, users, onChanged, confirm }) {
             <Field label="Name" id={`${uid}-n`}><input id={`${uid}-n`} placeholder="Full name" maxLength={100} value={form.name} onChange={(e) => set({ name: e.target.value })} autoFocus /></Field>
             <Field label="Login ID" id={`${uid}-e`}><input id={`${uid}-e`} type="email" placeholder="Their email address" value={form.email} onChange={(e) => set({ email: e.target.value })} /></Field>
             <Field label="Password" id={`${uid}-p`}><PasswordInput id={`${uid}-p`} value={form.password} onChange={(password) => set({ password })} /></Field>
-            <Field label="WhatsApp" id={`${uid}-w`}><input id={`${uid}-w`} type="tel" inputMode="tel" placeholder="98765 43210" value={form.phone} onChange={(e) => set({ phone: e.target.value })} /></Field>
-            <p className="kp-hint">All four are needed. Their phone signs in with the Login ID and password.</p>
+            <Field label="WhatsApp" id={`${uid}-w`}><input id={`${uid}-w`} type="tel" inputMode="numeric" pattern="[0-9]*" placeholder="9876543210" value={form.phone} onChange={(e) => set({ phone: phoneInput(e.target.value) })} /></Field>
+            <p className="kp-hint">All four are needed. WhatsApp: the 10-digit mobile number, digits only.</p>
             <div className="kp-form-actions">
               <button type="button" className="kg-chip kp-icon" disabled={saving} onClick={() => { setAdding(false); setForm(empty); }} aria-label="Cancel" title="Cancel"><X size={18} aria-hidden="true" /></button>
               <button type="submit" className="kg-chip kp-icon kp-chip--save" disabled={saving || !ready} aria-label="Save the new user" title="Save"><Check size={18} aria-hidden="true" /></button>
