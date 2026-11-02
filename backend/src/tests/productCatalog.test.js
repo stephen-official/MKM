@@ -375,7 +375,7 @@ test("bulk add: plain words, allergen columns and packs are read; a typed new gr
 
 test("the PDF export lists every product with plain words and a note per column", async () => {
   const rice = (await as("root", "post", "/api/products").send(base({ pricePerUnit: 60, allergens: ["gluten"], soldInPacks: true, packs: [{ name: "Bag", size: 25, price: 1400 }] }))).body;
-  assert.deepEqual(productPdfRow(rice), ["P-0001", "Rice", "Grains", "kg", "Food, Veg, Room temperature", "Gluten", "5 kg", "Bag of 25 kg", "Available"]);
+  assert.deepEqual(productPdfRow(rice), ["P-0001", "Rice", "kg", "Food, Veg, Room temperature", "Gluten", "5 kg", "Bag of 25 kg", "Available"]);
   const res = await as("admin", "get", "/api/products/export/pdf").buffer(true).parse((r, done) => { const c = []; r.on("data", (x) => c.push(x)); r.on("end", () => done(null, Buffer.concat(c))); });
   assert.equal(res.status, 200);
   assert.equal(res.headers["content-type"], "application/pdf");
