@@ -3,6 +3,7 @@ import { Check, ChevronDown, Edit3, ImagePlus, Trash2, Users, X } from "lucide-r
 import { api } from "../../api.js";
 import { useToast } from "../../useToast.js";
 import { KitchenUsers } from "./KitchenUsers.jsx";
+import { phoneInput } from "./kitchenUsers.js";
 
 const errorOf = (error, fallback) => error?.response?.data?.message || fallback;
 const initial = (name) => String(name || "").trim().charAt(0).toUpperCase() || "?";
@@ -107,7 +108,7 @@ export function KitchenCard({ kitchen, kitchens, users, canManageUsers, open, on
                 </label>
                 <label className="kp-field">
                   <span>Kitchen phone</span>
-                  <input type="tel" inputMode="numeric" pattern="[0-9]*" value={details.phone} placeholder="9876543210" onChange={(e) => set({ phone: e.target.value.replace(/\D/g, "").slice(0, 15) })} />
+                  <input type="tel" inputMode="numeric" pattern="[0-9]*" value={details.phone} placeholder="9876543210" onChange={(e) => set({ phone: phoneInput(e.target.value) })} />
                 </label>
                 <label className="kp-field">
                   <span>Address</span>

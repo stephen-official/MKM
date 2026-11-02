@@ -90,7 +90,7 @@ export function AddKitchenDialog({ existingNames, canManageUsers, onClose, onAdd
             <span><strong>This is the central store</strong><small>Where purchases arrive before going to the kitchens. Only one place can be the store.</small></span>
           </label>
           <Field label="Person in charge" id="new-kitchen-incharge"><input id="new-kitchen-incharge" value={details.inChargeName} maxLength={80} placeholder="e.g. Head cook's name" onChange={(e) => setDetail({ inChargeName: e.target.value })} /></Field>
-          <Field label="Kitchen phone" id="new-kitchen-phone"><input id="new-kitchen-phone" type="tel" inputMode="numeric" pattern="[0-9]*" value={details.phone} placeholder="9876543210" onChange={(e) => setDetail({ phone: e.target.value.replace(/\D/g, "").slice(0, 15) })} /></Field>
+          <Field label="Kitchen phone" id="new-kitchen-phone"><input id="new-kitchen-phone" type="tel" inputMode="numeric" pattern="[0-9]*" value={details.phone} placeholder="9876543210" onChange={(e) => setDetail({ phone: phoneInput(e.target.value) })} /></Field>
           <Field label="Address" id="new-kitchen-address"><textarea id="new-kitchen-address" rows={2} value={details.address} maxLength={200} placeholder="Where deliveries go" onChange={(e) => setDetail({ address: e.target.value })} /></Field>
           <div className="kp-logo">
             <span className="kp-mark kp-mark--big" aria-hidden="true">{logo ? <img src={logo.preview} alt="" /> : (trimmed.charAt(0).toUpperCase() || "?")}</span>

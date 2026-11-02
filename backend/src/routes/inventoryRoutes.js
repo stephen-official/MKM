@@ -60,13 +60,13 @@ const godownFields = (body = {}) => {
   if (body.inChargeName !== undefined) out.inChargeName = String(body.inChargeName).trim().slice(0, 80);
   if (body.phone !== undefined) {
     const digits = String(body.phone).replace(/\D/g, "");
-    if (digits && (digits.length < 6 || digits.length > 15)) return null;
+    if (digits && (digits.length < 6 || digits.length > 10)) return null; // 10 digits at most (Anand, 2026-11-02)
     out.phone = digits;
   }
   if (body.isCentralStore !== undefined) out.isCentralStore = body.isCentralStore === true;
   return out;
 };
-const BAD_GODOWN = { code: "INVALID_INPUT", message: "Enter the kitchen phone as digits, e.g. 9876543210 or 08518234567." };
+const BAD_GODOWN = { code: "INVALID_INPUT", message: "Enter the kitchen phone as up to 10 digits, e.g. 9876543210 (a landline without its first 0: 8518234567)." };
 // Only one place is the central store: marking one clears the mark on the others.
 const keepOneCentralStore = async (row) => {
   if (row?.isCentralStore) await Godown.updateMany({ _id: { $ne: row._id }, isCentralStore: true }, { $set: { isCentralStore: false } });

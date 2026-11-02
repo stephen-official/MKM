@@ -106,9 +106,10 @@ test("a kitchen user's WhatsApp number is saved on add and on edit; a bad one is
 });
 
 test("a kitchen's details: address, person in charge and phone are saved, other fields are ignored, and only one place is the central store", async () => {
-  const store = await as("admin", "post", "/api/inventory/godowns").send({ name: "Central Store", isCentralStore: true, phone: "0851-8234567" });
+  const store = await as("admin", "post", "/api/inventory/godowns").send({ name: "Central Store", isCentralStore: true, phone: "8518-234567" });
   assert.equal(store.status, 201, JSON.stringify(store.body));
-  assert.deepEqual([store.body.isCentralStore, store.body.phone, store.body.active], [true, "08518234567", true]);
+  assert.deepEqual([store.body.isCentralStore, store.body.phone, store.body.active], [true, "8518234567", true]);
+  assert.equal((await as("admin", "put", `/api/inventory/godowns/${store.body._id}`).send({ phone: "08518234567" })).body.code, "INVALID_INPUT", "11 digits are refused");
   const saved = await as("admin", "put", `/api/inventory/godowns/${ctx.kitchen._id}`).send({ address: "12 School Road, Kurnool", inChargeName: "Sita", phone: "98765 43210", active: false, logoUrl: "https://evil.test/x.png" });
   assert.deepEqual([saved.body.address, saved.body.inChargeName, saved.body.phone, saved.body.active, saved.body.logoUrl], ["12 School Road, Kurnool", "Sita", "9876543210", true, ""]);
   assert.equal((await as("admin", "put", `/api/inventory/godowns/${ctx.kitchen._id}`).send({ phone: "12" })).body.code, "INVALID_INPUT");
