@@ -17,7 +17,7 @@ const errorOf = (error, fallback) => error?.response?.data?.message || fallback;
 export function AddKitchenDialog({ existingNames, canManageUsers, onClose, onAdded }) {
   const [name, setName] = useState("");
   const [logo, setLogo] = useState(null); // { file, preview }
-  const [details, setDetails] = useState({ inChargeName: "", phone: "", address: "", isCentralStore: false });
+  const [details, setDetails] = useState({ inChargeName: "", phone: "", address: "" }); // a new place is always a school kitchen
   const setDetail = (patch) => setDetails((prev) => ({ ...prev, ...patch }));
   const [users, setUsers] = useState(() => [newDraft()]);
   const [error, setError] = useState("");
@@ -81,21 +81,19 @@ export function AddKitchenDialog({ existingNames, canManageUsers, onClose, onAdd
       <form className="kp-dialog" onSubmit={save} noValidate>
         <section className="kp-section" aria-label="Kitchen">
           <div className="kp-section__head"><h3>Kitchen</h3></div>
+          {/* The same fields, order and spacing as a kitchen card's edit form. */}
+          <div className="kp-kitchen-form">
           <Field label="Name" id="new-kitchen-name">
             <input id="new-kitchen-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. Montessori Primary Kitchen" autoFocus aria-invalid={duplicate || undefined} />
+            {duplicate && <span className="field__error" role="alert">A kitchen with this name already exists.</span>}
           </Field>
-          {duplicate && <span className="field__error" role="alert">A kitchen with this name already exists.</span>}
-          <label className="kp-check">
-            <input type="checkbox" checked={details.isCentralStore} onChange={(e) => setDetail({ isCentralStore: e.target.checked })} />
-            <span><strong>This is the central store</strong><small>Where purchases arrive before going to the kitchens. Only one place can be the store.</small></span>
-          </label>
           <Field label="Person in charge" id="new-kitchen-incharge"><input id="new-kitchen-incharge" value={details.inChargeName} maxLength={80} placeholder="e.g. Head cook's name" onChange={(e) => setDetail({ inChargeName: e.target.value })} /></Field>
           <Field label="Kitchen phone" id="new-kitchen-phone"><input id="new-kitchen-phone" type="tel" inputMode="numeric" pattern="[0-9]*" value={details.phone} placeholder="9876543210" onChange={(e) => setDetail({ phone: phoneInput(e.target.value) })} /></Field>
           <Field label="Address" id="new-kitchen-address"><textarea id="new-kitchen-address" rows={2} value={details.address} maxLength={200} placeholder="Where deliveries go" onChange={(e) => setDetail({ address: e.target.value })} /></Field>
           <div className="kp-logo">
             <span className="kp-mark kp-mark--big" aria-hidden="true">{logo ? <img src={logo.preview} alt="" /> : (trimmed.charAt(0).toUpperCase() || "?")}</span>
             <div className="kp-logo__text">
-              <strong>Logo <span className="kp-optional">(optional)</span></strong>
+              <strong>Logo</strong>
               <span className="kp-hint">Shown at the top of the kitchen app for everyone who signs in here.</span>
               <span className="kp-logo__buttons">
                 <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={pick} aria-label="Kitchen logo" />
@@ -103,6 +101,7 @@ export function AddKitchenDialog({ existingNames, canManageUsers, onClose, onAdd
                 {logo && <button type="button" className="kp-link kp-link--danger" onClick={() => setLogo(null)}><X size={13} aria-hidden="true" /> Remove</button>}
               </span>
             </div>
+          </div>
           </div>
         </section>
 

@@ -14,7 +14,8 @@ export function KitchenCard({ kitchen, kitchens, users, canManageUsers, open, on
   const bodyId = useId();
   const fileRef = useRef(null);
   const [editing, setEditing] = useState(false);
-  const detailsOf = (k) => ({ name: k.name, address: k.address || "", inChargeName: k.inChargeName || "", phone: k.phone || "", isCentralStore: Boolean(k.isCentralStore) });
+  // The central store is marked once and stays (Anand, 2026-11-02), so it is shown but not edited here.
+  const detailsOf = (k) => ({ name: k.name, address: k.address || "", inChargeName: k.inChargeName || "", phone: k.phone || "" });
   const [details, setDetails] = useState(() => detailsOf(kitchen));
   const name = details.name;
   const set = (patch) => setDetails((prev) => ({ ...prev, ...patch }));
@@ -97,10 +98,6 @@ export function KitchenCard({ kitchen, kitchens, users, canManageUsers, open, on
                 <label className="kp-field">
                   <span>Name</span>
                   <input value={name} maxLength={80} onChange={(e) => set({ name: e.target.value })} autoFocus />
-                </label>
-                <label className="kp-check">
-                  <input type="checkbox" checked={details.isCentralStore} onChange={(e) => set({ isCentralStore: e.target.checked })} />
-                  <span><strong>This is the central store</strong><small>Where purchases arrive before going to the kitchens. Only one place can be the store.</small></span>
                 </label>
                 <label className="kp-field">
                   <span>Person in charge</span>
