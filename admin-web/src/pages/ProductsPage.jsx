@@ -436,11 +436,11 @@ export function ProductsPage({ view = "products" }) {
         <Modal title="Export products" onClose={() => !downloading && setSheet("")} closeButton="right">
           <p className="product-form__hint">Please pick the format for exporting.</p>
           <div className="export-choices">
-            <button type="button" className="kg-glass export-choice" disabled={downloading} onClick={() => exportAs("/products/export/excel", downloadName("Products", "xlsx"))}>
+            <button type="button" className="kg-glass export-choice export-choice--excel" disabled={downloading} onClick={() => exportAs("/products/export/excel", downloadName("Products", "xlsx"))}>
               <FileSpreadsheet size={22} aria-hidden="true" />
               <span><strong>Excel</strong><small>To change many products: edit it, then upload it with Bulk add.</small></span>
             </button>
-            <button type="button" className="kg-glass export-choice" disabled={downloading} onClick={() => exportAs("/products/export/pdf", downloadName("Products", "pdf"))}>
+            <button type="button" className="kg-glass export-choice export-choice--pdf" disabled={downloading} onClick={() => exportAs("/products/export/pdf", downloadName("Products", "pdf"))}>
               <FileText size={22} aria-hidden="true" />
               <span><strong>PDF</strong><small>To read or print. Every column is explained at the top.</small></span>
             </button>
@@ -451,7 +451,7 @@ export function ProductsPage({ view = "products" }) {
 
       {sheet === "bulk" && (
         <Modal title="Bulk add products" onClose={() => !importing && setSheet("")} closeButton="right" actions={(
-          <Button disabled={importing || downloading} onClick={() => importInput.current?.click()}><Upload size={15} aria-hidden="true" /> {importing ? "Uploading…" : "Choose file"}</Button>
+          <Button className="bulk-choose" disabled={importing || downloading} onClick={() => importInput.current?.click()}><Upload size={15} aria-hidden="true" /> {importing ? "Uploading…" : "Choose file"}</Button>
         )}>
           <ol className="bulk-steps">
             <li>Download the template. To change existing products, use <strong>Export › Excel</strong> instead.</li>

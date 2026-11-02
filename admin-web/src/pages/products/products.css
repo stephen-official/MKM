@@ -173,6 +173,14 @@
 .export-choice small { display: block; margin-top: 4px; color: var(--muted); font-size: 13px; line-height: 1.4; }
 .export-choice:hover, .export-choice:focus-visible { border-color: var(--blue); outline: none; }
 .export-choice:disabled { opacity: .6; cursor: progress; }
+/* Excel in green (its spreadsheet colour), PDF in blue. */
+.kg-glass.export-choice--excel { background: var(--tint-green); box-shadow: inset 0 1px 0 #fff, 0 0 0 1px var(--st-ok-line), var(--glass-shadow); }
+.export-choice--excel svg { color: var(--st-ok-fg); }
+.export-choice--excel:hover, .export-choice--excel:focus-visible { border-color: var(--st-ok-fg); }
+.kg-glass.export-choice--pdf { background: var(--tint-cool); box-shadow: inset 0 1px 0 #fff, 0 0 0 1px var(--st-low-line), var(--glass-shadow); }
+.export-choice--pdf svg { color: var(--blue-deep); }
+/* Bulk add: Choose file sits in the bottom right corner. */
+.modal-actions > .bulk-choose { flex: 0 0 auto; margin-left: auto; }
 .bulk-steps { display: grid; gap: 8px; margin: 0 0 14px; padding-left: 20px; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
 @media (max-width: 520px) { .export-choices { grid-template-columns: 1fr; } }
 /* Download template: a plain underlined link, no button box. */
