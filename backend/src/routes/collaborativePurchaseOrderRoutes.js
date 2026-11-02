@@ -103,6 +103,7 @@ const populateOrder = (query) => query
   .populate("contributions.items.ticketId", "status reason receivedQtyBaseUnit resolution.acceptedQtyBaseUnit resolution.reorderShortfall raisedAt")
   .populate("contributions.userId", "name")
   .populate("contributions.godownId", "name")
+  .populate({ path: "contributions.adminChange.before.stockItemId", select: "name unitId", populate: { path: "unitId", select: "symbol" } })
   .populate({
     path: "contributions.items.stockItemId",
     select: "name imageUrl unitId stockGroupId brand productCode soldInPacks packs expiryRequired",
@@ -116,7 +117,7 @@ const otherKitchensHidden = (value, viewer) => ({
   ...value,
   contributions: (value.contributions || []).map((contribution) => (idOf(contribution.godownId) === String(viewer.godownId)
     ? contribution
-    : { ...contribution, note: undefined, items: contribution.items.map((item) => ({ stockItemId: item.stockItemId })) })),
+    : { ...contribution, note: undefined, adminChange: undefined, items: contribution.items.map((item) => ({ stockItemId: item.stockItemId })) })),
   combinedItems: value.combinedItems.map((line) => ({ stockItemId: line.stockItemId })),
 });
 
@@ -258,7 +259,7 @@ collaborativePurchaseOrderRoutes.put("/:id/contributions/me", kitchenOnly, requi
     if (!mine) throw fail(404, "Your kitchen has not joined this order");
     if (mine.approvedAt) throw fail(409, "Your kitchen's items have been approved and can no longer be changed", "SHARE_APPROVED");
     mine.items = keepApprovedLines(mine.items, contribution.items);
-    Object.assign(mine, { note: contribution.note, userId: req.user.sub, updatedAt: contribution.updatedAt });
+    Object.assign(mine, { note: contribution.note, userId: req.user.sub, updatedAt: contribution.updatedAt, adminChange: null });
     await order.save();
     notifyKitchens("orders");
     return res.json(responseOrder(await loadOrder(order._id), req.user));
@@ -288,6 +289,62 @@ collaborativePurchaseOrderRoutes.delete("/:id/contributions/me", kitchenOnly, as
     }
     if (!order) throw fail(404, "Your kitchen has not joined this order");
     notifyKitchens("orders");
+    return res.json(responseOrder(await loadOrder(order._id), req.user));
+  } catch (error) { return sendError(res, error); }
+});
+
+const sameLines = (a, b) => a.length === b.length && a.every((line) => {
+  const match = b.find((other) => lineKey(other) === lineKey(line));
+  return match && Number(match.qtyBaseUnit) === Number(line.qtyBaseUnit) && Number(match.packQuantity || 0) === Number(line.packQuantity || 0);
+});
+const snapshotOf = (items) => items.map((line) => ({
+  stockItemId: line.stockItemId, qtyBaseUnit: line.qtyBaseUnit, packId: line.packId || null, packName: line.packName || "", packQuantity: line.packQuantity ?? null,
+}));
+
+/**
+ * Super-admin: replace one kitchen's items until the order is approved (Anand, 2026-11-03). Approved lines stay as they
+ * are. The kitchen is shown what changed (adminChange.before → items) until it taps OK.
+ */
+collaborativePurchaseOrderRoutes.put("/:id/kitchens/:godownId/items", authorize(["super_admin"]), async (req, res) => {
+  try {
+    await closeExpiredOrders();
+    if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
+    const items = normalizeCollaborativeItems(req.body.items);
+    if (!items) throw fail(400, "Add at least one item with a valid quantity");
+    const order = await CollaborativePurchaseOrder.findById(req.params.id);
+    if (!order) throw fail(404, "Collaborative purchase order not found");
+    if (!["open", "closed"].includes(order.status)) throw fail(409, "Items can only be changed until the order is approved", "ORDER_CLOSED");
+    const share = order.contributions.find((entry) => String(entry.godownId) === String(req.params.godownId));
+    if (!share) throw fail(404, "That kitchen is not on this order");
+    if (share.approvedAt) throw fail(409, "This kitchen's items have been approved and can no longer be changed", "SHARE_APPROVED");
+    // Products new to this kitchen's list must be ones a kitchen may order; lines it already had may stay.
+    const had = new Set(share.items.map(productOf));
+    await assertKitchenCanUse({ role: "user" }, items.map((line) => line.stockItemId).filter((id) => !had.has(String(id))));
+    const next = keepApprovedLines(share.items, items);
+    if (!sameLines(share.items, next)) {
+      const before = share.adminChange?.before?.length ? share.adminChange.before : snapshotOf(share.items);
+      share.items = next;
+      share.updatedAt = new Date();
+      // Changed back to what the kitchen last saw: nothing to tell it.
+      share.adminChange = sameLines(before, next) ? null : { before, changedAt: new Date(), changedBy: req.user.sub };
+      await order.save();
+      notifyKitchens("orders");
+    }
+    return res.json(responseOrder(await loadOrder(order._id), req.user));
+  } catch (error) { return sendError(res, error); }
+});
+
+/** Kitchen: "OK" on the admin's change — the notice goes away for everyone in that kitchen. */
+collaborativePurchaseOrderRoutes.post("/:id/contributions/me/change-seen", kitchenOnly, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
+    const order = await CollaborativePurchaseOrder.findOneAndUpdate(
+      { _id: req.params.id, "contributions.godownId": req.user.godownId },
+      { $set: { "contributions.$.adminChange": null } },
+      { new: true },
+    );
+    if (!order) throw fail(404, "Your kitchen is not on this order");
+    notifyKitchen(req.user.godownId, "orders");
     return res.json(responseOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });

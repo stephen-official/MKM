@@ -114,6 +114,8 @@ export const ROUTE_RULES = Object.freeze([
   feature("POST", "/api/procurement/collaborative-purchase-orders/:id/receive", ["purchase-orders"], "mutation", "kitchen"),
   feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/status", ["purchase-orders"], "mutation"),
   feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/closing-time", ["purchase-orders"], "mutation"),
+  feature("PUT", "/api/procurement/collaborative-purchase-orders/:id/kitchens/:godownId/items", ["purchase-orders"], "mutation"),
+  feature("POST", "/api/procurement/collaborative-purchase-orders/:id/contributions/me/change-seen", ["purchase-orders"], "mutation", "kitchen"),
   feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/purchase", ["purchase-orders"], "mutation"),
 
   // --- delivery problems kitchens raise while receiving shared orders ---

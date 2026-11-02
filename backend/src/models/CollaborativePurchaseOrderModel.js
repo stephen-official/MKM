@@ -41,6 +41,23 @@ const contributionSchema = new mongoose.Schema({
   // Set once every line has been received; each line was added to the kitchen's stock as it arrived.
   deliveredAt: { type: Date, default: null },
   deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  // Set when a super-admin changes this kitchen's items: what the kitchen had asked for before the first change it has
+  // not seen yet. Cleared when the kitchen taps OK (or edits its items itself). Only this kitchen and admins see it.
+  adminChange: {
+    type: new mongoose.Schema({
+      before: [{
+        _id: false,
+        stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: "StockItem", required: true },
+        qtyBaseUnit: { type: Number, required: true },
+        packId: { type: mongoose.Schema.Types.ObjectId, default: null },
+        packName: { type: String, default: "" },
+        packQuantity: { type: Number, default: null },
+      }],
+      changedAt: { type: Date, required: true },
+      changedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    }, { _id: false }),
+    default: null,
+  },
 }, { _id: true });
 
 const collaborativePurchaseOrderSchema = new mongoose.Schema({

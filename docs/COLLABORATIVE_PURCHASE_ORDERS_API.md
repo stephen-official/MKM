@@ -202,6 +202,14 @@ A closed order is never reopened; a kitchen that still needs items starts a new 
 
 Closing the order immediately prevents kitchens from adding, editing, or removing contributions. Once `closesAt` passes, the order is closed automatically (with `statusChangedBy: null`) the next time any order is read or changed.
 
+### Change a kitchen's items (super-admin only)
+
+`PUT /:id/kitchens/:godownId/items` with `{ "items": [{ "stockItemId": "...", "qtyBaseUnit": 8 }] }` (the same line shape as a contribution, packs allowed) replaces that kitchen's items while the order is `open` or `closed`, i.e. until it is approved (otherwise 409 `ORDER_CLOSED`). An approved share gives 409 `SHARE_APPROVED`; approved lines must come back unchanged (409 `LINE_APPROVED`). Products new to the kitchen's list follow the kitchen availability rules (409 `PRODUCT_UNAVAILABLE`). A kitchen not on the order gives 404; admins and kitchens get 403.
+
+The kitchen is told: its contribution carries `adminChange: { before: [{ stockItemId: { name, unitId: { symbol } }, qtyBaseUnit, packId, packName, packQuantity }], changedAt, changedBy }`, where `before` is what it had asked for before the first change it has not seen yet (several changes show as one). `adminChange` is `null` when there is nothing to show, including when the super-admin changes the items back. Other kitchens never see it.
+
+`POST /:id/contributions/me/change-seen` (kitchen) clears it for that kitchen ("OK"). A kitchen editing its own items clears it too.
+
 ### Change the closing time (super-admin only)
 
 `PATCH /:id/closing-time`
