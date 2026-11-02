@@ -152,7 +152,7 @@ authRoutes.get("/me", authenticate, async (req, res) => {
   try {
     const user = await User.findById(req.user.sub)
       .select("-passwordHash -refreshToken -resetToken")
-      .populate("godownId", "name"); // ✅ IMPORTANT
+      .populate("godownId", "name logoUrl"); // the kitchen app shows the kitchen's name and logo
 
     if (!user || !user.active) return res.status(401).json({ message: "Account is inactive" });
 

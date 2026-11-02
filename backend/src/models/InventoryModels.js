@@ -18,7 +18,9 @@ const unitSchema = new mongoose.Schema(
 );
 const godownSchema = new mongoose.Schema({ 
   name: { type: String, required: true, unique: true }, 
-  active: { type: Boolean, default: true } // Standardizes visibility
+  active: { type: Boolean, default: true }, // Standardizes visibility
+  // The kitchen's own logo, shown at the top of the kitchen app (Master data › Kitchens). Empty = the default school mark.
+  logoUrl: { type: String, default: "" }
 }, { timestamps: true });
 
 const stockItemSchema = new mongoose.Schema(

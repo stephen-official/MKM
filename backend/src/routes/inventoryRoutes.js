@@ -15,6 +15,10 @@ import { isAvailable } from "../catalog/completeness.js";
 import { isOfferedSymbol } from "../catalog/units.js";
 import { ensureOtherGroup, isOtherGroup, sortGroups } from "../catalog/groups.js";
 import { isKitchenRole } from "../utils/roles.js";
+import mongoose from "mongoose";
+import multer from "multer";
+import { storePhoto } from "../stock/photoStorage.js";
+import { notifyKitchens } from "../realtime.js";
 
 export const inventoryRoutes = express.Router();
 
@@ -48,6 +52,28 @@ const GODOWN_USES = [
   ["delivery tickets", DeliveryTicket, (id) => ({ godownId: id })],
   ["product requests", ProductRequest, (id) => ({ godownId: id })],
 ];
+// Master data › Kitchens: a kitchen's logo, stored like product photos (Cloudinary, or the uploads folder locally).
+const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+inventoryRoutes.post("/godowns/:id/logo", adminOnly, logoUpload.single("logo"), async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id) || !(await Godown.exists({ _id: req.params.id }))) return res.status(404).json({ code: "NOT_FOUND", message: "Kitchen not found." });
+    if (!req.file) return res.status(400).json({ code: "LOGO_REQUIRED", message: "Choose a picture for the logo." });
+    const logoUrl = await storePhoto({ buffer: req.file.buffer, mimetype: req.file.mimetype, folder: "kitchen-logos", baseUrl: `${req.protocol}://${req.get("host")}` });
+    const kitchen = await Godown.findByIdAndUpdate(req.params.id, { $set: { logoUrl } }, { new: true }).lean();
+    notifyKitchens("stock");
+    return res.json(kitchen);
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ code: error.code || "INVALID_INPUT", message: error.message });
+    return res.status(500).json({ code: "SERVER_ERROR", message: "The logo could not be saved." });
+  }
+});
+inventoryRoutes.delete("/godowns/:id/logo", adminOnly, async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ code: "NOT_FOUND", message: "Kitchen not found." });
+  const kitchen = await Godown.findByIdAndUpdate(req.params.id, { $set: { logoUrl: "" } }, { new: true }).lean();
+  if (!kitchen) return res.status(404).json({ code: "NOT_FOUND", message: "Kitchen not found." });
+  return res.json(kitchen);
+});
+
 /** The names of the record kinds that still point at this godown, in GODOWN_USES order. */
 export const godownUses = async (id) => {
   const hits = await Promise.all(GODOWN_USES.map(async ([label, Model, filter]) => ((await Model.exists(filter(id))) ? label : null)));

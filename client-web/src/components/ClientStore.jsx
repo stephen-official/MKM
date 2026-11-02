@@ -879,6 +879,7 @@ setEditIndentId(indent._id);
       {confirmDialog}
       <KitchenHeader
         kitchenName={userInfo?.godown?.name || "Kitchen"}
+        kitchenLogo={userInfo?.godown?.logoUrl || ""}
         onLogout={handleLogout}
       />
 

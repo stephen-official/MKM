@@ -77,6 +77,8 @@ export const ROUTE_RULES = Object.freeze([
   // --- inventory ---
   feature("GET", "/api/inventory/:type/export/excel", ["inventory"], "read"),
   feature("POST", "/api/inventory/:type", ["inventory"], "mutation"),
+  feature("POST", "/api/inventory/godowns/:id/logo", ["inventory"], "mutation"),
+  feature("DELETE", "/api/inventory/godowns/:id/logo", ["inventory"], "mutation"),
   feature("PUT", "/api/inventory/:type/:id", ["inventory"], "mutation"),
   feature("DELETE", "/api/inventory/:type/:id", ["inventory"], "mutation"),
 
