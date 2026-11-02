@@ -25,14 +25,18 @@
 .kp-hint { margin: 0; color: var(--muted-2); font-size: 13px; font-weight: 300; line-height: 1.45; }
 .kp-muted { color: var(--muted-2); font-size: 13px; font-style: italic; }
 .kp-wrap { overflow-wrap: anywhere; }
-/* Round icon buttons, all one size: pencil, bin, power, cross (cancel) and tick (save). Red tint = removes or disables
-   something, green tint = saves or enables. */
+/* Round icon buttons, all one size: pencil (blue), bin and power-off (red), cross to cancel (light red), tick to save and
+   power-on (green). */
 .kg-chip.kp-icon { flex: none; width: 38px; height: 38px; padding: 0; }
 .kp-icon svg { flex: none; }
 .kg-chip.kp-chip--danger { color: var(--st-expired-fg); background: var(--tint-rose); box-shadow: 0 0 0 1px var(--st-expired-line), inset 0 1px 0 #fff, 0 6px 16px rgba(155,63,54,.08); }
 .kg-chip.kp-chip--danger:hover, .kg-chip.kp-chip--danger:focus-visible { color: var(--st-expired-fg); box-shadow: 0 0 0 1px var(--st-expired-line), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px var(--st-expired-line); }
 .kg-chip.kp-chip--save, .kg-chip.kp-chip--ok { color: var(--st-ok-fg); background: var(--tint-green); box-shadow: 0 0 0 1px var(--st-ok-line), inset 0 1px 0 #fff, 0 6px 16px rgba(47,107,71,.08); }
 .kg-chip.kp-chip--save:hover, .kg-chip.kp-chip--save:focus-visible, .kg-chip.kp-chip--ok:hover, .kg-chip.kp-chip--ok:focus-visible { color: var(--st-ok-fg); box-shadow: 0 0 0 1px var(--st-ok-line), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px var(--st-ok-line); }
+.kg-chip.kp-chip--cancel { color: var(--st-expired-fg); background: var(--tint-rose); box-shadow: 0 0 0 1px var(--st-expired-line), inset 0 1px 0 #fff, 0 6px 16px rgba(155,63,54,.06); }
+.kg-chip.kp-chip--cancel:hover, .kg-chip.kp-chip--cancel:focus-visible { color: var(--st-expired-fg); box-shadow: 0 0 0 1px var(--st-expired-line), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px var(--st-expired-line); }
+.kg-chip.kp-chip--edit { color: var(--blue-deep); background: var(--tint-cool); box-shadow: 0 0 0 1px var(--st-low-line), inset 0 1px 0 #fff, 0 6px 16px rgba(63,108,176,.08); }
+.kg-chip.kp-chip--edit:hover, .kg-chip.kp-chip--edit:focus-visible { color: var(--blue-deep); box-shadow: 0 0 0 1px var(--st-low-line), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px var(--st-low-line); }
 .kg-chip.kp-icon:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 
 /* Read-only facts: label on the left, value on the right; stacked on phones. */
@@ -48,7 +52,9 @@
 .kp-field input, .kp-password-input input { width: 100%; min-width: 0; height: 40px; padding: 0 14px; color: var(--ink-2); background: rgba(255,255,255,.7); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; font: inherit; font-size: 14px; outline: 0; }
 .kp-field input:focus, .kp-password-input input:focus { box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
 .kp-password-input { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.kp-form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+.kp-form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; padding-top: 2px; }
+/* The kitchen form sits outside a user card, so its ✕ ✓ are inset the same 15px as the icons above them. */
+.kp-kitchen-form .kp-form-actions { margin-right: 15px; }
 
 .kp-logo { display: flex; align-items: center; gap: 14px; }
 .kp-logo__text { display: grid; gap: 4px; min-width: 0; }

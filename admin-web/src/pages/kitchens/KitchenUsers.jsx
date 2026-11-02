@@ -71,7 +71,7 @@ function UserRow({ user, onChanged, confirm }) {
         </span>
         {!editing && (
           <span className="kp-user__tools">
-            <button type="button" className="kg-chip kp-icon" disabled={busy} onClick={() => setEditing(true)} aria-label={`Edit ${user.name}`} title="Edit"><Edit3 size={16} aria-hidden="true" /></button>
+            <button type="button" className="kg-chip kp-icon kp-chip--edit" disabled={busy} onClick={() => setEditing(true)} aria-label={`Edit ${user.name}`} title="Edit"><Edit3 size={16} aria-hidden="true" /></button>
             <button type="button" className={`kg-chip kp-icon${user.active ? " kp-chip--danger" : " kp-chip--ok"}`} disabled={busy} onClick={toggleActive}
               aria-label={`${user.active ? "Disable" : "Enable"} ${user.name}`} title={user.active ? "Disable" : "Enable"}><Power size={16} aria-hidden="true" /></button>
           </span>
@@ -85,7 +85,7 @@ function UserRow({ user, onChanged, confirm }) {
           <Field label="WhatsApp" id={`${uid}-phone`}><input id={`${uid}-phone`} type="tel" inputMode="numeric" pattern="[0-9]*" placeholder="9876543210" value={form.phone} onChange={(e) => set({ phone: phoneInput(e.target.value) })} /></Field>
           <Field label="New password" id={`${uid}-pw`}><PasswordInput id={`${uid}-pw`} value={password} onChange={setPassword} placeholder="Leave blank to keep it" /></Field>
           <div className="kp-form-actions">
-            <button type="button" className="kg-chip kp-icon" disabled={busy} onClick={cancel} aria-label="Cancel" title="Cancel"><X size={18} aria-hidden="true" /></button>
+            <button type="button" className="kg-chip kp-icon kp-chip--cancel" disabled={busy} onClick={cancel} aria-label="Cancel" title="Cancel"><X size={18} aria-hidden="true" /></button>
             <button type="submit" className="kg-chip kp-icon kp-chip--save" disabled={busy || !form.name.trim() || !form.email.trim() || !(isMobile(form.phone) || (form.phone === "" && !user.phone)) || (password !== "" && password.length < MIN)} aria-label="Save" title="Save"><Check size={18} aria-hidden="true" /></button>
           </div>
         </form>
@@ -170,7 +170,7 @@ export function KitchenUsers({ kitchen, users, onChanged, confirm }) {
             <Field label="WhatsApp" id={`${uid}-w`}><input id={`${uid}-w`} type="tel" inputMode="numeric" pattern="[0-9]*" placeholder="9876543210" value={form.phone} onChange={(e) => set({ phone: phoneInput(e.target.value) })} /></Field>
             <p className="kp-hint">All four are needed. WhatsApp: the 10-digit mobile number, digits only.</p>
             <div className="kp-form-actions">
-              <button type="button" className="kg-chip kp-icon" disabled={saving} onClick={() => { setAdding(false); setForm(empty); }} aria-label="Cancel" title="Cancel"><X size={18} aria-hidden="true" /></button>
+              <button type="button" className="kg-chip kp-icon kp-chip--cancel" disabled={saving} onClick={() => { setAdding(false); setForm(empty); }} aria-label="Cancel" title="Cancel"><X size={18} aria-hidden="true" /></button>
               <button type="submit" className="kg-chip kp-icon kp-chip--save" disabled={saving || !ready} aria-label="Save the new user" title="Save"><Check size={18} aria-hidden="true" /></button>
             </div>
           </form>
