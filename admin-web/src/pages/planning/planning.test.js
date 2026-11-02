@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allItems, changeCount, closingRange, editableLines, fromIstInput, linesPayload, linesReady, newLine, rowChange, stepAmount, orderTitle, planningOrders, planningStep, timeLeft, toIstInput } from "./planning.js";
+import { allItems, changeCount, neededByPreview, closingRange, editableLines, fromIstInput, linesPayload, linesReady, newLine, rowChange, stepAmount, orderTitle, planningOrders, planningStep, timeLeft, toIstInput } from "./planning.js";
 
 const now = new Date("2026-11-02T12:00:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
@@ -130,5 +130,15 @@ describe("editing a kitchen's lines", () => {
     expect(stepAmount("2.5", -1)).toBe("1.5");
     expect(stepAmount("1", -1)).toBe("1");
     expect(stepAmount("", 1)).toBe("1");
+  });
+});
+
+describe("neededByPreview", () => {
+  const settings = { emergencyHours: 1, neededInOptions: [{ key: "1d", hours: 24 }, { key: "1w", hours: 168 }] };
+  it("adds the chosen option's hours, or the emergency period, to now", () => {
+    expect(neededByPreview("1w", settings, now).toISOString()).toBe(at(168));
+    expect(neededByPreview("urgent", settings, now).toISOString()).toBe(at(1));
+    expect(neededByPreview("", settings, now)).toBeNull();
+    expect(neededByPreview("9y", settings, now)).toBeNull();
   });
 });

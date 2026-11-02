@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { api } from "../../api.js";
 import { useToast } from "../../useToast.js";
-import { EmptyState, ErrorState, PageHeader } from "../../components/ui/index.jsx";
+import { Button, EmptyState, ErrorState, PageHeader } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
 import { PlanningCard } from "./PlanningCard.jsx";
 import { KitchenItemsEditor } from "./KitchenItemsEditor.jsx";
+import { NewOrderDialog } from "./NewOrderDialog.jsx";
 import { orderTitle, planningOrders } from "./planning.js";
 import "../InventorySetup.css";
 import "../kitchens/kitchens.css";
@@ -28,7 +29,8 @@ export function PlanningPage({ superAdmin = false }) {
   const [open, setOpen] = useState(() => new Set());
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => new Date());
-  const [products, setProducts] = useState([]); // for adding items to a kitchen (super-admins only)
+  const [products, setProducts] = useState([]); // for adding items (new orders; super-admins changing a kitchen's items)
+  const [starting, setStarting] = useState(false); // the New order popup is open
   // { order, share } whose items the super-admin is changing. The popup lives here, not in the card: the card's glass
   // (backdrop-filter) would trap its fixed position.
   const [editing, setEditing] = useState(null);
@@ -50,11 +52,10 @@ export function PlanningPage({ superAdmin = false }) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    if (!superAdmin) return;
     api.get("/inventory/stock-items")
       .then((res) => setProducts((res.data || []).filter((p) => !p.archived).map((p) => ({ ...p, stockGroup: p.stockGroupId?.name || "" }))))
       .catch(() => setProducts([]));
-  }, [superAdmin]);
+  }, []);
   // "Closes in …" counts down; an order whose time runs out moves to Closed on the next load.
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
 
@@ -114,6 +115,30 @@ export function PlanningPage({ superAdmin = false }) {
     }
   };
 
+  /** New order for a kitchen, after a plain-words check. Returns true when it was made. */
+  const startOrder = async (body, kitchenName) => {
+    if (busy) return false;
+    const ok = await confirm({
+      title: "Start this order?",
+      message: `${kitchenName} will see it in its Orders straight away, and other kitchens can add their items until it closes.`,
+      confirmLabel: "Start order",
+    });
+    if (!ok) return false;
+    setBusy(true);
+    try {
+      await api.post(BASE, body);
+      showToast(`Order started for ${kitchenName}`, "success");
+      setStarting(false);
+      return true;
+    } catch (error) {
+      showToast(errorMessage(error, "Could not start the order. Try again."), "error");
+      return false;
+    } finally {
+      setBusy(false);
+      await load();
+    }
+  };
+
   const gathering = orders.filter((order) => order.status === "open").length;
   let body;
   if (loading && orders.length === 0) body = <div className="kg-glass setup-state" role="status"><Loader2 size={18} className="animate-spin" aria-hidden="true" /> Loading…</div>;
@@ -137,7 +162,8 @@ export function PlanningPage({ superAdmin = false }) {
 
   return (
     <div className="setup-shell">
-      <PageHeader title="Planning" subtitle="Kitchen orders still being gathered, soonest needed first. Other kitchens can add their items until an order closes." />
+      <PageHeader title="Planning" subtitle="Kitchen orders still being gathered, soonest needed first. Other kitchens can add their items until an order closes."
+        actions={<Button onClick={() => setStarting(true)}><Plus size={16} aria-hidden="true" /> New order</Button>} />
       <div className="setup-page">
         <p className="setup-results" aria-live="polite">
           <strong>{orders.length}</strong> {orders.length === 1 ? "order" : "orders"}
@@ -158,6 +184,7 @@ export function PlanningPage({ superAdmin = false }) {
             if (ok && await saveItems(editing.order, String(editing.share.godownId?._id || editing.share.godownId), items)) setEditing(null);
           }} />
       )}
+      {starting && <NewOrderDialog products={products} busy={busy} onStart={startOrder} onClose={() => setStarting(false)} />}
       {dialog}
     </div>
   );

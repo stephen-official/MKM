@@ -154,3 +154,13 @@ export const linesReady = (rows) => {
 export const linesPayload = (rows) => rows.filter((row) => !row.removed).map((row) => (row.packId
   ? { stockItemId: row.stockItemId, packId: row.packId, packName: row.packName, packSize: Number(row.packSize), packQuantity: Number(row.amount), qtyBaseUnit: Number(row.amount) * Number(row.packSize) }
   : { stockItemId: row.stockItemId, qtyBaseUnit: Number(row.amount) }));
+
+/**
+ * When a new order would be needed by, as the server works it out (backend ordering/window.js neededByFor): now plus
+ * the chosen option's hours, or the emergency period. Null until something is chosen.
+ */
+export const neededByPreview = (choice, settings, now = new Date()) => {
+  if (!choice || !settings) return null;
+  const hours = choice === "urgent" ? settings.emergencyHours : settings.neededInOptions?.find((option) => option.key === choice)?.hours;
+  return hours > 0 ? new Date(now.getTime() + hours * HOUR) : null;
+};

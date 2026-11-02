@@ -95,3 +95,16 @@
 .pl-editor > .kp-hint, .pl-editor > .pl-error, .pl-editor__actions { flex: none; }
 .pl-editor__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 @media (max-width: 480px) { .pl-editor__actions > * { flex: 1; } }
+
+/* New order popup: three tap steps (kitchen, needed in, items); the items step takes the rest of the height. */
+.pl-step { display: grid; flex: none; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.pl-step legend, .pl-step__legend { margin: 0 0 8px; padding: 0; color: var(--muted-2); font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
+.pl-step--items { display: flex; flex: 1 1 auto; flex-direction: column; gap: 10px; min-height: 0; }
+.pl-step--items .pl-step__legend { margin: 0; }
+.pl-step__note { margin: 0; color: var(--muted-2); font-size: 13px; }
+.pl-step__note strong { color: var(--ink-2); font-weight: 500; }
+.pl-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.kg-chip.pl-choice { min-height: 42px; padding: 0 16px; text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 500; }
+.kg-chip.pl-choice.is-picked { color: #fff; background: var(--blue); box-shadow: 0 0 0 1px var(--blue-deep), 0 6px 16px rgba(63,108,176,.25); }
+.kg-chip.pl-choice--urgent { color: var(--st-expired-fg); }
+.kg-chip.pl-choice--urgent.is-picked { color: #fff; background: var(--st-expired-fg); box-shadow: 0 0 0 1px var(--st-expired-fg), 0 6px 16px rgba(155,63,54,.25); }
