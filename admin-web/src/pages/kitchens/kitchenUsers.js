@@ -39,3 +39,32 @@ export const draftProblems = (u) => [
   u.password.length < 8 && "a password of 8 or more letters",
   !isMobile(u.phone) && "a 10-digit WhatsApp number"
 ].filter(Boolean);
+
+// --- WhatsApp: opens the admin's WhatsApp with a ready message (wa.me link; nothing is sent by the app itself) ---
+// The kitchen app's address, put in the message. Change it here if the kitchen app moves.
+export const KITCHEN_APP_URL = "https://mkm-user.vercel.app";
+
+/** The sign-in message for one kitchen user. Without a viewable password it says to ask the admin. */
+export const loginMessage = ({ name, kitchen, email, password }) => [
+  `Hello ${name}, here are your sign-in details for the MKM kitchen app (${kitchen}).`,
+  `App: ${KITCHEN_APP_URL}`,
+  `Login ID: ${email}`,
+  password ? `Password: ${password}` : "Password: please ask your admin.",
+  "Please keep them to yourself."
+].join("\n");
+
+/** wa.me link for a stored number (+919876543210) with the message filled in. */
+export const whatsappLink = (phone, text) => `https://wa.me/${String(phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
+
+/** "Not recorded yet", "Today, 09:40", "Yesterday, 18:10" or "30 Oct 2026" — in business time (Asia/Kolkata).
+ * Sign-ins are recorded from 2026-11-02 on, so no time means none since then, not that they never signed in. */
+export const lastSeen = (iso, now = new Date()) => {
+  if (!iso) return "Not recorded yet";
+  const tz = "Asia/Kolkata";
+  const day = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  const when = new Date(iso);
+  const time = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }).format(when);
+  if (day(when) === day(now)) return `Today, ${time}`;
+  if (day(when) === day(new Date(now.getTime() - 86_400_000))) return `Yesterday, ${time}`;
+  return new Intl.DateTimeFormat("en-GB", { timeZone: tz, day: "numeric", month: "short", year: "numeric" }).format(when);
+};

@@ -81,7 +81,7 @@ export const InventoryPage = ({ canManageUsers = false }) => {
     body = (
       <ul className="kp-cards" aria-label="Kitchens">
         {kitchens.map((k) => (
-          <KitchenCard key={k._id} kitchen={k} users={usersByKitchen.get(String(k._id)) || []} canManageUsers={canManageUsers}
+          <KitchenCard key={k._id} kitchen={k} kitchens={kitchens} users={usersByKitchen.get(String(k._id)) || []} canManageUsers={canManageUsers}
             open={open.has(k._id)} onToggle={() => toggle(k._id)} onChanged={load} onUsersChanged={loadUsers} confirm={confirm} />
         ))}
       </ul>

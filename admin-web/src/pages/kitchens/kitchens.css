@@ -93,3 +93,13 @@
   .kp-facts > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   
 }
+.kp-store-pill { margin-left: 8px; vertical-align: 2px; }
+.kp-check { display: flex; align-items: flex-start; gap: 10px; color: var(--ink-2); font-size: 14px; cursor: pointer; }
+.kp-check input { flex: none; width: 18px; height: 18px; margin-top: 2px; accent-color: var(--blue); }
+.kp-check span { display: grid; gap: 2px; }
+.kp-check strong { font-weight: 500; }
+.kp-check small { color: var(--muted-2); font-size: 12px; font-weight: 300; }
+.kp-field textarea { width: 100%; min-width: 0; padding: 10px 14px; color: var(--ink-2); background: rgba(255,255,255,.7); border: 1px solid var(--glass-border); border-radius: 16px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; font: inherit; font-size: 14px; outline: 0; resize: vertical; }
+/* WhatsApp: the white mark on WhatsApp green, darker teal-green on hover (the logo's own colours). */
+.kg-chip.kp-chip--whatsapp { color: #fff; background: #25d366; box-shadow: 0 0 0 1px rgba(18,140,126,.45), inset 0 1px 0 rgba(255,255,255,.35), 0 6px 16px rgba(37,211,102,.25); }
+.kg-chip.kp-chip--whatsapp:hover, .kg-chip.kp-chip--whatsapp:focus-visible { color: #fff; background: #128c7e; box-shadow: 0 0 0 1px rgba(18,140,126,.6), inset 0 1px 0 rgba(255,255,255,.25), 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(37,211,102,.55); }

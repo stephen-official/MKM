@@ -17,6 +17,8 @@ const errorOf = (error, fallback) => error?.response?.data?.message || fallback;
 export function AddKitchenDialog({ existingNames, canManageUsers, onClose, onAdded }) {
   const [name, setName] = useState("");
   const [logo, setLogo] = useState(null); // { file, preview }
+  const [details, setDetails] = useState({ inChargeName: "", phone: "", address: "", isCentralStore: false });
+  const setDetail = (patch) => setDetails((prev) => ({ ...prev, ...patch }));
   const [users, setUsers] = useState(() => [newDraft()]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -48,7 +50,7 @@ export function AddKitchenDialog({ existingNames, canManageUsers, onClose, onAdd
     setError("");
     let kitchen;
     try {
-      ({ data: kitchen } = await api.post("/inventory/godowns", { name: trimmed }));
+      ({ data: kitchen } = await api.post("/inventory/godowns", { name: trimmed, ...details, inChargeName: details.inChargeName.trim(), address: details.address.trim() }));
     } catch (err) {
       setSaving(false);
       return setError(errorOf(err, "Could not add the kitchen. Try again."));
@@ -83,6 +85,13 @@ export function AddKitchenDialog({ existingNames, canManageUsers, onClose, onAdd
             <input id="new-kitchen-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="e.g. Montessori Primary Kitchen" autoFocus aria-invalid={duplicate || undefined} />
           </Field>
           {duplicate && <span className="field__error" role="alert">A kitchen with this name already exists.</span>}
+          <label className="kp-check">
+            <input type="checkbox" checked={details.isCentralStore} onChange={(e) => setDetail({ isCentralStore: e.target.checked })} />
+            <span><strong>This is the central store</strong><small>Where purchases arrive before going to the kitchens. Only one place can be the store.</small></span>
+          </label>
+          <Field label="Person in charge" id="new-kitchen-incharge"><input id="new-kitchen-incharge" value={details.inChargeName} maxLength={80} placeholder="e.g. Head cook's name" onChange={(e) => setDetail({ inChargeName: e.target.value })} /></Field>
+          <Field label="Kitchen phone" id="new-kitchen-phone"><input id="new-kitchen-phone" type="tel" inputMode="numeric" pattern="[0-9]*" value={details.phone} placeholder="9876543210" onChange={(e) => setDetail({ phone: e.target.value.replace(/\D/g, "").slice(0, 15) })} /></Field>
+          <Field label="Address" id="new-kitchen-address"><textarea id="new-kitchen-address" rows={2} value={details.address} maxLength={200} placeholder="Where deliveries go" onChange={(e) => setDetail({ address: e.target.value })} /></Field>
           <div className="kp-logo">
             <span className="kp-mark kp-mark--big" aria-hidden="true">{logo ? <img src={logo.preview} alt="" /> : (trimmed.charAt(0).toUpperCase() || "?")}</span>
             <div className="kp-logo__text">
