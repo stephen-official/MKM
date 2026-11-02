@@ -5,7 +5,7 @@ import { isAdminRole, isSuperAdmin } from "./roles.js";
 import { AuthPage } from "./pages/AuthPage.jsx";
 import { ConsumptionPage } from "./pages/ConsumptionPage.jsx";
 import { GodownsPage } from "./pages/GodownsPage.jsx";
-import { IndentPage } from "./pages/IndentPage.jsx";
+import { PlanningPage } from "./pages/planning/PlanningPage.jsx";
 import { InventoryPage } from "./pages/InventoryPage.jsx";
 import { ProductsPage } from "./pages/ProductsPage.jsx";
 import { ModulePage } from "./pages/ModulePage.jsx";
@@ -101,7 +101,7 @@ export const App = () => {
       "/products": <ProductsPage />,
       "/products/requests": <ProductsPage view="requests" />,
       "/inventory-info": <InventoryPage canManageUsers={isSuperAdmin(session.role)} />,
-      "/indent": <IndentPage />,
+      "/indent": <PlanningPage canChangeClosing={isSuperAdmin(session.role)} />,
       "/purchase-orders": <PurchaseOrdersPage />,
       "/stock-distribution": <StockDistributionPage />,
       "/godowns": <GodownsPage canSetOpeningBalance={isSuperAdmin(session.role)} />,
