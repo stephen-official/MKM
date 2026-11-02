@@ -4,7 +4,8 @@ import mongoose from "mongoose";
 import multer from "multer";
 import { storePhoto } from "../stock/photoStorage.js";
 import { authorize } from "../middleware/auth.js";
-import { StockItem } from "../models/InventoryModels.js";
+import { StockItem, Unit } from "../models/InventoryModels.js";
+import { isPresetSymbol, presetFor, refreshOfferedUnits } from "../catalog/units.js";
 import { StockGroup } from "../models/InventoryModels.js";
 import { isSuperAdmin } from "../utils/roles.js";
 import {
@@ -42,10 +43,44 @@ const loadOne = async (id) => {
 productRoutes.get("/units", adminOnly, async (_req, res) => {
   try {
     const units = await ensurePresetUnits();
-    res.json(units.map((unit) => ({ _id: unit._id, symbol: unit.symbol, name: unit.name })));
+    const used = new Map((await StockItem.aggregate([{ $group: { _id: "$unitId", n: { $sum: 1 } } }])).map((row) => [String(row._id), row.n]));
+    res.json(units.map((unit) => ({ _id: unit._id, symbol: unit.symbol, name: unit.name, builtIn: isPresetSymbol(unit.symbol), productCount: used.get(String(unit._id)) || 0 })));
   } catch (error) {
     sendCatalogError(res, error);
   }
+});
+
+// Settings › Units: a super-admin adds a unit products may use. Kitchens count in it exactly, with no conversion.
+productRoutes.post("/units", superAdminOnly, async (req, res) => {
+  try {
+    const symbol = String(req.body?.symbol ?? "").trim();
+    const name = String(req.body?.name ?? "").trim();
+    if (!symbol || symbol.length > 12 || /\s/.test(symbol)) throw new CatalogError(400, "UNIT_SYMBOL", "Give a short unit, up to 12 letters with no spaces, e.g. bunch.");
+    if (!name || name.length > 30) throw new CatalogError(400, "UNIT_NAME", "Give the unit's full name, up to 30 characters, e.g. Bunch.");
+    const units = await ensurePresetUnits();
+    const clash = units.find((unit) => unit.symbol.toLowerCase() === symbol.toLowerCase() || unit.name.toLowerCase() === name.toLowerCase());
+    if (clash) throw new CatalogError(409, "UNIT_EXISTS", `“${clash.name} (${clash.symbol})” is already in the list.`);
+    const sameAs = presetFor({ symbol, name });
+    if (sameAs) throw new CatalogError(409, "UNIT_EXISTS", `That means the same as “${sameAs.name} (${sameAs.symbol})”, which is already in the list.`);
+    // An old unit with this exact symbol (from before the presets) comes back into use, so its products become usable again.
+    const unit = await Unit.findOneAndUpdate({ symbol }, { $set: { name, offered: true }, $setOnInsert: { subUnits: [] } }, { new: true, upsert: true }).lean();
+    await refreshOfferedUnits();
+    res.status(201).json({ _id: unit._id, symbol: unit.symbol, name: unit.name, builtIn: false, productCount: await StockItem.countDocuments({ unitId: unit._id }) });
+  } catch (error) { sendCatalogError(res, error); }
+});
+
+productRoutes.delete("/units/:id", superAdminOnly, async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) throw new CatalogError(404, "NOT_FOUND", "Unit not found.");
+    const unit = await Unit.findById(req.params.id).lean();
+    if (!unit || (!unit.offered && !isPresetSymbol(unit.symbol))) throw new CatalogError(404, "NOT_FOUND", "Unit not found.");
+    if (isPresetSymbol(unit.symbol)) throw new CatalogError(409, "UNIT_BUILT_IN", `“${unit.name}” is built in and cannot be removed.`);
+    const used = await StockItem.countDocuments({ unitId: unit._id });
+    if (used) throw new CatalogError(409, "UNIT_IN_USE", `${used === 1 ? "1 product counts" : `${used} products count`} in ${unit.symbol}. Move ${used === 1 ? "it" : "them"} to another unit first.`);
+    await Unit.deleteOne({ _id: unit._id });
+    await refreshOfferedUnits();
+    res.json({ message: "Removed" });
+  } catch (error) { sendCatalogError(res, error); }
 });
 
 // Download names read Section_Date_MKM, e.g. Products_02-Nov-2026_MKM.xlsx (today in business time). Keep in step with admin-web businessTime.js downloadName.
@@ -58,7 +93,8 @@ const workbookLists = async () => {
   const groups = sortGroups(await StockGroup.find().lean()).map((group) => group.name);
   const packNames = [...new Set((await StockItem.distinct("packs.name")).map((name) => canonicalPackName(name)).filter((name) => name && !isPresetPackType(name)))]
     .sort((a, b) => a.localeCompare(b));
-  return { groups, packNames };
+  const units = (await ensurePresetUnits()).map((unit) => unit.symbol);
+  return { groups, packNames, units };
 };
 const sendWorkbook = async (res, workbook, filename) => {
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -124,7 +160,8 @@ productRoutes.post("/import", adminOnly, workbookUpload.single("file"), async (r
           groupByName.set(row.groupName.toLowerCase(), group);
           newGroups.push(group);
         }
-        const unit = unitBySymbol.get(row.unitSymbol);
+        const unitText = row.unitSymbol.toLowerCase();
+        const unit = unitBySymbol.get(row.unitSymbol) || units.find((u) => u.symbol.toLowerCase() === unitText || u.name.toLowerCase() === unitText);
         if ((row.archived || (existing && Boolean(row.archived) !== Boolean(existing.archived))) && !superAdmin) throw new CatalogError(403, "ARCHIVE_SUPER_ADMIN_ONLY", "Only a super-admin can archive or restore products.");
         if (existing && row.archived && !existing.archived) {
           const held = await kitchensHolding([existing._id]);

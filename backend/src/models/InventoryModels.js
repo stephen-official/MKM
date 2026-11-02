@@ -10,7 +10,9 @@ const unitSchema = new mongoose.Schema(
   ref: "StockGroup", 
   default: null 
 },
-    subUnits: [{ name: String, factorToBase: Number }]
+    subUnits: [{ name: String, factorToBase: Number }],
+    // A unit a super-admin added in Settings, offered to products like the 7 built-in ones (catalog/units.js).
+    offered: { type: Boolean, default: false }
   },
   { timestamps: true }
 );

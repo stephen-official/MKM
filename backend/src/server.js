@@ -57,6 +57,9 @@ connectDB()
     server.listen(PORT, () => {
       console.log(`Backend running with authenticated realtime updates on port ${PORT}`);
     });
+    // Units added in Settings (catalog/units.js): loaded now, then kept fresh.
+    const { startOfferedUnitsRefresh } = await import("./catalog/units.js");
+    startOfferedUnitsRefresh();
     // Access changes made on another instance reach this instance's sockets within this interval.
     setInterval(() => {
       revalidateSockets().catch((error) => console.error("[realtime] socket revalidation failed:", error.message));

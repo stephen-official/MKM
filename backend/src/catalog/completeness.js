@@ -1,4 +1,4 @@
-import { isPresetSymbol } from "./units.js";
+import { isOfferedSymbol } from "./units.js";
 import { foodSafetyMissing } from "./foodSafety.js";
 
 // A product is offered to kitchens only when nothing below is missing and it is not archived.
@@ -21,7 +21,7 @@ const isPositive = (value) => typeof value === "number" && Number.isFinite(value
 export const missingFields = (product, unit = product?.unitId) => {
   const missing = [];
   if (!product?.stockGroupId) missing.push("group");
-  if (!unit || !isPresetSymbol(unit.symbol)) missing.push("unit");
+  if (!unit || !isOfferedSymbol(unit.symbol)) missing.push("unit");
   if (!isValidPrice(product?.pricePerUnit)) missing.push("price");
   if (product?.soldInPacks) {
     const packs = product.packs || [];

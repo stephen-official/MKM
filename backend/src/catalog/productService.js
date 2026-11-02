@@ -4,7 +4,7 @@ import { StockGroup, StockItem, Unit, nextProductNo } from "../models/InventoryM
 import { isKitchenRole } from "../utils/roles.js";
 import { MAX_PACK_NAME_LENGTH, canonicalPackName } from "./packTypes.js";
 import { isAvailable, isValidPrice, missingFields } from "./completeness.js";
-import { UNIT_PRESETS, isPresetSymbol } from "./units.js";
+import { UNIT_PRESETS, isOfferedSymbol, isPresetSymbol } from "./units.js";
 import { ALLERGENS, PRODUCT_FORMS, PRODUCT_KINDS, STORAGE_OPTIONS, VEG_MARKS, foodSafetyMissing } from "./foodSafety.js";
 
 export class CatalogError extends Error {
@@ -24,13 +24,14 @@ export const sendCatalogError = (res, error) => {
   return res.status(500).json({ message: error.message });
 };
 
-/** Creates any missing preset unit (by exact symbol) and returns the preset units in list order. */
+/** Creates any missing built-in unit (by exact symbol) and returns the units products may use: built-in ones in list order, then those added in Settings A–Z. */
 export const ensurePresetUnits = async () => {
   await Promise.all(UNIT_PRESETS.map(({ symbol, name }) =>
     Unit.updateOne({ symbol }, { $setOnInsert: { symbol, name, subUnits: [] } }, { upsert: true })));
-  const units = await Unit.find({ symbol: { $in: UNIT_PRESETS.map((u) => u.symbol) } }).lean();
+  const units = await Unit.find({ $or: [{ symbol: { $in: UNIT_PRESETS.map((u) => u.symbol) } }, { offered: true }] }).lean();
   const bySymbol = new Map(units.map((unit) => [unit.symbol, unit]));
-  return UNIT_PRESETS.map((preset) => bySymbol.get(preset.symbol)).filter(Boolean);
+  const added = units.filter((unit) => !isPresetSymbol(unit.symbol)).sort((a, b) => a.name.localeCompare(b.name));
+  return [...UNIT_PRESETS.map((preset) => bySymbol.get(preset.symbol)).filter(Boolean), ...added];
 };
 
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -60,7 +61,7 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
 
   const unitId = body.unitId ?? existing?.unitId;
   const unit = unitId && mongoose.isValidObjectId(unitId) ? await Unit.findById(unitId).lean() : null;
-  if (!unit || !isPresetSymbol(unit.symbol)) errors.unitId = "Choose a unit from the preset list.";
+  if (!unit || !isOfferedSymbol(unit.symbol)) errors.unitId = "Choose a unit from the list.";
   else update.unitId = unit._id;
 
   const itemType = body.itemType ?? existing?.itemType ?? "stock";
@@ -196,7 +197,7 @@ export const serializeProduct = (doc, holding = new Map()) => {
     itemType: doc.itemType || "stock",
     defaultThreshold: doc.defaultThreshold || 0,
     group: group ? { _id: group._id, name: group.name } : null,
-    unit: unit ? { _id: unit._id, symbol: unit.symbol, name: unit.name, preset: isPresetSymbol(unit.symbol) } : null,
+    unit: unit ? { _id: unit._id, symbol: unit.symbol, name: unit.name, preset: isOfferedSymbol(unit.symbol) } : null,
     pricePerUnit: doc.pricePerUnit ?? null,
     priceUpdatedAt: doc.priceUpdatedAt || null,
     expiryRequired: doc.expiryRequired !== false,

@@ -50,6 +50,8 @@ export const ROUTE_RULES = Object.freeze([
 
   // --- products (master catalog) + kitchen product requests ---
   feature("GET", "/api/products/units", ["products"], "read"),
+  feature("POST", "/api/products/units", ["products"], "mutation"),
+  feature("DELETE", "/api/products/units/:id", ["products"], "mutation"),
   feature("GET", "/api/products/export/excel", ["products"], "read"),
   feature("GET", "/api/products/export/pdf", ["products"], "read"),
   feature("GET", "/api/products/import-template", ["products"], "read"),

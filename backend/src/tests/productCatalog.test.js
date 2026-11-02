@@ -318,7 +318,7 @@ test("an import row names what is wrong, and a pack price that is not a number i
   addRow({ "Name *": "Masala", ...food, "Unit *": "tray" });
   const res = await upload();
   assert.equal(res.status, 200, JSON.stringify(res.body));
-  assert.deepEqual(res.body.results.map((r) => r.message), ["Pack 1: Enter how much one pack holds.", "Choose a unit from the preset list."]);
+  assert.deepEqual(res.body.results.map((r) => r.message), ["Pack 1: Enter how much one pack holds.", "Choose a unit from the list."]);
 });
 
 test("the template carries a note per column and dropdowns fed by the current groups and pack names", async () => {
@@ -381,4 +381,31 @@ test("the PDF export lists every product with plain words and a note per column"
   assert.equal(res.headers["content-type"], "application/pdf");
   assert.match(res.headers["content-disposition"], /filename="Products_\d{2}-[A-Z][a-z]{2}-\d{4}_MKM\.pdf"/);
   assert.equal(res.body.subarray(0, 4).toString(), "%PDF");
+});
+
+test("Settings › Units: a super-admin adds a unit; duplicates, look-alikes, built-in and in-use units are refused; kitchens and the Excel list see it", async () => {
+  assert.equal((await as("admin", "post", "/api/products/units").send({ symbol: "bunch", name: "Bunch" })).status, 403);
+  const bunch = await as("root", "post", "/api/products/units").send({ symbol: "bunch", name: "Bunch" });
+  assert.equal(bunch.status, 201, JSON.stringify(bunch.body));
+  assert.equal((await as("root", "post", "/api/products/units").send({ symbol: "Bunch", name: "Bunches" })).body.code, "UNIT_EXISTS");
+  assert.equal((await as("root", "post", "/api/products/units").send({ symbol: "kgs", name: "Kilos" })).body.code, "UNIT_EXISTS");
+  assert.equal((await as("root", "post", "/api/products/units").send({ symbol: "two words", name: "X" })).body.code, "UNIT_SYMBOL");
+
+  const coriander = await as("root", "post", "/api/products").send(base({ name: "Coriander", unitId: bunch.body._id, pricePerUnit: 10 }));
+  assert.equal(coriander.status, 201, JSON.stringify(coriander.body));
+  assert.equal(coriander.body.available, true);
+  const kitchenUnits = (await as("cook", "get", "/api/inventory/units")).body.map((u) => u.symbol);
+  assert.ok(kitchenUnits.includes("bunch") && kitchenUnits.includes("kg"));
+
+  const listed = (await as("admin", "get", "/api/products/units")).body;
+  assert.deepEqual(listed.slice(-1).map((u) => [u.symbol, u.builtIn, u.productCount]), [["bunch", false, 1]]);
+  const { book } = await fetchBook("/api/products/import-template");
+  const lists = book.getWorksheet("Lists");
+  assert.ok(lists.getColumn(lists.getRow(1).values.indexOf("units")).values.includes("bunch"));
+
+  assert.equal((await as("root", "delete", `/api/products/units/${bunch.body._id}`)).body.code, "UNIT_IN_USE");
+  assert.equal((await as("root", "delete", `/api/products/units/${ctx.kg._id}`)).body.code, "UNIT_BUILT_IN");
+  await StockItem.deleteOne({ _id: coriander.body._id });
+  assert.equal((await as("root", "delete", `/api/products/units/${bunch.body._id}`)).status, 200);
+  assert.ok(!(await as("cook", "get", "/api/inventory/units")).body.some((u) => u.symbol === "bunch"));
 });

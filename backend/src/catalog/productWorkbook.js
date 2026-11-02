@@ -134,9 +134,9 @@ const productCells = (p) => {
 
 /**
  * The workbook for the export (products given) or the empty template. `groups` are the group names and `packNames`
- * the custom pack names in use, both read at download time, so a group or pack added since shows in the dropdown.
+ * the custom pack names in use, `units` the unit symbols products may use, all read at download time, so anything added in Settings shows in the dropdowns.
  */
-export const createProductWorkbook = async (products = [], { groups = [], packNames = [] } = {}) => {
+export const createProductWorkbook = async (products = [], { groups = [], packNames = [], units = PRESET_SYMBOLS } = {}) => {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "MKM Inventory";
   const sheet = workbook.addWorksheet("Products", { views: [{ state: "frozen", xSplit: 2, ySplit: 2 }] });
@@ -171,7 +171,7 @@ export const createProductWorkbook = async (products = [], { groups = [], packNa
 
   // Dropdown sources. Groups and pack names come from the database; the rest are fixed.
   const lists = {
-    groups, units: [...PRESET_SYMBOLS], yesNo,
+    groups, units: [...units], yesNo,
     packs: [...PRESET_PACK_TYPES, ...packNames.filter((n) => !PRESET_PACK_TYPES.some((p) => p.toLowerCase() === String(n).toLowerCase()))],
     ...Object.fromEntries(Object.entries(CHOICES).map(([field, pairs]) => [field, pairs.map(([, label]) => label)]))
   };

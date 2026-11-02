@@ -12,6 +12,7 @@ import { StockBatch } from "../models/StockBatchModel.js";
 import { UsageCorrection } from "../models/UsageCorrectionModel.js";
 import { User } from "../models/User.js";
 import { isAvailable } from "../catalog/completeness.js";
+import { isOfferedSymbol } from "../catalog/units.js";
 import { ensureOtherGroup, isOtherGroup, sortGroups } from "../catalog/groups.js";
 import { isKitchenRole } from "../utils/roles.js";
 
@@ -145,6 +146,8 @@ const middleware =
         // kitchens only ever see products that are complete and not archived.
         if (isKitchenRole(req.user.role)) rows = rows.filter((row) => isAvailable(row, row.unitId));
       }
+      // Kitchens get only the units products may use (built-in and added in Settings), not old leftover ones.
+      if (req.params.type === "units" && isKitchenRole(req.user.role)) rows = rows.filter((row) => isOfferedSymbol(row.symbol));
       return res.json(rows);
     });
 
