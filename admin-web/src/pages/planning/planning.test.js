@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allItems, changeCount, neededByPreview, closingRange, editableLines, fromIstInput, linesPayload, linesReady, newLine, rowChange, stepAmount, orderTitle, planningOrders, planningStep, timeLeft, toIstInput } from "./planning.js";
+import { allItems, changeCount, closingChoice, closingDays, neededByPreview, closingRange, editableLines, fromIstInput, linesPayload, linesReady, newLine, rowChange, stepAmount, orderTitle, planningOrders, planningStep, timeLeft, toIstInput } from "./planning.js";
 
 const now = new Date("2026-11-02T12:00:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
@@ -140,5 +140,20 @@ describe("neededByPreview", () => {
     expect(neededByPreview("urgent", settings, now).toISOString()).toBe(at(1));
     expect(neededByPreview("", settings, now)).toBeNull();
     expect(neededByPreview("9y", settings, now)).toBeNull();
+  });
+});
+
+describe("closing time choices", () => {
+  // now = 2 Nov 17:30 India time; latest = 5 Nov 17:30 India time.
+  const range = { min: now, max: new Date(at(72)) };
+  it("lists every India-time day from today to the latest day", () => {
+    expect(closingDays(range)).toEqual(["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"]);
+    expect(closingDays(null)).toEqual([]);
+  });
+  it("accepts a day and time only inside the range", () => {
+    expect(closingChoice("2026-11-03", "09:00", range)).toBe("2026-11-03T03:30:00.000Z");
+    expect(closingChoice("2026-11-02", "09:00", range)).toBeNull(); // already past
+    expect(closingChoice("2026-11-05", "18:00", range)).toBeNull(); // after the latest
+    expect(closingChoice("", "09:00", range)).toBeNull();
   });
 });

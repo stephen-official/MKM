@@ -164,3 +164,33 @@ export const neededByPreview = (choice, settings, now = new Date()) => {
   const hours = choice === "urgent" ? settings.emergencyHours : settings.neededInOptions?.find((option) => option.key === choice)?.hours;
   return hours > 0 ? new Date(now.getTime() + hours * HOUR) : null;
 };
+
+// Times a super-admin can tap when moving the closing time (India time).
+export const CLOSING_SLOTS = [
+  { key: "09:00", label: "Morning · 9 am" },
+  { key: "12:00", label: "Noon · 12 pm" },
+  { key: "18:00", label: "Evening · 6 pm" },
+  { key: "23:30", label: "Night · 11:30 pm" },
+];
+
+/** Every India-time day from today to the latest allowed closing day: ["2026-11-03", …]. */
+export const closingDays = (range) => {
+  if (!range) return [];
+  const last = toIstInput(range.max).slice(0, 10);
+  const days = [];
+  for (let day = toIstInput(range.min).slice(0, 10); day <= last && days.length < 400;) {
+    days.push(day);
+    const next = new Date(`${day}T12:00:00+05:30`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    day = toIstInput(next).slice(0, 10);
+  }
+  return days;
+};
+
+/** The closing time for a picked day and slot as an ISO time, or null when it falls outside the allowed range. */
+export const closingChoice = (day, slot, range) => {
+  const iso = day && slot ? fromIstInput(`${day}T${slot}`) : null;
+  if (!iso || !range) return null;
+  const at = new Date(iso);
+  return at > range.min && at <= range.max ? iso : null;
+};

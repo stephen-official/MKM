@@ -44,8 +44,6 @@
 .pl-total__qty small { color: var(--muted-2); font-size: 12px; }
 
 .kg-chip.pl-close { height: 38px; color: var(--st-expired-fg); }
-.pl-closing { display: grid; gap: 8px; max-width: 360px; }
-.pl-closing__actions { justify-content: flex-end; margin-right: 0; }
 .pl-error { margin: 0; color: var(--st-expired-fg); font-size: 13px; }
 
 @media (prefers-reduced-motion: reduce) { .pl-card__chevron { transition: none; } }
@@ -108,3 +106,19 @@
 .kg-chip.pl-choice.is-picked { color: #fff; background: var(--blue); box-shadow: 0 0 0 1px var(--blue-deep), 0 6px 16px rgba(63,108,176,.25); }
 .kg-chip.pl-choice--urgent { color: var(--st-expired-fg); }
 .kg-chip.pl-choice--urgent.is-picked { color: #fff; background: var(--st-expired-fg); box-shadow: 0 0 0 1px var(--st-expired-fg), 0 6px 16px rgba(155,63,54,.25); }
+
+/* Ordering window: one line at the top of an opened card, with Change time (super-admins) and Close now. */
+.pl-window { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-top: 14px; padding: 12px 14px; }
+.pl-window__text { display: grid; gap: 2px; min-width: 0; }
+.pl-window__label { color: var(--muted-2); font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
+.pl-window__text strong { font-weight: 500; }
+.pl-window__text small { color: var(--blue-deep); font-size: 13px; }
+.pl-window__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.kg-chip.pl-window__change { height: 38px; color: var(--blue-deep); }
+
+/* Change closing time popup: the steps reuse .pl-step / .pl-choice; it needs less height than the item popups. */
+.modal:has(> .pl-closing-form) { height: auto; max-height: 90svh; overflow-y: auto; }
+.kg-chip.pl-choice:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+.pl-closing-preview { padding: 12px 14px; color: var(--muted-2); font-size: 14px; }
+.pl-closing-preview.is-ready { color: var(--ink-2); background: var(--tint-cool); }
+.pl-closing-preview strong { font-weight: 600; color: var(--blue-deep); }

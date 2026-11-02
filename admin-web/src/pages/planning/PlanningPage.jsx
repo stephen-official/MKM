@@ -7,6 +7,7 @@ import { useConfirm } from "../../components/ui/useConfirm.jsx";
 import { PlanningCard } from "./PlanningCard.jsx";
 import { KitchenItemsEditor } from "./KitchenItemsEditor.jsx";
 import { NewOrderDialog } from "./NewOrderDialog.jsx";
+import { ClosingTimeDialog } from "./ClosingTimeDialog.jsx";
 import { orderTitle, planningOrders } from "./planning.js";
 import "../InventorySetup.css";
 import "../kitchens/kitchens.css";
@@ -31,6 +32,7 @@ export function PlanningPage({ superAdmin = false }) {
   const [now, setNow] = useState(() => new Date());
   const [products, setProducts] = useState([]); // for adding items (new orders; super-admins changing a kitchen's items)
   const [starting, setStarting] = useState(false); // the New order popup is open
+  const [closingFor, setClosingFor] = useState(null); // the order whose closing time is being changed
   // { order, share } whose items the super-admin is changing. The popup lives here, not in the card: the card's glass
   // (backdrop-filter) would trap its fixed position.
   const [editing, setEditing] = useState(null);
@@ -154,7 +156,7 @@ export function PlanningPage({ superAdmin = false }) {
       <ul className="pl-cards" aria-label="Orders being gathered">
         {orders.map((order) => (
           <PlanningCard key={order._id} order={order} now={now} open={open.has(order._id)} onToggle={() => toggle(order._id)}
-            superAdmin={superAdmin} busy={busy} onClose={closeNow} onMoveClosing={moveClosing} onEditItems={(picked, share) => setEditing({ order: picked, share })} />
+            superAdmin={superAdmin} busy={busy} onClose={closeNow} onChangeClosing={setClosingFor} onEditItems={(picked, share) => setEditing({ order: picked, share })} />
         ))}
       </ul>
     );
@@ -183,6 +185,10 @@ export function PlanningPage({ superAdmin = false }) {
             });
             if (ok && await saveItems(editing.order, String(editing.share.godownId?._id || editing.share.godownId), items)) setEditing(null);
           }} />
+      )}
+      {closingFor && (
+        <ClosingTimeDialog order={closingFor} now={now} busy={busy} onClose={() => setClosingFor(null)}
+          onSave={async (iso) => { if (await moveClosing(closingFor, iso)) setClosingFor(null); }} />
       )}
       {starting && <NewOrderDialog products={products} busy={busy} onStart={startOrder} onClose={() => setStarting(false)} />}
       {dialog}
