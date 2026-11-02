@@ -22,7 +22,7 @@ userRoutes.use(superAdminOnly);
 const INVITE_TTL_MS = 24 * 3_600_000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // +viewablePassword only to say whether one is stored (passwordViewable); the sealed copy itself never leaves here.
-const SAFE_FIELDS = "name email phone role godownId active version createdAt updatedAt +viewablePassword";
+const SAFE_FIELDS = "name email phone role godownId active lastLoginAt version createdAt updatedAt +viewablePassword";
 
 class UserAdminError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -37,7 +37,7 @@ const sendError = (res, error) => {
   return res.status(500).json({ code: "INTERNAL_ERROR", message: "Something went wrong." });
 };
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const safe = (u) => u && ({ _id: u._id, name: u.name, email: u.email, phone: u.phone || "", role: u.role, godownId: u.godownId?._id ?? u.godownId ?? null, kitchenName: u.godownId?.name ?? null, active: u.active, version: u.version ?? 0, passwordViewable: Boolean(u.viewablePassword), createdAt: u.createdAt, updatedAt: u.updatedAt });
+const safe = (u) => u && ({ _id: u._id, name: u.name, email: u.email, phone: u.phone || "", role: u.role, godownId: u.godownId?._id ?? u.godownId ?? null, kitchenName: u.godownId?.name ?? null, active: u.active, lastLoginAt: u.lastLoginAt || null, version: u.version ?? 0, passwordViewable: Boolean(u.viewablePassword), createdAt: u.createdAt, updatedAt: u.updatedAt });
 const snapshot = (u) => u && ({ name: u.name, email: u.email, phone: u.phone || "", role: u.role, godownId: u.godownId ? String(u.godownId._id ?? u.godownId) : null, active: u.active });
 
 const actorOf = async (req) => {

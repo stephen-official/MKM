@@ -52,6 +52,26 @@ const GODOWN_USES = [
   ["delivery tickets", DeliveryTicket, (id) => ({ godownId: id })],
   ["product requests", ProductRequest, (id) => ({ godownId: id })],
 ];
+// Master data › Kitchens: the fields a kitchen's form may set (anything else in the body is ignored). Null = a bad value.
+const godownFields = (body = {}) => {
+  const out = {};
+  if (body.name !== undefined) out.name = String(body.name).trim();
+  if (body.address !== undefined) out.address = String(body.address).trim().slice(0, 200);
+  if (body.inChargeName !== undefined) out.inChargeName = String(body.inChargeName).trim().slice(0, 80);
+  if (body.phone !== undefined) {
+    const digits = String(body.phone).replace(/\D/g, "");
+    if (digits && (digits.length < 6 || digits.length > 15)) return null;
+    out.phone = digits;
+  }
+  if (body.isCentralStore !== undefined) out.isCentralStore = body.isCentralStore === true;
+  return out;
+};
+const BAD_GODOWN = { code: "INVALID_INPUT", message: "Enter the kitchen phone as digits, e.g. 9876543210 or 08518234567." };
+// Only one place is the central store: marking one clears the mark on the others.
+const keepOneCentralStore = async (row) => {
+  if (row?.isCentralStore) await Godown.updateMany({ _id: { $ne: row._id }, isCentralStore: true }, { $set: { isCentralStore: false } });
+};
+
 // Master data › Kitchens: a kitchen's logo, stored like product photos (Cloudinary, or the uploads folder locally).
 const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 inventoryRoutes.post("/godowns/:id/logo", adminOnly, logoUpload.single("logo"), async (req, res) => {
@@ -189,7 +209,11 @@ inventoryRoutes.post("/:type", adminOnly, refuseCatalogWrites, async (req, res) 
     const Model = modelMap[type];
     if (!Model) return res.status(404).json({ message: "Invalid type" });
     
-    const finalData = { ...req.body };
+    let finalData = { ...req.body };
+    if (type === "godowns") {
+      finalData = godownFields(req.body);
+      if (!finalData) return res.status(400).json(BAD_GODOWN);
+    }
     
     // Auto-fill name if symbol is provided (specifically for Units)
     if (!finalData.name && finalData.symbol) finalData.name = finalData.symbol;
@@ -202,6 +226,7 @@ inventoryRoutes.post("/:type", adminOnly, refuseCatalogWrites, async (req, res) 
     }
     
     const row = await Model.create(finalData);
+    if (type === "godowns") await keepOneCentralStore(row);
     return res.status(201).json(row);
   } catch (error) {
     return res.status(400).json({ message: error.message });
@@ -217,7 +242,12 @@ inventoryRoutes.put(
       const Model = modelMap[type];
       if (!Model) return res.status(404).json({ message: "Invalid type" });
 
-      const updateData = { ...req.body };
+      let updateData = { ...req.body };
+      if (type === "godowns") {
+        updateData = godownFields(req.body);
+        if (!updateData) return res.status(400).json(BAD_GODOWN);
+        if (updateData.name === "") return res.status(400).json({ code: "INVALID_INPUT", message: "Name is required" });
+      }
       if (type === "stock-groups") {
         const current = await Model.findById(req.params.id).lean();
         if (current && isOtherGroup(current.name)) return res.status(409).json({ code: "GROUP_BUILT_IN", message: "“Other” is built in and keeps its name." });
@@ -229,6 +259,7 @@ inventoryRoutes.put(
         updateData,
         { new: true }
       );
+      if (type === "godowns") await keepOneCentralStore(row);
 
       return res.json(row);
     } catch (error) {

@@ -104,3 +104,24 @@ test("a kitchen user's WhatsApp number is saved on add and on edit; a bad one is
   assert.equal(changed.body.user.phone, "+447700900123");
   assert.equal((await as("root", "patch", `/api/users/${added.body.user._id}`).send({ phone: "123", expectedVersion: changed.body.user.version })).body.code, "INVALID_PHONE");
 });
+
+test("a kitchen's details: address, person in charge and phone are saved, other fields are ignored, and only one place is the central store", async () => {
+  const store = await as("admin", "post", "/api/inventory/godowns").send({ name: "Central Store", isCentralStore: true, phone: "0851-8234567" });
+  assert.equal(store.status, 201, JSON.stringify(store.body));
+  assert.deepEqual([store.body.isCentralStore, store.body.phone, store.body.active], [true, "08518234567", true]);
+  const saved = await as("admin", "put", `/api/inventory/godowns/${ctx.kitchen._id}`).send({ address: "12 School Road, Kurnool", inChargeName: "Sita", phone: "98765 43210", active: false, logoUrl: "https://evil.test/x.png" });
+  assert.deepEqual([saved.body.address, saved.body.inChargeName, saved.body.phone, saved.body.active, saved.body.logoUrl], ["12 School Road, Kurnool", "Sita", "9876543210", true, ""]);
+  assert.equal((await as("admin", "put", `/api/inventory/godowns/${ctx.kitchen._id}`).send({ phone: "12" })).body.code, "INVALID_INPUT");
+  assert.equal((await as("admin", "put", `/api/inventory/godowns/${ctx.kitchen._id}`).send({ name: "  " })).status, 400);
+  await as("admin", "put", `/api/inventory/godowns/${ctx.kitchen._id}`).send({ isCentralStore: true });
+  const list = (await as("admin", "get", "/api/inventory/godowns")).body;
+  assert.deepEqual(list.filter((g) => g.isCentralStore).map((g) => g.name), ["Kitchen A"]);
+});
+
+test("signing in records when, and the users list shows it", async () => {
+  assert.equal((await as("root", "get", "/api/users").query({ role: "user" })).body.items[0].lastLoginAt, null);
+  const before = Date.now();
+  assert.equal((await request(app).post("/api/auth/login").send({ email: ctx.cook.user.email, password: ctx.cook.password })).status, 200);
+  const seen = (await as("root", "get", "/api/users").query({ role: "user" })).body.items[0].lastLoginAt;
+  assert.ok(new Date(seen).getTime() >= before);
+});

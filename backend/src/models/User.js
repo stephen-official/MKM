@@ -11,6 +11,8 @@ const userSchema = new mongoose.Schema(
     // WhatsApp number, stored as +<country><number> (utils/phone.js). Required for new kitchen users in the admin app.
     phone: { type: String, default: "" },
     active: { type: Boolean, default: true },
+    // When the user last signed in with their password (shown on Master data › Kitchens).
+    lastLoginAt: { type: Date, default: null },
     refreshToken: { type: String, default: null },
     resetToken: { type: String, default: null },
     resetTokenExpiry: { type: Date, default: null },

@@ -20,7 +20,13 @@ const godownSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true }, 
   active: { type: Boolean, default: true }, // Standardizes visibility
   // The kitchen's own logo, shown at the top of the kitchen app (Master data › Kitchens). Empty = the default school mark.
-  logoUrl: { type: String, default: "" }
+  logoUrl: { type: String, default: "" },
+  // Kitchen details for deliveries (Master data › Kitchens): address, who is in charge, and the kitchen's phone (digits).
+  address: { type: String, default: "" },
+  inChargeName: { type: String, default: "" },
+  phone: { type: String, default: "" },
+  // The central store (where purchases arrive) rather than a school kitchen. At most one godown has it.
+  isCentralStore: { type: Boolean, default: false }
 }, { timestamps: true });
 
 const stockItemSchema = new mongoose.Schema(

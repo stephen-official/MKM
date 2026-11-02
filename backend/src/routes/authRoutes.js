@@ -58,6 +58,7 @@ authRoutes.post("/login", async (req, res) => {
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user);
   user.refreshToken = refreshToken;
+  user.lastLoginAt = new Date();
   await user.save();
   return res.json({ accessToken, refreshToken, role: user.role, godownId: user.godownId });
 });
