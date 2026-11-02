@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, BookOpen, Boxes, Package, CalendarClock, ChartColumn, ClipboardCheck, ClipboardList, Gauge, Share2, ShoppingCart, ToggleRight, Users, Utensils, Warehouse, Settings
+  ArrowLeftRight, BookOpen, Boxes, Package, CalendarClock, ChartColumn, ClipboardCheck, ClipboardList, Gauge, Share2, ShoppingCart, SlidersHorizontal, ToggleRight, Users, Utensils, Warehouse, Settings
 } from "lucide-react";
 
 export const NAV = [
@@ -21,7 +21,9 @@ export const SUPER_NAV = [
   { label: "Executive Report", path: "/executive-report", icon: Gauge, section: "Executive" },
   { label: "Feature Visibility", path: "/feature-visibility", icon: ToggleRight, section: "Administration" },
   { label: "Users", path: "/users", icon: Users, section: "Administration" },
-  { label: "Report Schedules", path: "/report-schedules", icon: CalendarClock, section: "Executive", hiddenFromNav: true }
+  { label: "Report Schedules", path: "/report-schedules", icon: CalendarClock, section: "Executive", hiddenFromNav: true },
+  // Units, pack names, product groups and ordering rules (Anand, 2026-11-02: its own nav entry for now).
+  { label: "Settings", path: "/settings", icon: SlidersHorizontal, section: "Manage" }
 ];
 
 /**
@@ -80,5 +82,6 @@ export const SUPER_WORKSPACE_NAV = [
       { label: "Feature visibility", slug: "features", route: "/feature-visibility" },
       { label: "Report schedules", slug: "schedules", route: "/report-schedules" }
     ]
-  }
+  },
+  { label: "Settings", path: "/settings", icon: SlidersHorizontal, section: "Manage" }
 ];

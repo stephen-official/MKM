@@ -28,6 +28,7 @@ import { FeatureVisibilityPage } from "./pages/FeatureVisibilityPage.jsx";
 import { UsersPage } from "./pages/UsersPage.jsx";
 import { ExecutiveReportPage } from "./pages/ExecutiveReportPage.jsx";
 import { ReportSchedulesPage } from "./pages/ReportSchedulesPage.jsx";
+import { SettingsPage } from "./pages/SettingsPage.jsx";
 
 function AdminShell({ onLogout, routeMap }) {
   const { flags, role, status } = useFeatureFlags();
@@ -112,7 +113,8 @@ export const App = () => {
       "/executive-report": <ExecutiveReportPage />,
       "/feature-visibility": <FeatureVisibilityPage />,
       "/users": <UsersPage />,
-      "/report-schedules": <ReportSchedulesPage />
+      "/report-schedules": <ReportSchedulesPage />,
+      "/settings": <SettingsPage />
     }),
     [session.role]
   );
