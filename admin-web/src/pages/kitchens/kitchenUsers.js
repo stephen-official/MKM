@@ -31,3 +31,11 @@ export const phoneInput = (text) => {
 export const phoneDigits = (stored) => String(stored || "").replace(/^\+91/, "").replace(/\D/g, "").slice(-10);
 /** True for a full Indian mobile number: 10 digits starting 6–9. */
 export const isMobile = (digits) => /^[6-9]\d{9}$/.test(digits);
+
+/** What a partly filled new user still lacks, in plain words; empty when complete (passwords need 8+ characters). */
+export const draftProblems = (u) => [
+  !u.name.trim() && "a name",
+  !u.email.trim() && "a Login ID",
+  u.password.length < 8 && "a password of 8 or more letters",
+  !isMobile(u.phone) && "a 10-digit WhatsApp number"
+].filter(Boolean);

@@ -8,7 +8,7 @@ const errorOf = (error, fallback) => error?.response?.data?.message || fallback;
 const MIN = 8; // backend authRoutes MIN_PASSWORD_LENGTH
 
 /** A password box with a "Suggest" button. */
-function PasswordInput({ id, value, onChange, placeholder = "8 or more letters" }) {
+export function PasswordInput({ id, value, onChange, placeholder = "8 or more letters" }) {
   return (
     <span className="kp-password-input">
       <input id={id} type="text" autoComplete="off" spellCheck={false} placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
@@ -18,7 +18,7 @@ function PasswordInput({ id, value, onChange, placeholder = "8 or more letters" 
 }
 
 /** A labelled input row. */
-function Field({ label, id, children }) {
+export function Field({ label, id, children }) {
   return <label className="kp-field" htmlFor={id}><span>{label}</span>{children}</label>;
 }
 

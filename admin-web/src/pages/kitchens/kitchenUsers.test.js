@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPhone, isMobile, phoneDigits, phoneInput, suggestPassword } from "./kitchenUsers.js";
+import { draftProblems, formatPhone, isMobile, phoneDigits, phoneInput, suggestPassword } from "./kitchenUsers.js";
 
 describe("suggestPassword", () => {
   it("gives a kitchen word, a dash and four digits, always 8 characters or more", () => {
@@ -28,5 +28,12 @@ describe("WhatsApp box", () => {
     expect(isMobile("9876543210")).toBe(true);
     expect(isMobile("987654321")).toBe(false);
     expect(isMobile("5876543210")).toBe(false);
+  });
+});
+
+describe("draftProblems", () => {
+  it("names what a new user still lacks", () => {
+    expect(draftProblems({ name: "Ravi", email: "", password: "short", phone: "98765" })).toEqual(["a Login ID", "a password of 8 or more letters", "a 10-digit WhatsApp number"]);
+    expect(draftProblems({ name: "Ravi", email: "ravi@x.in", password: "Dal-12345", phone: "9876543210" })).toEqual([]);
   });
 });

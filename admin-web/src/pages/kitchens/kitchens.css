@@ -54,7 +54,7 @@
 .kp-password-input { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .kp-form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; padding-top: 2px; }
 /* The kitchen form sits outside a user card, so its ✕ ✓ are inset the same 15px as the icons above them. */
-.kp-kitchen-form .kp-form-actions { margin-right: 15px; }
+.kp-kitchen-form .kp-form-actions, .kp-form-actions--dialog { margin-right: 15px; }
 
 .kp-logo { display: flex; align-items: center; gap: 14px; }
 .kp-logo__text { display: grid; gap: 4px; min-width: 0; }

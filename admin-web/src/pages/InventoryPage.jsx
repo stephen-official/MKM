@@ -64,10 +64,12 @@ export const InventoryPage = ({ canManageUsers = false }) => {
 
   const toggle = (id) => setOpen((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
-  const kitchenAdded = async (kitchen, { logoFailed }) => {
+  const kitchenAdded = async (kitchen, { notes, users: added }) => {
     setAdding(false);
-    showToast(logoFailed ? "Kitchen added, but the logo did not upload. Add it from its card." : "Kitchen added", logoFailed ? "error" : "success");
-    await load();
+    const what = added ? `${kitchen.name} added with ${added} ${added === 1 ? "user" : "users"}` : `${kitchen.name} added`;
+    if (notes.length) showToast(`${what}, but ${notes.join("; ")}. You can finish this from its card.`, "error");
+    else showToast(what, "success");
+    await Promise.all([load(), loadUsers()]);
     setOpen((prev) => new Set(prev).add(kitchen._id)); // open it, ready for the people who sign in there
   };
 
@@ -97,7 +99,7 @@ export const InventoryPage = ({ canManageUsers = false }) => {
         <p className="setup-results" aria-live="polite"><strong>{kitchens.length}</strong> {kitchens.length === 1 ? "kitchen" : "kitchens"}</p>
         {body}
       </div>
-      {adding && <AddKitchenDialog existingNames={kitchens.map((k) => k.name)} onClose={() => setAdding(false)} onAdded={kitchenAdded} />}
+      {adding && <AddKitchenDialog existingNames={kitchens.map((k) => k.name)} canManageUsers={canManageUsers} onClose={() => setAdding(false)} onAdded={kitchenAdded} />}
       {dialog}
     </div>
   );
