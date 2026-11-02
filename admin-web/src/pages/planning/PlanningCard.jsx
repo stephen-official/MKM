@@ -1,12 +1,31 @@
 import { useId, useState } from "react";
-import { CalendarClock, Check, ChevronDown, Clock, Edit3, Lock, Package, X } from "lucide-react";
-import { closesInText, lineLabel } from "../sharedOrders/sharedOrders.js";
-import { closingRange, dayText, fromIstInput, kitchenNames, productSummary, toIstInput } from "./planning.js";
+import { Check, ChevronDown, Edit3, Lock, X } from "lucide-react";
+import { lineLabel } from "../sharedOrders/sharedOrders.js";
+import {
+  ORDER_STEPS, allItems, closingRange, dayText, fromIstInput, kitchenCount, orderTitle, planningStep, timeLeft, toIstInput,
+} from "./planning.js";
+
+/** Open to join → Needs approval → Ordered → On the way → Delivered, with the current step lit and named underneath. */
+function StepTracker({ step, caption }) {
+  return (
+    <div className="pl-steps">
+      <ol className="pl-steps__track" aria-label={`Status: ${ORDER_STEPS[step]}`}>
+        {ORDER_STEPS.map((label, index) => (
+          <li key={label} className={index < step ? "is-done" : index === step ? "is-current" : ""} title={label}>
+            <span className="pl-steps__dot" aria-hidden="true" />
+            <span className="sr-only">{label}{index === step ? " (now)" : ""}</span>
+          </li>
+        ))}
+      </ol>
+      <span className={`pl-steps__caption pl-steps__caption--${step}`}>{caption}</span>
+    </div>
+  );
+}
 
 /**
- * One kitchen order still being gathered, as a fold-out glass card. Closed, it shows what the order is at a glance:
- * a few products, the kitchens, needed-by, how many items and when joining closes. Opened: each kitchen's items and the
- * ordering window (Close now for admins; Change closing time for super-admins).
+ * One kitchen order still being gathered, as a fold-out glass card. Closed: its name (the needed-by day), who started it,
+ * Urgent, a status tracker, and how many items and kitchens. Opened: each kitchen's tile, all items with totals, and the
+ * ordering window (Close now; super-admins also change the closing time).
  */
 export function PlanningCard({ order, now, open, onToggle, canChangeClosing, busy, onClose, onMoveClosing }) {
   const bodyId = useId();
@@ -14,8 +33,9 @@ export function PlanningCard({ order, now, open, onToggle, canChangeClosing, bus
   const [draft, setDraft] = useState("");
   const range = closingRange(order, now);
   const isOpen = order.status === "open";
-  const kitchens = kitchenNames(order);
-  const items = order.combinedItems?.length || 0;
+  const step = planningStep(order);
+  const items = allItems(order);
+  const kitchens = kitchenCount(order);
   const picked = fromIstInput(draft);
   const inRange = picked && range && new Date(picked) > now && new Date(picked) <= range.max;
 
@@ -29,26 +49,55 @@ export function PlanningCard({ order, now, open, onToggle, canChangeClosing, bus
   return (
     <li className={`kg-glass pl-card${order.emergency ? " kg-glass--rose" : ""}${open ? " pl-card--open" : ""}`}>
       <button type="button" className="pl-card__head" aria-expanded={open} aria-controls={bodyId} onClick={onToggle}>
-        <span className="pl-card__main">
-          <strong className="pl-card__products">{productSummary(order)}</strong>
-          <small className="pl-card__who">
-            {kitchens.join(" · ") || "No kitchen"}
-            {order.createdBy?.name && <> · opened by {order.createdBy.name}</>}
-          </small>
-          <span className="pl-card__facts">
-            {order.emergency && <span className="kg-pill kg-pill--expired">Urgent</span>}
-            <span className="pl-fact"><CalendarClock size={14} aria-hidden="true" /> Needed by {dayText(order.neededBy, order.emergency)}</span>
-            <span className="pl-fact"><Package size={14} aria-hidden="true" /> {items} {items === 1 ? "item" : "items"}</span>
-            {isOpen
-              ? <span className="kg-pill kg-pill--low"><Clock size={12} aria-hidden="true" /> {closesInText(order.closesAt, now)}</span>
-              : <span className="kg-pill kg-pill--routine"><Lock size={12} aria-hidden="true" /> Closed · waiting for approval</span>}
-          </span>
+        <span className="pl-card__top">
+          <strong className="pl-card__title">{orderTitle(order)}</strong>
+          {order.emergency && <span className="kg-pill kg-pill--expired">Urgent</span>}
         </span>
-        <ChevronDown size={20} className="pl-card__chevron" aria-hidden="true" />
+        <small className="pl-card__who">Started by {order.createdByGodown?.name || "a kitchen"}</small>
+        <StepTracker step={step} caption={isOpen ? `Open to join · ${timeLeft(order.closesAt, now)}` : "Needs approval"} />
+        <span className="pl-card__foot">
+          <span>{items.length} {items.length === 1 ? "item" : "items"} · {kitchens} {kitchens === 1 ? "kitchen" : "kitchens"}</span>
+          <ChevronDown size={20} className="pl-card__chevron" aria-hidden="true" />
+        </span>
       </button>
 
       {open && (
         <div className="pl-card__body" id={bodyId}>
+          <section className="kp-section" aria-label="Each kitchen">
+            <div className="kp-section__head"><h3>Each kitchen</h3></div>
+            <ul className="pl-shares">
+              {(order.contributions || []).map((share) => (
+                <li key={share._id || share.godownId?._id} className="kg-row pl-share">
+                  <strong className="pl-share__name">{share.godownId?.name || "Kitchen"}</strong>
+                  <ul className="pl-lines">
+                    {(share.items || []).map((line) => (
+                      <li key={`${line.stockItemId?._id || line.stockItemId}:${line.packId || "base"}`}>
+                        <span>{line.stockItemId?.name || "Product"}</span>
+                        <span className="pl-lines__qty">{lineLabel(line)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {share.note && <p className="pl-share__note">“{share.note}”</p>}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section className="kp-section" aria-label="All items">
+            <div className="kp-section__head"><h3>All items</h3></div>
+            <ul className="kg-row pl-lines pl-total">
+              {items.map((item) => (
+                <li key={item.id}>
+                  <span>{item.name}</span>
+                  <span className="pl-total__qty">
+                    <strong>{item.total}</strong>
+                    {item.parts.length > 0 && <small>({item.parts.join(" + ")})</small>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
           <section className="kp-section" aria-label="Ordering window">
             <div className="kp-section__head">
               <h3>Ordering window</h3>
@@ -64,48 +113,21 @@ export function PlanningCard({ order, now, open, onToggle, canChangeClosing, bus
             {editing ? (
               <form className="pl-closing" onSubmit={save}>
                 <label className="kp-field">
-                  <span>Close joining on</span>
+                  <span>Close on (India time)</span>
                   <input type="datetime-local" value={draft} min={toIstInput(range?.min || now)} max={range ? toIstInput(range.max) : undefined}
                     onChange={(e) => setDraft(e.target.value)} autoFocus />
                 </label>
-                <p className="kp-hint">India time. Latest: {range ? dayText(range.max, true) : "—"} (2 days before it is needed).</p>
-                {draft && !inRange && <p className="pl-error" role="alert">Pick a time between now and {range ? dayText(range.max, true) : "2 days before needed-by"}.</p>}
+                <p className={draft && !inRange ? "pl-error" : "kp-hint"} role={draft && !inRange ? "alert" : undefined}>
+                  Latest: {range ? dayText(range.max, true) : "—"}
+                </p>
                 <span className="kp-section__actions pl-closing__actions">
                   <button type="button" className="kg-chip kp-icon kp-chip--cancel" disabled={busy} onClick={() => setEditing(false)} aria-label="Cancel" title="Cancel"><X size={18} aria-hidden="true" /></button>
                   <button type="submit" className="kg-chip kp-icon kp-chip--save" disabled={busy || !inRange} aria-label="Save closing time" title="Save"><Check size={18} aria-hidden="true" /></button>
                 </span>
               </form>
             ) : (
-              <p className="kp-hint">
-                {isOpen
-                  ? <>Kitchens can join until <strong>{dayText(order.closesAt, true)}</strong>.{canChangeClosing && !range && " It is needed within 2 days, so it can only be closed now."}</>
-                  : <>Closed {order.statusChangedBy?.name ? `by ${order.statusChangedBy.name}` : "automatically"}{order.statusChangedAt ? ` on ${dayText(order.statusChangedAt, true)}` : ""}. No kitchen can add or change items.</>}
-              </p>
+              <p className="kp-hint">{isOpen ? <>Closes <strong>{dayText(order.closesAt, true)}</strong></> : "Closed to new items"}</p>
             )}
-          </section>
-
-          <section className="kp-section" aria-label="Items by kitchen">
-            <div className="kp-section__head"><h3>Items by kitchen</h3></div>
-            <ul className="pl-shares">
-              {(order.contributions || []).map((share) => (
-                <li key={share._id || share.godownId?._id} className="kg-row pl-share">
-                  <div className="pl-share__head">
-                    <strong>{share.godownId?.name || "Kitchen"}</strong>
-                    {share.userId?.name && <small>{share.userId.name}</small>}
-                  </div>
-                  <ul className="pl-lines">
-                    {(share.items || []).map((line) => (
-                      <li key={`${line.stockItemId?._id || line.stockItemId}:${line.packId || "base"}`}>
-                        <span>{line.stockItemId?.name || "Product"}</span>
-                        <span className="pl-lines__qty">{lineLabel(line)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  {share.note && <p className="kp-hint">“{share.note}”</p>}
-                </li>
-              ))}
-            </ul>
-            <p className="kp-hint">To approve, use Orders &amp; receiving → Shared orders.</p>
           </section>
         </div>
       )}

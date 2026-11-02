@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { closingRange, fromIstInput, kitchenNames, planningOrders, productSummary, toIstInput } from "./planning.js";
+import { allItems, closingRange, fromIstInput, orderTitle, planningOrders, planningStep, timeLeft, toIstInput } from "./planning.js";
 
 const now = new Date("2026-11-02T12:00:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
-const line = (name) => ({ stockItemId: { name } });
 
 describe("planningOrders", () => {
   it("keeps only open and closed orders, soonest needed first, undated last", () => {
@@ -18,22 +17,44 @@ describe("planningOrders", () => {
   });
 });
 
-describe("productSummary", () => {
-  it("names three products and counts the rest, without repeats", () => {
-    const order = { combinedItems: ["Rice", "Dal", "Rice", "Oil", "Sugar", "Salt"].map(line) };
-    expect(productSummary(order)).toBe("Rice, Dal, Oil +2 more");
-    expect(productSummary({ combinedItems: [line("Rice")] })).toBe("Rice");
-    expect(productSummary({})).toBe("No items yet");
+describe("orderTitle", () => {
+  it("names the order by its needed-by day, with the time when urgent", () => {
+    expect(orderTitle({ neededBy: "2026-11-09T06:30:00.000Z" })).toBe("Order for Mon, 9 Nov");
+    expect(orderTitle({ neededBy: "2026-11-09T06:30:00.000Z", emergency: true })).toBe("Order for Mon, 9 Nov, 12:00 pm");
+    expect(orderTitle({})).toBe("Order (no date)");
   });
 });
 
-describe("kitchenNames", () => {
-  it("lists the opening kitchen first, each kitchen once", () => {
+describe("planningStep and timeLeft", () => {
+  it("puts open orders on the first step and closed ones on approval", () => {
+    expect(planningStep({ status: "open" })).toBe(0);
+    expect(planningStep({ status: "closed" })).toBe(1);
+  });
+
+  it("says how long kitchens still have, in whole units", () => {
+    expect(timeLeft(at(95), now)).toBe("3 days left");
+    expect(timeLeft(at(24), now)).toBe("1 day left");
+    expect(timeLeft(at(5.5), now)).toBe("5 h left");
+    expect(timeLeft(at(0.25), now)).toBe("15 min left");
+    expect(timeLeft(at(-1), now)).toBe("Closing now");
+  });
+});
+
+describe("allItems", () => {
+  it("totals each product across kitchens and shows each kitchen's part", () => {
+    const kg = { symbol: "kg" };
+    const rice = { _id: "r", name: "Rice", unitId: kg };
+    const dal = { _id: "d", name: "Toor Dal", unitId: kg };
     const order = {
-      createdByGodown: { name: "Junior" },
-      contributions: [{ godownId: { name: "Main" } }, { godownId: { name: "Junior" } }],
+      contributions: [
+        { godownId: { _id: "a" }, items: [{ stockItemId: rice, qtyBaseUnit: 5 }, { stockItemId: dal, qtyBaseUnit: 3 }] },
+        { godownId: { _id: "b" }, items: [{ stockItemId: rice, qtyBaseUnit: 2 }] },
+      ],
     };
-    expect(kitchenNames(order)).toEqual(["Junior", "Main"]);
+    expect(allItems(order)).toEqual([
+      { id: "r", name: "Rice", unit: "kg", total: "7 kg", parts: ["5", "2"] },
+      { id: "d", name: "Toor Dal", unit: "kg", total: "3 kg", parts: [] },
+    ]);
   });
 });
 

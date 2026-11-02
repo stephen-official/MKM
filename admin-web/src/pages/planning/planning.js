@@ -16,24 +16,54 @@ export const planningOrders = (orders) => (orders || [])
     return x - y;
   });
 
-/** Distinct product names across every kitchen on the order. */
-export const productNames = (order) =>
-  [...new Set((order?.combinedItems || []).map((line) => line.stockItemId?.name).filter(Boolean))];
+/** An order is named by when it is needed (Anand, 2026-11-03): "Order for Mon 9 Nov"; urgent ones add the time. */
+export const orderTitle = (order) => (order?.neededBy ? `Order for ${dayText(order.neededBy, order.emergency)}` : "Order (no date)");
 
-/** "Rice, Moong Dal, Sugar +2 more" — enough to recognise the order at a glance. */
-export const productSummary = (order, shown = 3) => {
-  const names = productNames(order);
-  if (names.length === 0) return "No items yet";
-  const rest = names.length - shown;
-  return `${names.slice(0, shown).join(", ")}${rest > 0 ? ` +${rest} more` : ""}`;
+/** The steps an order goes through, as shown on the card's tracker. */
+export const ORDER_STEPS = ["Open to join", "Needs approval", "Ordered", "On the way", "Delivered"];
+/** Where a Planning order is on the tracker: open → 0, closed (waiting for approval) → 1. */
+export const planningStep = (order) => (order?.status === "open" ? 0 : 1);
+
+/** "4 days left", "5 h left", "20 min left" or "Closing now" — the time kitchens still have to join. */
+export const timeLeft = (closesAt, now = new Date()) => {
+  const minutes = Math.floor((time(closesAt) - now.getTime()) / 60_000);
+  if (!(minutes > 0)) return "Closing now";
+  if (minutes >= 1440) { const days = Math.floor(minutes / 1440); return `${days} ${days === 1 ? "day" : "days"} left`; }
+  if (minutes >= 60) return `${Math.floor(minutes / 60)} h left`;
+  return `${minutes} min left`;
 };
 
-/** "Main Kitchen, Junior Kitchen" — every kitchen on the order, the one that opened it first. */
-export const kitchenNames = (order) => {
-  const opener = order?.createdByGodown?.name;
-  const names = (order?.contributions || []).map((share) => share.godownId?.name).filter(Boolean);
-  return [...new Set([opener, ...names].filter(Boolean))];
+const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
+
+/**
+ * Every product on the order with its total and each kitchen's part, in base units:
+ * [{ id, name, unit, total: "7 kg", parts: ["5", "2"] }] — parts only when more than one kitchen asked for it.
+ */
+export const allItems = (order) => {
+  const byProduct = new Map();
+  for (const share of order?.contributions || []) {
+    const kitchen = String(share.godownId?._id || share.godownId);
+    for (const line of share.items || []) {
+      const product = line.stockItemId || {};
+      const id = String(product._id || product);
+      const entry = byProduct.get(id) || { id, name: product.name || "Product", unit: product.unitId?.symbol || "", total: 0, byKitchen: new Map() };
+      const amount = Number(line.qtyBaseUnit) || 0;
+      entry.total += amount;
+      entry.byKitchen.set(kitchen, (entry.byKitchen.get(kitchen) || 0) + amount);
+      byProduct.set(id, entry);
+    }
+  }
+  return [...byProduct.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(({ byKitchen, ...entry }) => ({
+      ...entry,
+      total: `${qty(entry.total)} ${entry.unit}`.trim(),
+      parts: byKitchen.size > 1 ? [...byKitchen.values()].map(qty) : [],
+    }));
 };
+
+/** How many kitchens are on the order. */
+export const kitchenCount = (order) => (order?.contributions || []).length;
 
 /**
  * The range a super-admin may move the closing time to: from now to 2 days before needed-by.
