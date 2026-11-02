@@ -149,7 +149,13 @@ export function PlanningPage({ superAdmin = false }) {
         <KitchenItemsEditor kitchenName={editing.share.godownId?.name || "Kitchen"} orderName={orderTitle(editing.order)} share={editing.share}
           products={products} busy={busy} onClose={() => setEditing(null)}
           onSave={async (items) => {
-            if (await saveItems(editing.order, String(editing.share.godownId?._id || editing.share.godownId), items)) setEditing(null);
+            const kitchen = editing.share.godownId?.name || "The kitchen";
+            const ok = await confirm({
+              title: "Save these changes?",
+              message: `This changes the order straight away. ${kitchen} will get a notification showing what changed.`,
+              confirmLabel: "Save changes",
+            });
+            if (ok && await saveItems(editing.order, String(editing.share.godownId?._id || editing.share.godownId), items)) setEditing(null);
           }} />
       )}
       {dialog}

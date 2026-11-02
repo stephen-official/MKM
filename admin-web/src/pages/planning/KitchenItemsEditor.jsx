@@ -118,7 +118,7 @@ export function KitchenItemsEditor({ kitchenName, orderName, share, products, bu
 
         <p className={keptCount === 0 || !ready ? "pl-error" : "kp-hint"} role={keptCount === 0 || !ready ? "alert" : undefined}>{hint}</p>
         <div className="pl-editor__actions">
-          <Button type="button" variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="danger" disabled={busy} onClick={onClose}>Cancel</Button>
           <Button type="submit" disabled={busy || !ready || changes === 0}>
             {busy ? "Saving…" : changes === 0 ? "Save changes" : `Save ${changes} ${changes === 1 ? "change" : "changes"}`}
           </Button>
