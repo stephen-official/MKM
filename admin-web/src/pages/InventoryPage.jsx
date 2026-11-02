@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Plus, Search, X } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { api } from "../api.js";
 import { useToast } from "../useToast.js";
 import { Button, PageHeader, EmptyState, ErrorState } from "../components/ui/index.jsx";
@@ -22,7 +22,6 @@ export const InventoryPage = ({ canManageUsers = false }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [q, setQ] = useState("");
   const [open, setOpen] = useState(() => new Set());
   const [adding, setAdding] = useState(false); // the Add kitchen popup is open
   const requestRef = useRef(0);
@@ -62,18 +61,12 @@ export const InventoryPage = ({ canManageUsers = false }) => {
     return map;
   }, [users]);
 
-  // Search finds a kitchen by its name or by the name or email of someone who signs in there.
-  const needle = q.trim().toLowerCase();
-  const visible = needle
-    ? kitchens.filter((k) => k.name.toLowerCase().includes(needle) || (usersByKitchen.get(String(k._id)) || []).some((u) => `${u.name} ${u.email}`.toLowerCase().includes(needle)))
-    : kitchens;
 
   const toggle = (id) => setOpen((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
 
   const kitchenAdded = async (kitchen, { logoFailed }) => {
     setAdding(false);
     showToast(logoFailed ? "Kitchen added, but the logo did not upload. Add it from its card." : "Kitchen added", logoFailed ? "error" : "success");
-    setQ("");
     await load();
     setOpen((prev) => new Set(prev).add(kitchen._id)); // open it, ready for the people who sign in there
   };
@@ -81,11 +74,11 @@ export const InventoryPage = ({ canManageUsers = false }) => {
   let body;
   if (loading && kitchens.length === 0) body = <div className="kg-glass setup-state" role="status"><Loader2 size={18} className="animate-spin" aria-hidden="true" /> Loading…</div>;
   else if (loadError) body = <ErrorState message={loadError} onRetry={load} />;
-  else if (visible.length === 0) body = <EmptyState className="kg-glass setup-state" title={needle ? `Nothing matches “${q.trim()}”` : "No kitchens yet"}>{needle ? "Try a different search." : "Use Add kitchen to add the first one."}</EmptyState>;
+  else if (kitchens.length === 0) body = <EmptyState className="kg-glass setup-state" title="No kitchens yet">Use Add kitchen to add the first one.</EmptyState>;
   else {
     body = (
       <ul className="kp-cards" aria-label="Kitchens">
-        {visible.map((k) => (
+        {kitchens.map((k) => (
           <KitchenCard key={k._id} kitchen={k} users={usersByKitchen.get(String(k._id)) || []} canManageUsers={canManageUsers}
             open={open.has(k._id)} onToggle={() => toggle(k._id)} onChanged={load} onUsersChanged={loadUsers} confirm={confirm} />
         ))}
@@ -101,12 +94,7 @@ export const InventoryPage = ({ canManageUsers = false }) => {
         actions={<Button onClick={() => setAdding(true)}><Plus size={16} aria-hidden="true" /> Add kitchen</Button>}
       />
       <div className="setup-page">
-        <label className="ks-search kg-float">
-          <Search size={16} aria-hidden="true" />
-          <input type="search" aria-label="Search kitchens" placeholder={canManageUsers ? "Search kitchens or people" : "Search kitchens"} value={q} onChange={(e) => setQ(e.target.value)} />
-          {q && <button type="button" aria-label="Clear search" onClick={() => setQ("")}><X size={16} aria-hidden="true" /></button>}
-        </label>
-        <p className="setup-results" aria-live="polite"><strong>{visible.length}</strong> {visible.length === 1 ? "kitchen" : "kitchens"}{needle ? ` matching “${q.trim()}”` : ""}</p>
+        <p className="setup-results" aria-live="polite"><strong>{kitchens.length}</strong> {kitchens.length === 1 ? "kitchen" : "kitchens"}</p>
         {body}
       </div>
       {adding && <AddKitchenDialog existingNames={kitchens.map((k) => k.name)} onClose={() => setAdding(false)} onAdded={kitchenAdded} />}
