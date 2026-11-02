@@ -57,11 +57,12 @@
 /* A kitchen's tile: name with the super-admin's pencil; the edit form in place of the list. */
 .pl-share__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; }
 .pl-share__changed { color: var(--blue-deep); font-size: 12px; }
-/* Super-admin popup: change one kitchen's items (KitchenItemsEditor). */
-.pl-editor { display: grid; gap: 14px; }
+/* Super-admin popup: change one kitchen's items (KitchenItemsEditor). A big popup of fixed height: the item list
+   scrolls inside it and Cancel / Save stay at the bottom. */
+.modal:has(> .pl-editor) { display: flex; flex-direction: column; max-width: 880px; height: min(85svh, 820px); overflow: hidden; }
+.pl-editor { display: flex; flex: 1; flex-direction: column; gap: 14px; min-height: 0; }
 .pl-editor__order { margin: -6px 0 0; color: var(--muted-2); font-size: 13px; }
-/* The list scrolls inside, so a long order keeps the popup clear of the page header. */
-.pl-editor__rows { display: grid; gap: 8px; max-height: min(46vh, 420px); margin: 0; padding: 2px; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
+.pl-editor__rows { display: grid; flex: 1 1 auto; align-content: start; gap: 8px; min-height: 120px; margin: 0; padding: 2px; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
 .pl-editor__row { display: grid; gap: 6px; padding: 10px 12px; }
 .pl-editor__main { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
 .pl-editor__name { flex: 1 1 140px; min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
@@ -77,7 +78,20 @@
 .pl-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .pl-tag--up, .pl-tag--added { color: var(--st-ok-fg); background: var(--st-ok-bg); border-color: var(--st-ok-line); }
 .pl-tag--down, .pl-tag--removed { color: var(--st-expired-fg); background: var(--st-expired-bg); border-color: var(--st-expired-line); }
-.pl-editor__add { display: flex; align-items: center; gap: 8px; color: var(--muted-2); }
-.pl-editor__add > div { flex: 1; width: auto !important; min-width: 0; }
+.pl-editor__add { display: grid; flex: none; gap: 6px; }
+.pl-editor__search { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px; color: var(--muted-2); background: rgba(255,255,255,.8); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
+.pl-editor__search:focus-within { box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
+.pl-editor__search input { flex: 1; min-width: 0; height: 100%; padding: 0; color: var(--ink-2); background: transparent; border: 0; box-shadow: none; outline: 0; font: inherit; font-size: 15px; -webkit-appearance: none; appearance: none; border-radius: 0; }
+/* The pill around it shows focus; the shared input focus ring would draw a second one inside. */
+.pl-editor__search input:focus, .pl-editor__search input:focus-visible { box-shadow: none; outline: 0; }
+.pl-editor__results { display: grid; gap: 4px; max-height: 200px; margin: 0; padding: 4px; overflow-y: auto; list-style: none; background: rgba(255,255,255,.6); border: 1px solid var(--glass-border); border-radius: 16px; }
+.pl-editor__result { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 48px; padding: 6px 12px; color: var(--ink-2); background: none; border: 0; border-radius: 12px; box-shadow: none; font: inherit; text-align: left; cursor: pointer; transform: none; }
+.pl-editor__result:hover, .pl-editor__result:focus-visible { background: var(--tint-cool); outline: none; box-shadow: none; transform: none; }
+.pl-editor__result > span:first-child { display: grid; min-width: 0; }
+.pl-editor__result strong { font-weight: 500; }
+.pl-editor__result small { color: var(--muted-2); font-size: 12px; }
+.pl-editor__result-add { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--blue-deep); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.pl-editor__none { padding: 12px; color: var(--muted-2); font-size: 13px; }
+.pl-editor > .kp-hint, .pl-editor > .pl-error, .pl-editor__actions { flex: none; }
 .pl-editor__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 @media (max-width: 480px) { .pl-editor__actions > * { flex: 1; } }

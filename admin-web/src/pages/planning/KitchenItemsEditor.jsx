@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Lock, Minus, Plus, Search, Trash2, Undo2 } from "lucide-react";
 import { Button, Modal } from "../../components/ui/index.jsx";
-import { ProductCombobox } from "../ledger/ProductCombobox.jsx";
 import { changeCount, editableLines, linesPayload, linesReady, newLine, rowChange, stepAmount } from "./planning.js";
 
 // The same words and arrows the kitchen sees in its "Your admin changed items" list.
@@ -19,8 +18,17 @@ const TAG = {
  */
 export function KitchenItemsEditor({ kitchenName, orderName, share, products, busy, onSave, onClose }) {
   const [rows, setRows] = useState(() => editableLines(share));
+  const [query, setQuery] = useState("");
   const onList = new Set(rows.map((row) => row.stockItemId));
-  const choices = useMemo(() => products.filter((product) => !onList.has(String(product._id))), [products, rows]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Search results sit in the popup itself (not a floating list the popup would cut off): up to 8 matches.
+  const matches = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) return [];
+    return products
+      .filter((product) => !onList.has(String(product._id)))
+      .filter((product) => product.name?.toLowerCase().includes(term) || product.stockGroup?.toLowerCase().includes(term))
+      .slice(0, 8);
+  }, [products, rows, query]); // eslint-disable-line react-hooks/exhaustive-deps
   const changes = changeCount(rows);
   const ready = linesReady(rows);
   const keptCount = rows.filter((row) => !row.removed).length;
@@ -28,9 +36,9 @@ export function KitchenItemsEditor({ kitchenName, orderName, share, products, bu
   const patch = (key, change) => setRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...change } : row)));
   const type = (key, amount) => { if (amount === "" || /^\d*\.?\d{0,3}$/.test(amount)) patch(key, { amount }); };
   const remove = (row) => (row.original === null ? setRows((prev) => prev.filter((r) => r.key !== row.key)) : patch(row.key, { removed: true }));
-  const add = (id) => {
-    const product = products.find((p) => String(p._id) === String(id));
-    if (product) setRows((prev) => [...prev, newLine(product)]);
+  const add = (product) => {
+    setRows((prev) => [...prev, newLine(product)]);
+    setQuery("");
   };
 
   const save = async (event) => {
@@ -87,8 +95,25 @@ export function KitchenItemsEditor({ kitchenName, orderName, share, products, bu
         </ul>
 
         <div className="pl-editor__add">
-          <Search size={16} aria-hidden="true" />
-          <ProductCombobox key={rows.length} products={choices} value={null} onSelect={add} placeholder="Add a product…" />
+          <label className="pl-editor__search">
+            <Search size={16} aria-hidden="true" />
+            <input type="search" value={query} placeholder="Add a product: type its name" aria-label="Add a product"
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (matches[0]) add(matches[0]); } }} />
+          </label>
+          {query.trim() && (
+            <ul className="pl-editor__results" aria-label="Products found">
+              {matches.length === 0 && <li className="pl-editor__none">No product matches “{query.trim()}”.</li>}
+              {matches.map((product) => (
+                <li key={product._id}>
+                  <button type="button" className="pl-editor__result" onClick={() => add(product)}>
+                    <span><strong>{product.name}</strong>{product.stockGroup && <small>{product.stockGroup}</small>}</span>
+                    <span className="pl-editor__result-add"><Plus size={14} aria-hidden="true" /> Add</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <p className={keptCount === 0 || !ready ? "pl-error" : "kp-hint"} role={keptCount === 0 || !ready ? "alert" : undefined}>{hint}</p>
