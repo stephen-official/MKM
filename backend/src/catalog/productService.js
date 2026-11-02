@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { GodownStock } from "../models/FlowModels.js";
-import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
+import { StockGroup, StockItem, Unit, nextProductNo } from "../models/InventoryModels.js";
 import { isKitchenRole } from "../utils/roles.js";
 import { MAX_PACK_NAME_LENGTH, canonicalPackName } from "./packTypes.js";
 import { isAvailable, isValidPrice, missingFields } from "./completeness.js";
@@ -167,6 +167,15 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
 };
 
 /** godownId count per stockItemId for kitchens holding more than zero of it. */
+/** Gives a Product ID to every product still without one (older products, bulk inserts), oldest first. Safe to run often. */
+export const assignMissingProductNos = async () => {
+  const missing = await StockItem.find({ productNo: { $not: { $type: "string" } } }).sort({ createdAt: 1, _id: 1 }).select("_id").lean();
+  for (const { _id } of missing) {
+    await StockItem.updateOne({ _id, productNo: { $not: { $type: "string" } } }, { $set: { productNo: await nextProductNo() } });
+  }
+  return missing.length;
+};
+
 export const kitchensHolding = async (stockItemIds) => {
   const match = { qtyBaseUnit: { $gt: 0 }, ...(stockItemIds ? { stockItemId: { $in: stockItemIds } } : {}) };
   const rows = await GodownStock.aggregate([{ $match: match }, { $group: { _id: "$stockItemId", kitchens: { $addToSet: "$godownId" } } }]);
@@ -183,6 +192,7 @@ export const serializeProduct = (doc, holding = new Map()) => {
     imageUrl: doc.imageUrl || "",
     brand: doc.brand || "",
     productCode: doc.productCode || "",
+    productNo: doc.productNo || "",
     itemType: doc.itemType || "stock",
     defaultThreshold: doc.defaultThreshold || 0,
     group: group ? { _id: group._id, name: group.name } : null,

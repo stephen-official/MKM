@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { Counter } from "./CounterModel.js";
 const stockGroupSchema = new mongoose.Schema({ name: { type: String, required: true, unique: true } }, { timestamps: true });
 const unitSchema = new mongoose.Schema(
   {
@@ -58,6 +59,8 @@ const stockItemSchema = new mongoose.Schema(
   // for what a product needs before kitchens can use it.
   brand: { type: String, trim: true, default: "" },
   productCode: { type: String, trim: true, default: undefined },
+  // Permanent short ID (P-0001), given once and never changed. The Excel round trip matches rows by it.
+  productNo: { type: String, default: undefined },
   pricePerUnit: { type: Number, default: null },
   priceUpdatedAt: { type: Date, default: null },
   priceUpdatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
@@ -83,6 +86,17 @@ const stockItemSchema = new mongoose.Schema(
 { timestamps: true }
 );
 stockItemSchema.index({ productCode: 1 }, { unique: true, partialFilterExpression: { productCode: { $type: "string" } } });
+stockItemSchema.index({ productNo: 1 }, { unique: true, partialFilterExpression: { productNo: { $type: "string" } } });
+
+/** The next Product ID from the "product-no" counter, e.g. P-0042. Atomic, so two saves never share one. */
+export const nextProductNo = async (session) => {
+  const counter = await Counter.findOneAndUpdate({ _id: "product-no" }, { $inc: { seq: 1 } }, { new: true, upsert: true, session });
+  return `P-${String(counter.seq).padStart(4, "0")}`;
+};
+// Every product saved through the model gets its ID on creation. Bulk inserts (seed, fixtures) are covered by assignMissingProductNos.
+stockItemSchema.pre("save", async function giveProductNo() {
+  if (this.isNew && !this.productNo) this.productNo = await nextProductNo(this.$session());
+});
 export const StockGroup = mongoose.model("StockGroup", stockGroupSchema);
 export const Unit = mongoose.model("Unit", unitSchema);
 export const Godown = mongoose.model("Godown", godownSchema);

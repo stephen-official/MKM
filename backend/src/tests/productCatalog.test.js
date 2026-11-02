@@ -7,6 +7,7 @@ import { GodownStock } from "../models/FlowModels.js";
 import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
 import { ProductRequest } from "../models/ProductRequestModel.js";
 import { missingFields } from "../catalog/completeness.js";
+import { assignMissingProductNos } from "../catalog/productService.js";
 import { presetFor } from "../catalog/units.js";
 import { applyCatalogMigration, planCatalogMigration } from "../jobs/migrate-product-catalog.js";
 
@@ -176,6 +177,21 @@ test("old inventory routes no longer write products or units, and a group in use
   assert.equal((await as("admin", "post", "/api/inventory/units").send({ symbol: "tray" })).body.code, "UNITS_ARE_PRESETS");
   await as("admin", "post", "/api/products").send(base());
   assert.equal((await as("admin", "delete", `/api/inventory/stock-groups/${ctx.group._id}`)).body.code, "GROUP_IN_USE");
+});
+
+test("every product gets a permanent Product ID: new ones on save, older ones once, oldest first", async () => {
+  const created = (await as("admin", "post", "/api/products").send(base())).body;
+  assert.equal(created.productNo, "P-0001");
+  await StockItem.collection.insertMany([
+    { name: "Older", stockGroupId: ctx.group._id, unitId: ctx.kg._id, createdAt: new Date("2025-01-01") },
+    { name: "Newer", stockGroupId: ctx.group._id, unitId: ctx.kg._id, createdAt: new Date("2025-02-01") }
+  ]);
+  assert.equal(await assignMissingProductNos(), 2);
+  assert.equal(await assignMissingProductNos(), 0);
+  const byName = Object.fromEntries((await StockItem.find().lean()).map((p) => [p.name, p.productNo]));
+  assert.deepEqual(byName, { Rice: "P-0001", Older: "P-0002", Newer: "P-0003" });
+  await as("admin", "put", `/api/products/${created._id}`).send({ ...base(), productNo: "P-9999" });
+  assert.equal((await StockItem.findById(created._id).lean()).productNo, "P-0001");
 });
 
 test("admins see how many products each group holds (archived too); kitchens do not get the count", async () => {
