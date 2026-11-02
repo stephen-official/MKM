@@ -80,8 +80,8 @@ export function KitchenCard({ kitchen, users, canManageUsers, open, onToggle, on
               <h3>Kitchen</h3>
               {!editing && (
                 <span className="kp-section__actions">
-                  <button type="button" className="kg-chip" onClick={startEdit}><Edit3 size={14} aria-hidden="true" /> Edit</button>
-                  <button type="button" className="kg-chip kp-chip--danger" onClick={remove}><Trash2 size={14} aria-hidden="true" /> Delete kitchen</button>
+                  <button type="button" className="kg-chip kp-icon" onClick={startEdit} aria-label={`Edit ${kitchen.name}`} title="Edit"><Edit3 size={16} aria-hidden="true" /></button>
+                  <button type="button" className="kg-chip kp-icon kp-chip--danger" onClick={remove} aria-label={`Delete ${kitchen.name}`} title="Delete kitchen"><Trash2 size={16} aria-hidden="true" /></button>
                 </span>
               )}
             </div>
@@ -105,8 +105,8 @@ export function KitchenCard({ kitchen, users, canManageUsers, open, onToggle, on
                   </div>
                 </div>
                 <div className="kp-form-actions">
-                  <button type="button" className="kg-chip" disabled={saving} onClick={cancel}>Cancel</button>
-                  <button type="submit" className="kg-btn" disabled={saving || !name.trim()}><Check size={15} aria-hidden="true" /> {saving ? "Saving…" : "Save"}</button>
+                  <button type="button" className="kg-chip kp-icon" disabled={saving} onClick={cancel} aria-label="Cancel" title="Cancel"><X size={18} aria-hidden="true" /></button>
+                  <button type="submit" className="kg-chip kp-icon kp-chip--save" disabled={saving || !name.trim()} aria-label="Save" title="Save"><Check size={18} aria-hidden="true" /></button>
                 </div>
               </form>
             ) : (

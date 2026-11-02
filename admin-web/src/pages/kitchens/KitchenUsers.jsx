@@ -85,8 +85,8 @@ function UserRow({ user, onChanged, confirm }) {
           <Field label="WhatsApp" id={`${uid}-phone`}><input id={`${uid}-phone`} type="tel" inputMode="tel" placeholder="98765 43210" value={form.phone} onChange={(e) => set({ phone: e.target.value })} /></Field>
           <Field label="New password" id={`${uid}-pw`}><PasswordInput id={`${uid}-pw`} value={password} onChange={setPassword} placeholder="Leave blank to keep it" /></Field>
           <div className="kp-form-actions">
-            <button type="button" className="kg-chip" disabled={busy} onClick={cancel}>Cancel</button>
-            <button type="submit" className="kg-btn" disabled={busy || !form.name.trim() || !form.email.trim() || !form.phone.trim() || (password !== "" && password.length < MIN)}><Check size={15} aria-hidden="true" /> Save</button>
+            <button type="button" className="kg-chip kp-icon" disabled={busy} onClick={cancel} aria-label="Cancel" title="Cancel"><X size={18} aria-hidden="true" /></button>
+            <button type="submit" className="kg-chip kp-icon kp-chip--save" disabled={busy || !form.name.trim() || !form.email.trim() || !form.phone.trim() || (password !== "" && password.length < MIN)} aria-label="Save" title="Save"><Check size={18} aria-hidden="true" /></button>
           </div>
         </form>
       ) : (
@@ -170,8 +170,8 @@ export function KitchenUsers({ kitchen, users, onChanged, confirm }) {
             <Field label="WhatsApp" id={`${uid}-w`}><input id={`${uid}-w`} type="tel" inputMode="tel" placeholder="98765 43210" value={form.phone} onChange={(e) => set({ phone: e.target.value })} /></Field>
             <p className="kp-hint">All four are needed. Their phone signs in with the Login ID and password.</p>
             <div className="kp-form-actions">
-              <button type="button" className="kg-chip" disabled={saving} onClick={() => { setAdding(false); setForm(empty); }}><X size={14} aria-hidden="true" /> Cancel</button>
-              <button type="submit" className="kg-btn" disabled={saving || !ready}><UserPlus size={15} aria-hidden="true" /> {saving ? "Adding…" : "Add user"}</button>
+              <button type="button" className="kg-chip kp-icon" disabled={saving} onClick={() => { setAdding(false); setForm(empty); }} aria-label="Cancel" title="Cancel"><X size={18} aria-hidden="true" /></button>
+              <button type="submit" className="kg-chip kp-icon kp-chip--save" disabled={saving || !ready} aria-label="Save the new user" title="Save"><Check size={18} aria-hidden="true" /></button>
             </div>
           </form>
         )}
