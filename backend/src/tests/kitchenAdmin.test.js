@@ -96,3 +96,11 @@ test("a super-admin can change a kitchen user's email; one already in use is ref
   const clash = await as("root", "patch", `/api/users/${user._id}`).send({ email: other.user.email, expectedVersion: moved.body.user.version });
   assert.equal(clash.body.code, "EMAIL_EXISTS");
 });
+
+test("a kitchen user's WhatsApp number is saved on add and on edit; a bad one is refused", async () => {
+  const added = await as("root", "post", "/api/users").send({ name: "Ravi", email: "ravi@kitchen.test", role: "user", godownId: String(ctx.kitchen._id), password: "Dal-12345", phone: "98765 43210" });
+  assert.equal(added.body.user.phone, "+919876543210");
+  const changed = await as("root", "patch", `/api/users/${added.body.user._id}`).send({ phone: "+44 7700 900123", expectedVersion: added.body.user.version });
+  assert.equal(changed.body.user.phone, "+447700900123");
+  assert.equal((await as("root", "patch", `/api/users/${added.body.user._id}`).send({ phone: "123", expectedVersion: changed.body.user.version })).body.code, "INVALID_PHONE");
+});

@@ -12,6 +12,7 @@ import { mailer } from "../utils/mailer.js";
 import { clampPage } from "../utils/pagination.js";
 import { disconnectUser } from "../realtime.js";
 import { isValidPassword } from "./authRoutes.js";
+import { normalizePhone } from "../utils/phone.js";
 import { openPassword, passwordViewEnabled, sealPassword } from "../utils/passwordVault.js";
 
 export const userRoutes = express.Router();
@@ -21,7 +22,7 @@ userRoutes.use(superAdminOnly);
 const INVITE_TTL_MS = 24 * 3_600_000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // +viewablePassword only to say whether one is stored (passwordViewable); the sealed copy itself never leaves here.
-const SAFE_FIELDS = "name email role godownId active version createdAt updatedAt +viewablePassword";
+const SAFE_FIELDS = "name email phone role godownId active version createdAt updatedAt +viewablePassword";
 
 class UserAdminError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -36,8 +37,8 @@ const sendError = (res, error) => {
   return res.status(500).json({ code: "INTERNAL_ERROR", message: "Something went wrong." });
 };
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const safe = (u) => u && ({ _id: u._id, name: u.name, email: u.email, role: u.role, godownId: u.godownId?._id ?? u.godownId ?? null, kitchenName: u.godownId?.name ?? null, active: u.active, version: u.version ?? 0, passwordViewable: Boolean(u.viewablePassword), createdAt: u.createdAt, updatedAt: u.updatedAt });
-const snapshot = (u) => u && ({ name: u.name, email: u.email, role: u.role, godownId: u.godownId ? String(u.godownId._id ?? u.godownId) : null, active: u.active });
+const safe = (u) => u && ({ _id: u._id, name: u.name, email: u.email, phone: u.phone || "", role: u.role, godownId: u.godownId?._id ?? u.godownId ?? null, kitchenName: u.godownId?.name ?? null, active: u.active, version: u.version ?? 0, passwordViewable: Boolean(u.viewablePassword), createdAt: u.createdAt, updatedAt: u.updatedAt });
+const snapshot = (u) => u && ({ name: u.name, email: u.email, phone: u.phone || "", role: u.role, godownId: u.godownId ? String(u.godownId._id ?? u.godownId) : null, active: u.active });
 
 const actorOf = async (req) => {
   const me = await User.findById(req.user.sub).select("email").lean();
@@ -126,6 +127,8 @@ userRoutes.post("/", async (req, res) => {
     // A password given here is set by the super-admin and no invite email goes out (kitchen staff often have no inbox).
     const password = req.body?.password;
     if (password !== undefined && !isValidPassword(password)) fail(400, "INVALID_PASSWORD", "The password needs at least 8 characters.");
+    const phone = normalizePhone(req.body?.phone);
+    if (phone === null) fail(400, "INVALID_PHONE", "Enter a WhatsApp number, e.g. 98765 43210 (or +country code and number).");
     if (await User.exists({ email })) fail(409, "EMAIL_EXISTS", "That email is already in use.");
 
     const passwordHash = await bcrypt.hash(password ?? crypto.randomBytes(32).toString("hex"), 10);
@@ -136,7 +139,7 @@ userRoutes.post("/", async (req, res) => {
     // Everything is built inside the callback so a retried attempt starts from a fresh, new document.
     await session.withTransaction(async () => {
       await assertActorIsActiveSuperAdmin(session, req.user.sub);
-      user = new User({ name, email, role, godownId, active: true, passwordHash, viewablePassword: password !== undefined && role === ROLES.USER ? sealPassword(password) : null });
+      user = new User({ name, email, phone, role, godownId, active: true, passwordHash, viewablePassword: password !== undefined && role === ROLES.USER ? sealPassword(password) : null });
       token = password === undefined ? stageToken(user, INVITE_TTL_MS) : null;
       await user.save({ session });
       await UserAdminAudit.create([{ ...actor, targetUserId: user._id, action: "create", before: null, after: snapshot(user) }], { session });
@@ -176,7 +179,7 @@ userRoutes.patch("/:id", async (req, res) => {
       }
       const before = snapshot(user);
       const self = String(user._id) === String(req.user.sub);
-      const { name, email, role, godownId, active } = body;
+      const { name, email, phone, role, godownId, active } = body;
 
       if (name !== undefined) {
         const clean = String(name).trim();
@@ -188,6 +191,11 @@ userRoutes.patch("/:id", async (req, res) => {
         if (!EMAIL.test(clean)) fail(400, "INVALID_INPUT", "A valid email is required.");
         if (clean !== user.email && await User.exists({ email: clean, _id: { $ne: user._id } }).session(session)) fail(409, "EMAIL_EXISTS", "That email is already in use.");
         user.email = clean;
+      }
+      if (phone !== undefined) {
+        const clean = normalizePhone(phone);
+        if (clean === null) fail(400, "INVALID_PHONE", "Enter a WhatsApp number, e.g. 98765 43210 (or +country code and number).");
+        user.phone = clean;
       }
       const nextRole = role ?? user.role;
       if (role !== undefined) {

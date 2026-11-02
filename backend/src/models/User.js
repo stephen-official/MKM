@@ -8,6 +8,8 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
     role: { type: String, enum: ALL_ROLES, required: true },
     godownId: { type: mongoose.Schema.Types.ObjectId, ref: "Godown", default: null },
+    // WhatsApp number, stored as +<country><number> (utils/phone.js). Required for new kitchen users in the admin app.
+    phone: { type: String, default: "" },
     active: { type: Boolean, default: true },
     refreshToken: { type: String, default: null },
     resetToken: { type: String, default: null },
