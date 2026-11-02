@@ -178,6 +178,15 @@ test("old inventory routes no longer write products or units, and a group in use
   assert.equal((await as("admin", "delete", `/api/inventory/stock-groups/${ctx.group._id}`)).body.code, "GROUP_IN_USE");
 });
 
+test("admins see how many products each group holds (archived too); kitchens do not get the count", async () => {
+  await as("admin", "post", "/api/products").send(base());
+  await StockItem.create({ ...base({ name: "Old rice" }), archived: true });
+  const listed = (await as("admin", "get", "/api/inventory/stock-groups")).body;
+  assert.deepEqual(listed.map((g) => [g.name, g.productCount]), [["Grains", 2], ["Other", 0]]);
+  const kitchenView = (await as("cook", "get", "/api/inventory/stock-groups")).body;
+  assert.equal(kitchenView[0].productCount, undefined);
+});
+
 test("a kitchen requests a product; an admin approves it by creating the product, once", async () => {
   const asked = await as("cook", "post", "/api/product-requests").send({ name: "Basmati rice", unitSymbol: "kg", note: "For biryani day" });
   assert.equal(asked.status, 201);

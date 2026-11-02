@@ -135,6 +135,11 @@ const middleware =
       if (req.params.type === "stock-groups") await ensureOtherGroup();
       let rows = await query.lean();
       if (req.params.type === "stock-groups") rows = sortGroups(rows);
+      // Admins see how many products (archived ones too) each group holds: the product form offers delete only on an empty group.
+      if (req.params.type === "stock-groups" && !isKitchenRole(req.user.role)) {
+        const counts = new Map((await StockItem.aggregate([{ $group: { _id: "$stockGroupId", n: { $sum: 1 } } }])).map((c) => [String(c._id), c.n]));
+        rows = rows.map((row) => ({ ...row, productCount: counts.get(String(row._id)) || 0 }));
+      }
       if (req.params.type === "stock-items") {
         // Admin pages use this list to name past records, so they get every product (with `archived`);
         // kitchens only ever see products that are complete and not archived.

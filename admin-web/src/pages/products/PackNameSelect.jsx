@@ -5,8 +5,10 @@ import { Check, ChevronDown, Minus } from "lucide-react";
  * Pack name picker: the built-in names, then the custom names already in use (each with a minus to delete a mistyped one),
  * then "Other…" to type a new one. A plain <select> cannot hold a button per option, hence this small listbox.
  * `onPick(name)` chooses a name, `onOther()` switches the row to typing, `onRemove(name)` deletes a custom name.
+ * The product group picker reuses it: no built-ins, no divider, its own wording, and a minus only where `canRemove(name)` allows.
  */
-export function PackNameSelect({ id, value, builtIns, customs, invalid, onPick, onOther, onRemove }) {
+export function PackNameSelect({ id, value, builtIns, customs, invalid, onPick, onOther, onRemove,
+  customsLabel = "Added by you", otherLabel = "Other… type a new name", removeLabel = "Delete pack name", canRemove = () => true }) {
   const [open, setOpen] = useState(false);
   const root = useRef(null);
 
@@ -27,7 +29,7 @@ export function PackNameSelect({ id, value, builtIns, customs, invalid, onPick, 
         <span>{name}</span>{same(name) && <Check size={15} aria-hidden="true" />}
       </button>
       {removable && (
-        <button type="button" className="pack-name__remove" aria-label={`Delete pack name ${name}`} title="Delete this name"
+        <button type="button" className="pack-name__remove" aria-label={`${removeLabel} ${name}`} title={removeLabel}
           onClick={() => { setOpen(false); onRemove(name); }}>
           <Minus size={14} aria-hidden="true" />
         </button>
@@ -44,10 +46,10 @@ export function PackNameSelect({ id, value, builtIns, customs, invalid, onPick, 
       {open && (
         <ul role="listbox" aria-labelledby={id} className="pack-name__list">
           {builtIns.map((name) => row(name, false))}
-          {customs.length > 0 && <li className="pack-name__divider" role="presentation">Added by you</li>}
-          {customs.map((name) => row(name, true))}
+          {customsLabel && customs.length > 0 && <li className="pack-name__divider" role="presentation">{customsLabel}</li>}
+          {customs.map((name) => row(name, canRemove(name)))}
           <li className="pack-name__row">
-            <button type="button" role="option" aria-selected={false} className="pack-name__option pack-name__option--other" onClick={() => { onOther(); setOpen(false); }}>Other… type a new name</button>
+            <button type="button" role="option" aria-selected={false} className="pack-name__option pack-name__option--other" onClick={() => { onOther(); setOpen(false); }}>{otherLabel}</button>
           </li>
         </ul>
       )}

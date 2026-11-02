@@ -33,8 +33,9 @@ const sameName = (a, b) => String(a || "").trim().toLowerCase() === String(b || 
  * rarely-used details behind a fold. Expiry is not asked: it follows the food answers on the server (packaged food only).
  * `canPrice` is true for a super-admin; anyone else sees prices read-only. `serverErrors` mirror validateProductForm's.
  * `knownPackNames` are pack names already saved on products; `onPackTypeRemoved` runs after one is deleted everywhere.
+ * Groups are added and (when empty) deleted right here; `onGroupsChanged()` reloads `groups` and resolves when done.
  */
-export function ProductForm({ title, initial, units, groups, canPrice, knownPackNames = [], onPackTypeRemoved, busy, serverErrors = {}, notice, submitLabel = "Save product", onCancel, onSubmit }) {
+export function ProductForm({ title, initial, units, groups, onGroupsChanged, canPrice, knownPackNames = [], onPackTypeRemoved, busy, serverErrors = {}, notice, submitLabel = "Save product", onCancel, onSubmit }) {
   const [form, setForm] = useState(initial);
   const [localErrors, setLocalErrors] = useState({});
   const [uploading, setUploading] = useState(false);
@@ -42,6 +43,9 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
   const [typing, setTyping] = useState(() => new Set()); // pack rows where a new name is being typed ("Other…")
   const [dropped, setDropped] = useState([]); // custom names deleted while this form is open
   const [packNotice, setPackNotice] = useState(""); // a failed delete of a pack name
+  const [newGroup, setNewGroup] = useState(null); // the group name being typed ("New group…"), null when picking from the list
+  const [groupNotice, setGroupNotice] = useState(""); // a failed add or delete of a group
+  const groupBusy = useRef(false); // Enter then blur must not add the same group twice
   const { confirm, dialog } = useConfirm();
   const fileRef = useRef(null);
   const errors = { ...serverErrors, ...localErrors };
@@ -125,6 +129,44 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
     setForm((prev) => ({ ...prev, packs: prev.packs.map((pk) => (sameName(pk.name, name) ? { ...pk, name: "" } : pk)) }));
   };
 
+  // Product group: pick one, type a new one (added at once, so it shows in the list), or delete an empty one with its minus.
+  const groupName = groups.find((g) => g._id === form.stockGroupId)?.name || "";
+  const groupByName = (name) => groups.find((g) => sameName(g.name, name));
+  const isEmptyGroup = (name) => { const g = groupByName(name); return Boolean(g) && !g.productCount && !sameName(g.name, "Other"); };
+  const addGroup = async () => {
+    if (groupBusy.current || newGroup === null) return;
+    const name = capitalizeFirst(newGroup.trim());
+    if (!name) return setNewGroup(null);
+    const existing = groupByName(name);
+    if (existing) { set({ stockGroupId: existing._id }); return setNewGroup(null); }
+    groupBusy.current = true;
+    setGroupNotice("");
+    try {
+      const { data: created } = await api.post("/inventory/stock-groups", { name });
+      await onGroupsChanged?.();
+      set({ stockGroupId: created._id });
+      setNewGroup(null);
+    } catch (error) {
+      setGroupNotice(error.response?.data?.message || "Could not add the group. Try again.");
+    } finally {
+      groupBusy.current = false;
+    }
+  };
+  const removeGroup = async (name) => {
+    const group = groupByName(name);
+    if (!group) return;
+    const ok = await confirm({ title: `Delete group “${group.name}”?`, message: "No product is in it. It will just leave the list.", confirmLabel: "Delete group", variant: "danger" });
+    if (!ok) return;
+    setGroupNotice("");
+    try {
+      await api.delete(`/inventory/stock-groups/${group._id}`);
+      if (form.stockGroupId === group._id) set({ stockGroupId: "" });
+      await onGroupsChanged?.();
+    } catch (error) {
+      setGroupNotice(error.response?.data?.message || "Could not delete the group. Try again.");
+    }
+  };
+
   const error = (key) => errors[key] && <span className="field__error" role="alert">{errors[key]}</span>;
   const packError = (index, key) => errors.packList?.[index]?.[key] && <span className="field__error" role="alert">{errors.packList[index][key]}</span>;
   const price = (value, onChange, invalid) => canPrice ? (
@@ -164,13 +206,29 @@ export function ProductForm({ title, initial, units, groups, canPrice, knownPack
                   <input value={form.name} onChange={(e) => set({ name: e.target.value })} maxLength={120} aria-invalid={Boolean(errors.name) || undefined} autoFocus />
                   {error("name")}
                 </Field>
-                <Field label="Product group">
-                  <Select value={form.stockGroupId} onChange={(e) => set({ stockGroupId: e.target.value })}>
-                    <option value="">Choose…</option>
-                    {groups.map((g) => <option key={g._id} value={g._id}>{g.name}</option>)}
-                  </Select>
+                {/* A div, not Field's <label>: the picker holds several buttons. */}
+                <div className="field">
+                  <span className="field__label">Product group</span>
+                  {newGroup !== null ? (
+                    <span className="product-pack__typing">
+                      <input value={newGroup} placeholder="Type the group, e.g. Spices" aria-label="New group name" autoFocus maxLength={60}
+                        onChange={(e) => setNewGroup(e.target.value)}
+                        onBlur={addGroup}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGroup(); } }} />
+                      <button type="button" aria-label="Back to the list" onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => { setNewGroup(null); setGroupNotice(""); }}><X size={15} aria-hidden="true" /></button>
+                    </span>
+                  ) : (
+                    <PackNameSelect id="product-group" value={groupName} builtIns={[]} customs={groups.map((g) => g.name)}
+                      customsLabel="" otherLabel="New group… type a name" removeLabel="Delete group" canRemove={isEmptyGroup}
+                      invalid={Boolean(errors.stockGroupId)}
+                      onPick={(name) => set({ stockGroupId: groupByName(name)?._id || "" })}
+                      onOther={() => { setNewGroup(""); setGroupNotice(""); }}
+                      onRemove={removeGroup} />
+                  )}
                   {error("stockGroupId")}
-                </Field>
+                  {groupNotice && <span className="field__error" role="alert">{groupNotice}</span>}
+                </div>
                 <Field label="Counted in">
                   <Select value={form.unitId} onChange={(e) => set({ unitId: e.target.value })}>
                     <option value="">Choose…</option>

@@ -88,13 +88,16 @@ export function ProductsPage({ view = "products" }) {
     }
   }, []);
 
+  // The product form adds and deletes groups; it waits for this reload before choosing the new one.
+  const loadGroups = useCallback(() => api.get("/inventory/stock-groups").then(({ data: rows }) => setGroups(rows)).catch(() => setGroups([])), []);
+
   useEffect(() => { loadProducts(); }, [loadProducts]);
   useEffect(() => () => tracker.cancel(), [tracker]);
   useEffect(() => {
     loadRequests();
     api.get("/products/units").then(({ data: rows }) => setUnits(rows)).catch(() => setUnits([]));
-    api.get("/inventory/stock-groups").then(({ data: rows }) => setGroups(rows)).catch(() => setGroups([]));
-  }, [loadRequests]);
+    loadGroups();
+  }, [loadRequests, loadGroups]);
 
   const openEditor = (next) => { setServerErrors({}); setEditing(next); };
 
@@ -392,6 +395,7 @@ export function ProductsPage({ view = "products" }) {
           initial={editing.initial}
           units={units}
           groups={groups}
+          onGroupsChanged={loadGroups}
           canPrice={canPrice}
           onPackTypeRemoved={() => loadProducts()}
           knownPackNames={products.flatMap((p) => (p.packs || []).map((pack) => pack.name))}
