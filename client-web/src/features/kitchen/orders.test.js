@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canEditShare, canJoin, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, myOrders, requestedAmountText, withOrderProducts } from "./orders.js";
+import { canEditShare, canJoin, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, myOrders, kitchenEventText, kitchenHistory, requestedAmountText, withOrderProducts } from "./orders.js";
 
 const me = "kitchenA";
 const now = new Date("2026-10-18T04:30:00.000Z"); // 10:00 in India
@@ -138,4 +138,36 @@ test("a quantity the central store changed shows what the kitchen first asked fo
   assert.equal(requestedAmountText({ ...rice, qtyBaseUnit: 6 }), null);
   assert.equal(requestedAmountText({ ...rice, qtyBaseUnit: 6, requestedQtyBaseUnit: 10, adjustedAt: at(-1) }), "You asked for 10 kg");
   assert.equal(requestedAmountText({ ...rice, qtyBaseUnit: 75, packId: "bag", packName: "25 kg bag", packQuantity: 3, requestedQtyBaseUnit: 100, requestedPackQuantity: 4, adjustedAt: at(-1) }), "You asked for 4 × 25 kg bag");
+});
+
+test("the kitchen's history reads from the kitchen's side, newest first", () => {
+  const rice = { stockItemId: { name: "Rice", unitId: { symbol: "kg" } }, qtyBaseUnit: 10 };
+  const ev = (action, extra = {}) => ({ action, at: at(0), actorRole: "admin", actorId: { name: "Asha" }, godownId: { _id: me }, items: [], fromStatus: null, toStatus: null, note: "", ...extra });
+  const cook = { actorRole: "kitchen", actorId: { name: "Cook A" } };
+  const cases = [
+    [ev("raised", { items: [rice] }), "Central store raised this order for your kitchen: Rice"],
+    [ev("raised", { ...cook, items: [rice] }), "Cook A asked for Rice"],
+    [ev("joined", { ...cook, items: [rice] }), "Cook A added your items: Rice"],
+    [ev("edited", { ...cook, items: [rice] }), "Cook A changed your items: Rice"],
+    [ev("left", cook), "Cook A took your items off this order"],
+    [ev("approved", { items: [rice] }), "Central store approved Rice"],
+    [ev("approved", { godownId: null, toStatus: "approved" }), "Central store approved the order"],
+    [ev("rejected", { items: [rice], note: "In stock" }), "Central store did not approve Rice: In stock"],
+    [ev("quantity_changed", { items: [{ ...rice, qtyBaseUnit: 6, fromQtyBaseUnit: 10 }] }), "Central store changed Rice from 10 kg to 6 kg"],
+    [ev("purchase_updated", { godownId: null, note: "Invoice INV-7" }), "Central store updated the purchase details: Invoice INV-7"],
+    [ev("status_changed", { godownId: null, actorRole: "system", actorId: null, toStatus: "closed" }), "Ordering closed"],
+    [ev("status_changed", { godownId: null, toStatus: "closed" }), "Central store closed the order to new items"],
+    [ev("status_changed", { godownId: null, toStatus: "ordered", note: "Supplier Sri Lakshmi Traders" }), "Central store placed the order: Supplier Sri Lakshmi Traders"],
+    [ev("status_changed", { godownId: null, toStatus: "cancelled", note: "Supplier closed" }), "Central store cancelled the order: Supplier closed"],
+    [ev("dispatched", { items: [rice] }), "Central store sent Rice"],
+    [ev("received", { ...cook, items: [rice] }), "Cook A received Rice"],
+    [ev("problem_raised", { ...cook, items: [rice], note: "short" }), "Cook A reported a problem with Rice: short"],
+    [ev("problem_settled", { items: [rice], note: "Accepted 60 of 100" }), "Central store settled the problem with Rice: Accepted 60 of 100"],
+  ];
+  for (const [event, text] of cases) assert.equal(kitchenEventText(event), text, event.action);
+  assert.equal(kitchenEventText(ev("raised", { actorRole: "kitchen", actorId: null, items: [rice] })), "Your kitchen asked for Rice");
+
+  const history = kitchenHistory({ events: [ev("raised", { at: at(-2) }), ev("approved", { at: at(-1) })] });
+  assert.deepEqual(history.map((entry) => entry.action), ["approved", "raised"]);
+  assert.deepEqual(kitchenHistory({}), []);
 });

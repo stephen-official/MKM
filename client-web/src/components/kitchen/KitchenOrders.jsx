@@ -1,10 +1,10 @@
-import { AlertCircle, AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, ChevronUp, Clock, Lock, Plus, Search, Truck, Users, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowLeft, CalendarClock, Check, ChevronRight, ChevronUp, Clock, History, Lock, Plus, Search, Truck, Users, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { useKitchenChanges } from "../../liveUpdates";
 import { formatStockQuantity, getStockHealth, productPacks } from "../../features/kitchen";
-import { canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myOrders, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, requestedAmountText, withOrderProducts } from "../../features/kitchen/orders";
+import { canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myOrders, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, kitchenEventText, kitchenHistory, requestedAmountText, withOrderProducts } from "../../features/kitchen/orders";
 import { arrivingLines } from "../../features/kitchen/receiving";
 import KitchenReceiveItems from "./KitchenReceiveItems";
 import { TransferCard } from "./KitchenTransfers";
@@ -59,6 +59,9 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
   const stage = kitchenStage(order, godownId);
   const others = order.kitchenCount - 1;
   const arriving = hasArriving(order, godownId);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const history = kitchenHistory(order);
+  const editable = canEditShare(order, godownId, now);
   const notSent = share.items.filter((line) => lineState(line, share) === "not_sent").length;
   return <article className={`kg-glass kg-lift ko-card${order.emergency ? " ko-card--urgent" : ""}`}>
     <header className="ko-card__head">
@@ -84,7 +87,18 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
       </li>)}
     </ul>
     {order.supplier && stage === "delivered" && <p className="ko-note">From {order.supplier.name}{order.invoiceNo ? ` · Invoice ${order.invoiceNo}` : ""}</p>}
-    {canEditShare(order, godownId, now) && <footer className="ko-actions"><button type="button" className="kg-chip" onClick={() => onEdit(order)}>Edit my items</button></footer>}
+    {historyOpen && <ol className="ko-history" aria-label="Order history">
+      {history.map((event, index) => <li key={`${event.at}:${event.action}:${index}`}>
+        <time dateTime={event.at}>{deliveryDateText(event.at, { withTime: true })}</time>
+        <span>{kitchenEventText(event)}</span>
+      </li>)}
+    </ol>}
+    {(editable || history.length > 0) && <footer className="ko-actions">
+      {history.length > 0 && <button type="button" className="kg-chip" aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
+        <History size={15} aria-hidden="true" /> {historyOpen ? "Hide order history" : "Order history"}
+      </button>}
+      {editable && <button type="button" className="kg-chip" onClick={() => onEdit(order)}>Edit my items</button>}
+    </footer>}
     {arriving && <footer className="ko-confirm"><p className="ko-hint"><Truck size={15} aria-hidden="true" /> {notSent ? "Some items are on the way; the rest will come later." : "On the way."} Something wrong with an item? You can mark it as a problem inside.</p><button type="button" className="kg-btn" onClick={() => onReceive(order, notSent)}>Receive items <ChevronRight size={17} aria-hidden="true" /></button></footer>}
   </article>;
 }

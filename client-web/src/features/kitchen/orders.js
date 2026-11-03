@@ -128,3 +128,43 @@ export const requestedAmountText = (line) => {
     : `${amount(line.requestedQtyBaseUnit)} ${line.stockItemId?.unitId?.symbol || ""}`.trim();
   return `You asked for ${asked}`;
 };
+
+// ---- Order history, as the kitchen sees it (the API sends only order-wide events and this kitchen's own) ----
+
+const itemNames = (items) => [...new Set((items || []).map((item) => item?.stockItemId?.name || "an item"))].join(", ");
+const amountWithUnit = (value, item) => `${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 })} ${item?.stockItemId?.unitId?.symbol || ""}`.trim();
+const noted = (text, note) => (note ? `${text}: ${note}` : text);
+const STORE = "Central store";
+
+/** One history entry in the kitchen's words, e.g. "Central store did not approve Rice: In stock". */
+export const kitchenEventText = (event) => {
+  const who = event?.actorRole === "kitchen" ? event?.actorId?.name || "Your kitchen" : STORE;
+  const items = itemNames(event?.items);
+  switch (event?.action) {
+    case "raised": return event.actorRole === "kitchen" ? `${who} asked for ${items}` : `${STORE} raised this order for your kitchen${items ? `: ${items}` : ""}`;
+    case "joined": return `${who} added your items${items ? `: ${items}` : ""}`;
+    case "edited": return `${who} changed your items${items ? `: ${items}` : ""}`;
+    case "left": return `${who} took your items off this order`;
+    case "approved": return event.godownId ? `${STORE} approved ${items || "your items"}` : `${STORE} approved the order`;
+    case "rejected": return noted(`${STORE} did not approve ${items || "your items"}`, event.note);
+    case "quantity_changed": {
+      const item = event.items?.[0];
+      return `${STORE} changed ${itemNames([item])} from ${amountWithUnit(item?.fromQtyBaseUnit, item)} to ${amountWithUnit(item?.qtyBaseUnit, item)}`;
+    }
+    case "purchase_updated": return noted(`${STORE} updated the purchase details`, event.note);
+    case "status_changed":
+      if (event.actorRole === "system") return "Ordering closed";
+      if (event.toStatus === "closed") return `${STORE} closed the order to new items`;
+      if (event.toStatus === "ordered") return noted(`${STORE} placed the order`, event.note);
+      if (event.toStatus === "cancelled") return noted(`${STORE} cancelled the order`, event.note);
+      return `${STORE} moved the order to ${event.toStatus}`;
+    case "dispatched": return `${STORE} sent ${items}`;
+    case "received": return `${who} received ${items}`;
+    case "problem_raised": return noted(`${who} reported a problem with ${items}`, event.note);
+    case "problem_settled": return noted(`${STORE} settled the problem with ${items}`, event.note);
+    default: return "";
+  }
+};
+
+/** The order's history for the kitchen card, newest first. */
+export const kitchenHistory = (order) => [...(order?.events || [])].reverse();
