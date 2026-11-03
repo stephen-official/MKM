@@ -277,33 +277,6 @@ export const getProductLedger = async (req, res) => {
         })
         .lean();
 
-
-        // ========================================================
-// 🔴 LIVE DEBUG - TEMPORARY
-// ========================================================
-
-console.log("========== PRODUCT LEDGER DEBUG ==========");
-console.log("productId:", productId);
-console.log("godownId:", godownId);
-console.log("startDate:", startDate);
-console.log("endDate:", endDate);
-
-console.log(
-  "distributionDocs:",
-  JSON.stringify(distributionDocs, null, 2)
-);
-
-console.log("==========================================");
-const allDistributions = await Distribution.find({})
-  .sort({ createdAt: -1 })
-  .limit(10)
-  .lean();
-
-console.log("========== ALL LIVE DISTRIBUTIONS ==========");
-console.log(
-  JSON.stringify(allDistributions, null, 2)
-);
-console.log("============================================");
     // ========================================================
     // GET ACCEPTED TRANSFERS
     // ========================================================

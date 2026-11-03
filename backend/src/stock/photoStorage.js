@@ -16,6 +16,10 @@ export const baseType = (mimetype) => String(mimetype || "").split(";")[0].trim(
 
 /** Reads CLOUDINARY_URL or the three CLOUDINARY_* keys; true when Cloudinary can be used. */
 export const cloudinaryConfigured = () => {
+  // Unit and request tests must never send fixture uploads to a developer's
+  // or production Cloudinary account merely because dotenv loaded local keys.
+  // A separately configured integration test can opt in explicitly.
+  if (process.env.NODE_ENV === "test" && process.env.CLOUDINARY_TEST_UPLOADS !== "true") return false;
   const { CLOUDINARY_URL, CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET } = process.env;
   if (CLOUDINARY_CLOUD_NAME && CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET) {
     cloudinary.config({ cloud_name: CLOUDINARY_CLOUD_NAME, api_key: CLOUDINARY_API_KEY, api_secret: CLOUDINARY_API_SECRET });

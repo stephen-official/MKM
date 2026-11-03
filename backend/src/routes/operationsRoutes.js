@@ -1262,12 +1262,6 @@ authorize(["user"]),
 requireAvailableProducts(bodyItemIds),
 async (req,res)=>{
 
-console.log("BODY");
-console.log(req.body);
-
-console.log("USER");
-console.log(req.user);
-
 // Validation
 if (!req.body.toGodownId) {
     return res.status(400).json({
@@ -1339,8 +1333,6 @@ io.to(req.body.toGodownId.toString()).emit(
     "new_transfer",
     stripPrices(transfer)
 );
-console.log("TRANSFER SAVED");
-console.log(transfer);
 
 res.status(201).json(transfer);
 
