@@ -1,21 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { Route, Routes, Navigate } from "react-router-dom";
 import { logout, setStoredRole, SESSION_EXPIRED_EVENT } from "./api.js";
 import { isAdminRole, isSuperAdmin } from "./roles.js";
 import { AuthPage } from "./pages/AuthPage.jsx";
-import { ConsumptionPage } from "./pages/ConsumptionPage.jsx";
-import { GodownsPage } from "./pages/GodownsPage.jsx";
-import { IndentPage } from "./pages/IndentPage.jsx";
-import { InventoryPage } from "./pages/InventoryPage.jsx";
-import { ProductsPage } from "./pages/ProductsPage.jsx";
 import { ModulePage } from "./pages/ModulePage.jsx";
-import { PurchaseOrdersPage } from "./pages/PurchaseOrdersPage.jsx";
-import { ReportsPage } from "./pages/ReportsPage.jsx";
-import { RequestsPage } from "./pages/RequestsPage.jsx";
-import { StockDistributionPage } from "./pages/StockDistributionPage.jsx";
-import { TransferStockPage } from "./pages/TransferStockPage.jsx";
 import { Banner, Button, LoadingState } from "./components/ui/index.jsx";
-import ProductLedger from "./pages/ProductLedger.jsx";
 import { Layout } from "./components/Layout.jsx";
 import { NAV, SUPER_NAV } from "./components/navItems.js";
 import { WORKSPACE_NAV, SUPER_WORKSPACE_NAV } from "./components/navItems.js";
@@ -24,10 +13,23 @@ import { FeatureFlagsProvider } from "./features/FeatureFlagsProvider.jsx";
 import { useFeatureFlags } from "./features/FeatureFlagsContext.js";
 import { FeatureDisabledPage } from "./features/FeatureDisabledPage.jsx";
 import { NO_ACCESS_PATH, buildSections, disabledFeatureForPath, firstAllowedPath, isPathAllowed } from "./features/featureNav.js";
-import { FeatureVisibilityPage } from "./pages/FeatureVisibilityPage.jsx";
-import { UsersPage } from "./pages/UsersPage.jsx";
-import { ExecutiveReportPage } from "./pages/ExecutiveReportPage.jsx";
-import { ReportSchedulesPage } from "./pages/ReportSchedulesPage.jsx";
+
+const lazyNamed = (load, name) => lazy(() => load().then((module) => ({ default: module[name] })));
+const ConsumptionPage = lazyNamed(() => import("./pages/ConsumptionPage.jsx"), "ConsumptionPage");
+const GodownsPage = lazyNamed(() => import("./pages/GodownsPage.jsx"), "GodownsPage");
+const IndentPage = lazyNamed(() => import("./pages/IndentPage.jsx"), "IndentPage");
+const InventoryPage = lazyNamed(() => import("./pages/InventoryPage.jsx"), "InventoryPage");
+const ProductsPage = lazyNamed(() => import("./pages/ProductsPage.jsx"), "ProductsPage");
+const PurchaseOrdersPage = lazyNamed(() => import("./pages/PurchaseOrdersPage.jsx"), "PurchaseOrdersPage");
+const ReportsPage = lazyNamed(() => import("./pages/ReportsPage.jsx"), "ReportsPage");
+const RequestsPage = lazyNamed(() => import("./pages/RequestsPage.jsx"), "RequestsPage");
+const StockDistributionPage = lazyNamed(() => import("./pages/StockDistributionPage.jsx"), "StockDistributionPage");
+const TransferStockPage = lazyNamed(() => import("./pages/TransferStockPage.jsx"), "TransferStockPage");
+const ProductLedger = lazy(() => import("./pages/ProductLedger.jsx"));
+const FeatureVisibilityPage = lazyNamed(() => import("./pages/FeatureVisibilityPage.jsx"), "FeatureVisibilityPage");
+const UsersPage = lazyNamed(() => import("./pages/UsersPage.jsx"), "UsersPage");
+const ExecutiveReportPage = lazyNamed(() => import("./pages/ExecutiveReportPage.jsx"), "ExecutiveReportPage");
+const ReportSchedulesPage = lazyNamed(() => import("./pages/ReportSchedulesPage.jsx"), "ReportSchedulesPage");
 
 function AdminShell({ onLogout, routeMap }) {
   const { flags, role, status } = useFeatureFlags();
@@ -51,6 +53,7 @@ function AdminShell({ onLogout, routeMap }) {
       {status === "error" && (
         <Banner variant="warn">Feature settings could not be loaded. Some pages may be unavailable.</Banner>
       )}
+      <Suspense fallback={<LoadingState label="Loading page…" />}>
       <Routes>
         {[...WORKSPACE_NAV, ...SUPER_WORKSPACE_NAV].filter((workspace) => workspace.tabs).map((workspace) => (
           <Route
@@ -77,6 +80,7 @@ function AdminShell({ onLogout, routeMap }) {
         <Route path={NO_ACCESS_PATH} element={<FeatureDisabledPage label="No pages available" homePath={null} />} />
         <Route path="*" element={<Navigate to={home} replace />} />
       </Routes>
+      </Suspense>
     </Layout>
   );
 }
