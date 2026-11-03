@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allSharesApproved, canSetPurchaseDetails, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, closesInText, lineDelivery, orderItems, orderStage, shareStage, lineLabel, sourceLabel, unitChoices } from "./sharedOrders.js";
+import { canAdjustLine, editableQuantity, requestedLabel, allSharesApproved, canSetPurchaseDetails, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, closesInText, hasLiveItems, lineDelivery, orderItems, orderRowsReady, orderStage, shareStage, lineLabel, sourceLabel, unitChoices } from "./sharedOrders.js";
 
 const now = new Date("2026-10-18T04:30:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
@@ -129,6 +129,8 @@ describe("rejected items", () => {
 
   it("a rejected kitchen counts as reviewed", () => {
     expect(allSharesApproved({ contributions: [share({ approvedAt: "x" }), share({ rejectedAt: "x" })] })).toBe(true);
+    expect(hasLiveItems({ contributions: [share({ items: [{ rejectedAt: "x" }] })] })).toBe(false);
+    expect(hasLiveItems({ contributions: [share({ items: [{ rejectedAt: "x" }, {}] })] })).toBe(true);
   });
 
   it("only undecided lines and kitchens can be rejected, while the order is being reviewed", () => {
@@ -176,5 +178,35 @@ describe("raising an order for a kitchen", () => {
     const rice = { unit: { symbol: "kg" }, soldInPacks: true, packs: [{ _id: "bag", name: "25 kg bag", size: 25 }, { _id: "x", name: "Broken", size: 0 }] };
     expect(unitChoices(rice)).toEqual([{ value: "base", label: "kg" }, { value: "bag", label: "25 kg bag (25 kg)" }]);
     expect(unitChoices({ unit: { symbol: "L" }, soldInPacks: false, packs: [{ _id: "p", name: "Tin", size: 15 }] })).toEqual([{ value: "base", label: "L" }]);
+  });
+
+  it("requires every visible order row to be complete", () => {
+    const rice = { _id: "r", soldInPacks: true, packs: [{ _id: "bag", name: "Bag", size: 25 }] };
+    const oil = { _id: "o", soldInPacks: false, packs: [] };
+    expect(orderRowsReady([rice, oil], [{ productId: "r", qty: "2", packId: "bag" }])).toBe(true);
+    expect(orderRowsReady([rice, oil], [{ productId: "r", qty: "2", packId: "bag" }, { productId: "o", qty: "", packId: "base" }])).toBe(false);
+    expect(orderRowsReady([rice], [{ productId: "r", qty: "2", packId: "missing" }])).toBe(false);
+    expect(orderRowsReady([rice], [{ productId: "", qty: "2", packId: "base" }])).toBe(false);
+  });
+});
+
+describe("changing a kitchen's quantity", () => {
+  const kg = { stockItemId: { unitId: { symbol: "kg" } } };
+  it("any line that is not rejected can be changed while the order is being reviewed", () => {
+    expect(canAdjustLine({ status: "open" }, {})).toBe(true);
+    expect(canAdjustLine({ status: "closed" }, { approvedAt: "x" })).toBe(true);
+    expect(canAdjustLine({ status: "open" }, { rejectedAt: "x" })).toBe(false);
+    expect(canAdjustLine({ status: "approved" }, {})).toBe(false);
+  });
+
+  it("edits in the line's own unit: packs for a pack line, else the base unit", () => {
+    expect(editableQuantity({ ...kg, qtyBaseUnit: 12.5 })).toEqual({ value: 12.5, unit: "kg" });
+    expect(editableQuantity({ ...kg, qtyBaseUnit: 50, packId: "p", packName: "25 kg bag", packQuantity: 2 })).toEqual({ value: 2, unit: "25 kg bag" });
+  });
+
+  it("shows what the kitchen first asked for once the quantity was changed", () => {
+    expect(requestedLabel({ ...kg, qtyBaseUnit: 6 })).toBe(null);
+    expect(requestedLabel({ ...kg, qtyBaseUnit: 6, requestedQtyBaseUnit: 10 })).toBe("10 kg");
+    expect(requestedLabel({ ...kg, qtyBaseUnit: 75, packId: "p", packName: "25 kg bag", packQuantity: 3, requestedQtyBaseUnit: 100, requestedPackQuantity: 4 })).toBe("4 × 25 kg bag");
   });
 });

@@ -98,7 +98,7 @@ The kitchen that originally opened the order cannot leave it, but can edit its c
 | `{ "godownId": "KITCHEN_ID" }` | Approves that kitchen's whole share; other kitchens carry on |
 | `{ "godownId": "KITCHEN_ID", "items": [{ "stockItemId": "PRODUCT_ID", "packId": "optional" }] }` | Approves those lines of that kitchen's share; the rest stays editable |
 
-Approval works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSED`). Approved lines and shares carry `approvedAt` and `approvedBy`. A kitchen or product that is not on the order gives 404. Rejected lines are skipped by "approve all" and "approve kitchen" (a kitchen whose remaining items were all rejected is not approved); naming a rejected line gives 409 `LINE_REJECTED`, and approving a rejected kitchen 409 `SHARE_REJECTED`.
+Approval works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSED`). Approved lines and shares carry `approvedAt` and `approvedBy`. A kitchen or product that is not on the order gives 404. Rejected lines are skipped by "approve all" and "approve kitchen" (a kitchen whose remaining items were all rejected is not approved); naming a rejected line gives 409 `LINE_REJECTED`, and approving a rejected kitchen 409 `SHARE_REJECTED`. An order with no non-rejected items cannot be approved (409 `NO_ITEMS_TO_APPROVE`); cancel it instead.
 
 ### Reject (admin only)
 
@@ -112,6 +112,10 @@ Approval works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSE
 `reason` (up to 500 characters) is required (400 `REASON_REQUIRED`) and the kitchen sees it; other kitchens do not. Rejected lines (and a rejected share) carry `rejectedAt`, `rejectedBy` and `rejectionReason`. A decision is final: an approved line cannot be rejected (409 `LINE_APPROVED`), a rejected one cannot be approved or rejected again (409 `LINE_REJECTED`), and a rejected or fully approved kitchen gives 409 `SHARE_REJECTED` / `SHARE_APPROVED`. Rejecting works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSED`). To stop the whole order, cancel it through `PATCH /:id/status`.
 
 A rejected line stays on the order as a record. It is left out of `combinedItems` (it is not bought), is never dispatched or received, and does not appear in the product ledger. A share counts as dispatched or delivered once every line that was not rejected is. When the kitchen edits its items, rejected lines are kept whether or not they are sent back; asking for a rejected product again on the same order gives 409 `LINE_REJECTED`, and a rejected share cannot be edited (409 `SHARE_REJECTED`).
+
+### Change a requested quantity (admin only)
+
+`POST /:id/adjust` with `{ "godownId": "KITCHEN_ID", "stockItemId": "PRODUCT_ID", "packId": "optional", "quantity": 3 }` changes one line while the order is `open` or `closed`. For a packed line, `quantity` is the number of packs; otherwise it is in the product's base unit. The change also approves that line. The response keeps the kitchen's original amount in `requestedQtyBaseUnit` and, for packed lines, `requestedPackQuantity`, and records `adjustedAt` and `adjustedBy`. Rejected lines and finished orders cannot be changed.
 
 ### Dispatch (admin only)
 
@@ -242,4 +246,4 @@ Errors use the shared `{ code, message }` shape: `INVALID_INPUT` (400), `NOT_FOU
 
 ## Errors
 
-Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `LINE_REJECTED` (409), `SHARE_REJECTED` (409), `REASON_REQUIRED` (400), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `SUPPLIER_REQUIRED` (400), `ALREADY_SETTLED` (409), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `LINE_REJECTED` (409), `SHARE_REJECTED` (409), `NO_ITEMS_TO_APPROVE` (409), `REASON_REQUIRED` (400), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `SUPPLIER_REQUIRED` (400), `ALREADY_SETTLED` (409), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).

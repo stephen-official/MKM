@@ -228,6 +228,17 @@ test("a kitchen whose whole share was rejected is not approved by approve all", 
   assert.ok(share(res.body, ctx.kitchenA).approvedAt);
 });
 
+test("an order with no wanted items cannot become an empty approved order", async () => {
+  const order = (await call(ctx.cookA, "post", "/").send({ neededIn: "1w", items: [line(ctx.rice, 10)] })).body;
+  await reject(order, { godownId: ctx.kitchenA._id, reason: "Nothing is needed now" });
+  const res = await call(ctx.admin, "post", `/${order._id}/approve`).send({});
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, "NO_ITEMS_TO_APPROVE");
+  const unchanged = await call(ctx.admin, "get", `/${order._id}`);
+  assert.equal(unchanged.body.status, "open");
+  assert.equal(unchanged.body.combinedItems.length, 0);
+});
+
 // ---------- Cancelling the whole order ----------
 
 test("cancelling an order needs a reason, which kitchens see", async () => {
@@ -240,4 +251,72 @@ test("cancelling an order needs a reason, which kitchens see", async () => {
   assert.equal(res.body.status, "cancelled");
   assert.equal(res.body.cancellationReason, "Supplier stopped this line");
   assert.equal((await call(ctx.cookB, "get", `/${order._id}`)).body.cancellationReason, "Supplier stopped this line");
+});
+
+// ---------- The central store changes a kitchen's quantity ----------
+
+const adjust = (order, body, actor = ctx.admin) => call(actor, "post", `/${order._id}/adjust`).send(body);
+
+test("the central store changes a line's quantity, which approves it and keeps what the kitchen asked for", async () => {
+  const order = await kitchenOrder();
+  const res = await adjust(order, { godownId: ctx.kitchenA._id, stockItemId: ctx.rice._id, quantity: 6 });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const rice = lineOf(res.body, ctx.kitchenA, ctx.rice);
+  assert.equal(rice.qtyBaseUnit, 6);
+  assert.equal(rice.requestedQtyBaseUnit, 10);
+  assert.ok(rice.adjustedAt);
+  assert.equal(String(rice.adjustedBy), String(ctx.admin.user._id));
+  assert.ok(rice.approvedAt, "changing the quantity approves the line");
+  assert.equal(lineOf(res.body, ctx.kitchenA, ctx.dal).approvedAt, null, "other lines are untouched");
+  assert.equal(res.body.combinedItems.find((item) => String(item.stockItemId._id) === String(ctx.rice._id)).qtyBaseUnit, 11, "6 for Kitchen A + 5 for Kitchen B");
+
+  const seen = await call(ctx.cookA, "get", `/${order._id}`);
+  assert.equal(lineOf(seen.body, ctx.kitchenA, ctx.rice).requestedQtyBaseUnit, 10, "the kitchen sees what it asked for");
+
+  const again = await adjust(order, { godownId: ctx.kitchenA._id, stockItemId: ctx.rice._id, quantity: 8 });
+  assert.equal(lineOf(again.body, ctx.kitchenA, ctx.rice).qtyBaseUnit, 8);
+  assert.equal(lineOf(again.body, ctx.kitchenA, ctx.rice).requestedQtyBaseUnit, 10, "the first request is kept");
+});
+
+test("a pack line is changed in packs", async () => {
+  const atta = await StockItem.create({ name: "Atta", stockGroupId: ctx.rice.stockGroupId, unitId: ctx.rice.unitId, pricePerUnit: 40, soldInPacks: true, packs: [{ name: "10 kg bag", size: 10, price: 380 }] });
+  const pack = atta.packs[0];
+  const order = (await call(ctx.cookA, "post", "/").send({ neededIn: "1w", items: [{ stockItemId: atta._id, qtyBaseUnit: 40, packId: pack._id, packName: pack.name, packSize: 10, packQuantity: 4 }] })).body;
+  const res = await adjust(order, { godownId: ctx.kitchenA._id, stockItemId: atta._id, packId: pack._id, quantity: 3 });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const line = lineOf(res.body, ctx.kitchenA, atta);
+  assert.deepEqual([line.packQuantity, line.qtyBaseUnit, line.requestedPackQuantity, line.requestedQtyBaseUnit], [3, 30, 4, 40]);
+});
+
+test("a kitchen's later edit keeps the central store's change", async () => {
+  const order = await kitchenOrder();
+  await adjust(order, { godownId: ctx.kitchenA._id, stockItemId: ctx.rice._id, quantity: 6 });
+  const edit = await call(ctx.cookA, "put", `/${order._id}/contributions/me`).send({ items: [line(ctx.rice, 6), line(ctx.dal, 2)] });
+  assert.equal(edit.status, 200, JSON.stringify(edit.body));
+  const rice = lineOf(edit.body, ctx.kitchenA, ctx.rice);
+  assert.equal(rice.requestedQtyBaseUnit, 10);
+  assert.ok(rice.adjustedAt);
+  const back = await call(ctx.cookA, "put", `/${order._id}/contributions/me`).send({ items: [line(ctx.rice, 10), line(ctx.dal, 2)] });
+  assert.equal(back.body.code, "LINE_APPROVED", "the kitchen cannot undo the change");
+});
+
+test("changing a quantity needs an admin, a new positive amount, a line still under review and an order still being reviewed", async () => {
+  const order = await kitchenOrder();
+  const body = (extra) => ({ godownId: ctx.kitchenA._id, stockItemId: ctx.rice._id, ...extra });
+  assert.equal((await adjust(order, body({ quantity: 6 }), ctx.cookA)).status, 403);
+  for (const quantity of [0, -2, "abc", undefined]) assert.equal((await adjust(order, body({ quantity }))).status, 400, String(quantity));
+  const same = await adjust(order, body({ quantity: 10 }));
+  assert.equal(same.status, 400, "the same amount is an approval, not a change");
+  assert.equal((await adjust(order, { godownId: ctx.kitchenB._id, stockItemId: ctx.dal._id, quantity: 1 })).status, 404);
+  assert.equal((await adjust(order, { stockItemId: ctx.rice._id, quantity: 1 })).status, 400);
+
+  await reject(order, { godownId: ctx.kitchenA._id, items: [{ stockItemId: ctx.dal._id }], reason: "Not this week" });
+  const rejectedLine = await adjust(order, { godownId: ctx.kitchenA._id, stockItemId: ctx.dal._id, quantity: 1 });
+  assert.equal(rejectedLine.status, 409);
+  assert.equal(rejectedLine.body.code, "LINE_REJECTED");
+
+  await call(ctx.admin, "post", `/${order._id}/approve`).send({});
+  const late = await adjust(order, body({ quantity: 6 }));
+  assert.equal(late.status, 409);
+  assert.equal(late.body.code, "ORDER_CLOSED");
 });

@@ -13,6 +13,8 @@ export const allSharesApproved = (order) =>
 const isRejected = (line) => Boolean(line?.rejectedAt);
 /** A share's lines that are still wanted; rejected lines are never bought, sent or received. */
 const liveLines = (share) => (share?.items || []).filter((line) => !isRejected(line));
+/** At least one item remains to buy; an all-rejected order must be cancelled, not approved empty. */
+export const hasLiveItems = (order) => (order?.contributions || []).some((share) => liveLines(share).length > 0);
 // Lines carry their own dispatch and receipt times; shares sent whole before that carry them on the share.
 const isSent = (line, share) => !isRejected(line) && Boolean(line?.dispatchedAt || share?.dispatchedAt);
 const isReceived = (line, share) => !isRejected(line) && Boolean(line?.deliveredAt || share?.deliveredAt);
@@ -100,3 +102,25 @@ export const orderItems = (products, rows) => rows.flatMap((row) => {
     ? [{ stockItemId: product._id, qtyBaseUnit: amount * Number(pack.size), packId: pack._id, packName: pack.name, packSize: Number(pack.size), packQuantity: amount }]
     : [{ stockItemId: product._id, qtyBaseUnit: amount }];
 });
+
+/** Every visible form row must name a real product and carry a positive quantity. */
+export const orderRowsReady = (products, rows) => Array.isArray(rows) && rows.length > 0 && rows.every((row) => {
+  const product = products.find((candidate) => String(candidate._id) === String(row.productId));
+  if (!product || !(Number(row.qty) > 0)) return false;
+  return row.packId === "base" || packsOf(product).some((pack) => String(pack._id) === String(row.packId));
+});
+
+/** While the order is being reviewed, the admin can change the quantity of any line that is not rejected (which approves it). */
+export const canAdjustLine = (order, line) => canApprove(order) && !isRejected(line);
+
+/** The amount the admin edits, in the line's own unit: packs for a pack line, else the base unit. */
+export const editableQuantity = (line) => (line?.packId
+  ? { value: Number(line.packQuantity), unit: line.packName }
+  : { value: Number(line?.qtyBaseUnit), unit: line?.stockItemId?.unitId?.symbol || "" });
+
+/** "10 kg" or "4 × 25 kg bag": what the kitchen first asked for, once the admin changed the quantity; else null. */
+export const requestedLabel = (line) => {
+  if (line?.requestedQtyBaseUnit == null) return null;
+  if (line.packId && line.requestedPackQuantity != null) return `${qty(line.requestedPackQuantity)} × ${line.packName}`;
+  return `${qty(line.requestedQtyBaseUnit)} ${line?.stockItemId?.unitId?.symbol || ""}`.trim();
+};

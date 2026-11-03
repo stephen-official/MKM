@@ -11,6 +11,12 @@ const collaborativeLineSchema = new mongoose.Schema({
   // Set when an admin approves this line; the kitchen can no longer change or add to this product.
   approvedAt: { type: Date, default: null },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  // Set when an admin changed the quantity while reviewing (which also approves the line). requested* keep what the
+  // kitchen first asked for, so both sides can see the change.
+  adjustedAt: { type: Date, default: null },
+  adjustedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  requestedQtyBaseUnit: { type: Number, default: null },
+  requestedPackQuantity: { type: Number, default: null },
   // Set when an admin rejects this line (with the reason the kitchen sees); it is never bought, sent or received.
   rejectedAt: { type: Date, default: null },
   rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },

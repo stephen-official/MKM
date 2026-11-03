@@ -3,7 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { api } from "../../api.js";
 import { useToast } from "../../useToast.js";
 import { Banner, Button, Field, Modal, Select } from "../../components/ui/index.jsx";
-import { orderItems, unitChoices } from "./sharedOrders.js";
+import { orderItems, orderRowsReady, unitChoices } from "./sharedOrders.js";
 
 const BASE = "/procurement/collaborative-purchase-orders";
 const errorMessage = (error, fallback) => error?.response?.data?.message || error?.response?.data?.error || fallback;
@@ -42,7 +42,8 @@ export function RaiseOrderDialog({ onClose, onCreated }) {
   const setRow = (key, change) => set({ rows: form.rows.map((row) => (row.key === key ? { ...row, ...change } : row)) });
   const items = useMemo(() => orderItems(products, form.rows), [products, form.rows]);
   const chosen = new Set(form.rows.map((row) => row.productId).filter(Boolean));
-  const ready = Boolean(form.godownId && form.when) && items.length > 0;
+  const rowsReady = orderRowsReady(products, form.rows);
+  const ready = Boolean(form.godownId && form.when) && rowsReady;
   const kitchenName = kitchens.find((kitchen) => kitchen._id === form.godownId)?.name || "the kitchen";
 
   const submit = async (approve) => {
@@ -130,6 +131,9 @@ export function RaiseOrderDialog({ onClose, onCreated }) {
             <Button variant="ghost" size="sm" style={{ marginTop: 8 }} onClick={() => set({ rows: [...form.rows, blankRow()] })}>
               <Plus size={16} /> Add item
             </Button>
+            {!rowsReady && form.rows.some((row) => row.productId || row.qty) && (
+              <p className="field-error" role="alert">Choose a product and enter a quantity above zero for every item row.</p>
+            )}
           </div>
 
           <Field label="Note to the kitchen (optional)">

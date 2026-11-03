@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Ban, CheckCircle2, Save, ShoppingCart, Truck } from "lucide-react";
+import { Ban, CheckCircle2, Pencil, Save, ShoppingCart, Truck } from "lucide-react";
 import { api } from "../../api.js";
 import { useToast } from "../../useToast.js";
 import {
   Badge, Banner, Button, Card, DateField, DetailPanel, EmptyState, ErrorState, Field, Meta, Modal, RailItem, RailList, Select, SplitView
 } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
-import { allSharesApproved, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, canSetPurchaseDetails, closesInText, lineDelivery, lineLabel, orderStage, shareStage, sourceLabel } from "./sharedOrders.js";
+import { allSharesApproved, canAdjustLine, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, canSetPurchaseDetails, closesInText, editableQuantity, hasLiveItems, lineDelivery, lineLabel, orderStage, requestedLabel, shareStage, sourceLabel } from "./sharedOrders.js";
 import { RaiseOrderDialog } from "./RaiseOrderDialog.jsx";
 
 const BASE = "/procurement/collaborative-purchase-orders";
@@ -36,6 +36,8 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
   const [purchaseEdits, setPurchaseEdits] = useState({});
   // A rejection or cancellation waiting for its reason: { path, body, title, confirmLabel, success, note }.
   const [rejecting, setRejecting] = useState(null);
+  // A line whose quantity is being reviewed: the API interprets quantity in this displayed unit.
+  const [adjusting, setAdjusting] = useState(null);
   const requestId = useRef(0);
 
   const fetchList = () => api.get(BASE, { params: { limit: 100 } }).then((res) => res.data.items || []);
@@ -100,6 +102,13 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
     if (!reason) return;
     if (await act(rejecting.path, { ...rejecting.body, reason }, rejecting.success)) setRejecting(null);
   };
+  const sendAdjustment = async () => {
+    const quantity = Number(adjusting.quantity);
+    if (!(quantity > 0)) return;
+    const body = { godownId: adjusting.godownId, stockItemId: adjusting.stockItemId, quantity };
+    if (adjusting.packId) body.packId = adjusting.packId;
+    if (await act("adjust", body, `${adjusting.name} quantity changed and approved`)) setAdjusting(null);
+  };
   const raised = async (created) => {
     onRaiseClose();
     await load();
@@ -109,7 +118,7 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
   const raiseDialog = raising && <RaiseOrderDialog onClose={onRaiseClose} onCreated={raised} />;
   if (loadError && !orders.length) return <>{raiseDialog}<ErrorState message={loadError} onRetry={load} /></>;
 
-  const approvable = order && canApprove(order);
+  const approvable = order && canApprove(order) && hasLiveItems(order);
   return (
     <>
       <SplitView
@@ -296,7 +305,10 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
                               {name}
                               {line.rejectedAt && line.rejectionReason && <div style={{ fontSize: 12, color: "var(--muted)" }}>{line.rejectionReason}</div>}
                             </td>
-                            <td>{lineLabel(line)}</td>
+                            <td>
+                              {lineLabel(line)}
+                              {requestedLabel(line) && <div style={{ fontSize: 12, color: "var(--muted)" }}>Kitchen requested {requestedLabel(line)}</div>}
+                            </td>
                             <td style={{ textAlign: "right" }}>
                               {placed ? (
                                 <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
@@ -308,19 +320,26 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
                                     </Button>
                                   )}
                                 </span>
-                              ) : line.approvedAt ? <Badge variant="success">Approved</Badge> : line.rejectedAt ? <Badge variant="neutral">Not approved</Badge> : approvable ? (
-                                <span style={{ display: "inline-flex", gap: 8 }}>
+                              ) : line.rejectedAt ? <Badge variant="neutral">Not approved</Badge> : approvable ? (
+                                <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+                                  {line.approvedAt && <Badge variant="success">Approved</Badge>}
+                                  {canAdjustLine(order, line) && (
+                                    <Button size="sm" variant="ghost" disabled={busy} onClick={() => {
+                                      const editable = editableQuantity(line);
+                                      setAdjusting({ godownId: kitchenId, stockItemId: productId, packId: line.packId || null, name, quantity: String(editable.value), unit: editable.unit });
+                                    }}>
+                                      <Pencil size={14} /> Change quantity
+                                    </Button>
+                                  )}
                                   {canRejectLine(order, line) && (
                                     <Button size="sm" variant="ghost" disabled={busy}
                                       onClick={() => askReason("reject", pick, `Reject ${name}?`, "Reject", `${name} rejected`)}>
                                       Reject
                                     </Button>
                                   )}
-                                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => act("approve", pick, `${name} approved`)}>
-                                    Approve
-                                  </Button>
+                                  {!line.approvedAt && <Button size="sm" variant="ghost" disabled={busy} onClick={() => act("approve", pick, `${name} approved`)}>Approve</Button>}
                                 </span>
-                              ) : "—"}
+                              ) : line.approvedAt ? <Badge variant="success">Approved</Badge> : "—"}
                             </td>
                           </tr>
                         );
@@ -361,6 +380,22 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
           </Field>
           <p className="confirm-message" style={{ marginTop: 10 }}>
             {rejecting.path === "status" ? "No kitchen can add to or change this order afterwards." : "This cannot be undone. The kitchen can ask for these items again on a new order."}
+          </p>
+        </Modal>
+      )}
+      {adjusting && (
+        <Modal title={`Change ${adjusting.name} quantity`} onClose={() => !busy && setAdjusting(null)} actions={(
+          <>
+            <Button variant="ghost" disabled={busy} onClick={() => setAdjusting(null)}>Back</Button>
+            <Button disabled={busy || !(Number(adjusting.quantity) > 0)} onClick={sendAdjustment}>Change &amp; approve</Button>
+          </>
+        )}>
+          <Field label={`Quantity (${adjusting.unit || "base unit"})`}>
+            <input type="number" min="0.001" step="any" value={adjusting.quantity} autoFocus
+              onChange={(event) => setAdjusting({ ...adjusting, quantity: event.target.value })} />
+          </Field>
+          <p className="confirm-message" style={{ marginTop: 10 }}>
+            The kitchen will see both its original request and the changed quantity. Changing it also approves this item.
           </p>
         </Modal>
       )}
