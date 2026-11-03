@@ -118,3 +118,13 @@ export const withOrderProducts = (products, share) => {
   }
   return extra.length ? [...products, ...extra] : products;
 };
+
+/** "You asked for 10 kg" / "You asked for 4 × 25 kg bag" on a line whose quantity the central store changed; else null. */
+export const requestedAmountText = (line) => {
+  if (line?.requestedQtyBaseUnit == null) return null;
+  const amount = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
+  const asked = line.packId && line.requestedPackQuantity != null
+    ? `${amount(line.requestedPackQuantity)} × ${line.packName}`
+    : `${amount(line.requestedQtyBaseUnit)} ${line.stockItemId?.unitId?.symbol || ""}`.trim();
+  return `You asked for ${asked}`;
+};

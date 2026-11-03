@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canEditShare, canJoin, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, myOrders, withOrderProducts } from "./orders.js";
+import { canEditShare, canJoin, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, myOrders, requestedAmountText, withOrderProducts } from "./orders.js";
 
 const me = "kitchenA";
 const now = new Date("2026-10-18T04:30:00.000Z"); // 10:00 in India
@@ -131,4 +131,11 @@ test("an order's products are offered when editing, even ones the kitchen holds 
   assert.equal(offered[0], held[0], "a product the kitchen holds keeps its stock figures");
   assert.deepEqual(offered[1], { _id: "rice", name: "Rice", unit: "kg", image: "r.jpg", soldInPacks: true, packs: [{ _id: "bag", name: "25 kg bag", size: 25 }], currentQty: 0, thresholdBaseUnit: 0, available: true });
   assert.equal(withOrderProducts(held, null), held);
+});
+
+test("a quantity the central store changed shows what the kitchen first asked for", () => {
+  const rice = { stockItemId: { unitId: { symbol: "kg" } } };
+  assert.equal(requestedAmountText({ ...rice, qtyBaseUnit: 6 }), null);
+  assert.equal(requestedAmountText({ ...rice, qtyBaseUnit: 6, requestedQtyBaseUnit: 10, adjustedAt: at(-1) }), "You asked for 10 kg");
+  assert.equal(requestedAmountText({ ...rice, qtyBaseUnit: 75, packId: "bag", packName: "25 kg bag", packQuantity: 3, requestedQtyBaseUnit: 100, requestedPackQuantity: 4, adjustedAt: at(-1) }), "You asked for 4 × 25 kg bag");
 });
