@@ -17,6 +17,7 @@ import { businessDateOf, isIsoDate, startOfBusinessDay } from "../executive/para
 import { isKitchenRole } from "../utils/roles.js";
 import { closesAtFor, neededByFor } from "../ordering/window.js";
 import { readOrderingSettings } from "../ordering/settings.js";
+import { eventItems, orderEvent, visibleEvents } from "../ordering/orderEvents.js";
 
 export const collaborativePurchaseOrderRoutes = express.Router();
 const everyone = authorize(["admin", "user"]);
@@ -46,7 +47,13 @@ const sendError = (res, error) => {
 /** Orders whose ordering window has passed are closed here, so every read and write sees the current status. */
 export const closeExpiredOrders = (now = new Date()) => CollaborativePurchaseOrder.updateMany(
   { status: "open", closesAt: { $ne: null, $lte: now } },
-  [{ $set: { status: "closed", statusChangedAt: "$closesAt", statusChangedBy: null } }],
+  [{ $set: {
+    status: "closed", statusChangedAt: "$closesAt", statusChangedBy: null,
+    events: { $concatArrays: [{ $ifNull: ["$events", []] }, [{
+      action: "status_changed", at: "$closesAt", actorId: null, actorRole: "system", godownId: null, items: [],
+      fromStatus: "open", toStatus: "closed", note: "Ordering window ended",
+    }]] },
+  } }],
 );
 const text = (value, max, label) => {
   const result = String(value || "").trim();
@@ -130,6 +137,9 @@ const populateOrder = (query) => query
   .populate("contributions.items.ticketId", "status reason receivedQtyBaseUnit resolution.acceptedQtyBaseUnit resolution.reorderShortfall raisedAt")
   .populate("contributions.userId", "name")
   .populate("contributions.godownId", "name")
+  .populate("events.actorId", "name")
+  .populate("events.godownId", "name")
+  .populate({ path: "events.items.stockItemId", select: "name unitId", populate: { path: "unitId", select: "symbol" } })
   .populate({
     path: "contributions.items.stockItemId",
     select: "name imageUrl unitId stockGroupId brand productCode soldInPacks packs expiryRequired",
@@ -165,6 +175,7 @@ const responseOrder = (order, viewer) => {
   const full = {
     ...value, supplierId: supplier ? supplier._id : value.supplierId, supplier,
     kitchenCount: value.contributions?.length || 0, combinedItems: [...totals.values()],
+    events: visibleEvents(value.events, viewer),
   };
   if (!isKitchenRole(viewer?.role)) return full;
   return otherKitchensHidden({ ...full, supplierId: undefined }, viewer);
@@ -248,6 +259,10 @@ collaborativePurchaseOrderRoutes.post("/", everyone, requireAvailableProducts(bo
       createdBy: req.user.sub,
       createdByGodown: godownId,
       contributions: [contribution],
+      events: [
+        orderEvent(req.user, "raised", { godownId, items: eventItems(contribution.items), toStatus: "open" }),
+        ...(approveNow ? [orderEvent(req.user, "approved", { godownId, items: eventItems(contribution.items) })] : []),
+      ],
     });
     notifyKitchens("orders");
     return res.status(201).json(responseOrder(await loadOrder(order._id), req.user));
@@ -270,7 +285,10 @@ collaborativePurchaseOrderRoutes.post("/:id/contributions", kitchenOnly, require
     contribution.addedAt = contribution.updatedAt;
     const order = await CollaborativePurchaseOrder.findOneAndUpdate(
       { _id: req.params.id, status: "open", "contributions.godownId": { $ne: req.user.godownId } },
-      { $push: { contributions: contribution }, $set: { updatedAt: new Date() }, $inc: { __v: 1 } },
+      {
+        $push: { contributions: contribution, events: orderEvent(req.user, "joined", { godownId: req.user.godownId, items: eventItems(contribution.items) }) },
+        $set: { updatedAt: new Date() }, $inc: { __v: 1 },
+      },
       { new: true, runValidators: true },
     );
     if (!order) {
@@ -299,6 +317,7 @@ collaborativePurchaseOrderRoutes.put("/:id/contributions/me", kitchenOnly, requi
     if (mine.rejectedAt) throw fail(409, "The central store has closed your kitchen's items on this order", "SHARE_REJECTED");
     mine.items = keepApprovedLines(mine.items, contribution.items);
     Object.assign(mine, { note: contribution.note, userId: req.user.sub, updatedAt: contribution.updatedAt });
+    order.events.push(orderEvent(req.user, "edited", { godownId: req.user.godownId, items: eventItems(liveLines(mine)) }));
     await order.save();
     notifyKitchens("orders");
     return res.json(responseOrder(await loadOrder(order._id), req.user));
@@ -320,7 +339,11 @@ collaborativePurchaseOrderRoutes.delete("/:id/contributions/me", kitchenOnly, as
     // Matching the version read above means no approval landed in between.
     const order = await CollaborativePurchaseOrder.findOneAndUpdate(
       { _id: req.params.id, status: "open", __v: existing.__v, "contributions.godownId": req.user.godownId },
-      { $pull: { contributions: { godownId: req.user.godownId } }, $set: { updatedAt: new Date() }, $inc: { __v: 1 } },
+      {
+        $pull: { contributions: { godownId: req.user.godownId } },
+        $push: { events: orderEvent(req.user, "left", { godownId: req.user.godownId, items: eventItems(mine?.items || []) }) },
+        $set: { updatedAt: new Date() }, $inc: { __v: 1 },
+      },
       { new: true },
     );
     if (!order && mine && (await CollaborativePurchaseOrder.exists({ _id: req.params.id, "contributions.godownId": req.user.godownId }))) {
@@ -348,7 +371,9 @@ collaborativePurchaseOrderRoutes.post("/:id/approve", adminOnly, async (req, res
 
     const stamp = { approvedAt: new Date(), approvedBy: req.user.sub };
     // Rejected lines stay rejected; a share whose remaining items were rejected is not approved.
-    const approveLines = (lines) => lines.filter((line) => !line.approvedAt && !isRejected(line)).forEach((line) => Object.assign(line, stamp));
+    const approved = [];
+    const approveLines = (lines) => lines.filter((line) => !line.approvedAt && !isRejected(line))
+      .forEach((line) => { Object.assign(line, stamp); approved.push(line); });
     const approveShare = (share) => {
       approveLines(share.items);
       if (!share.approvedAt && !share.rejectedAt && liveLines(share).length > 0) Object.assign(share, stamp);
@@ -359,6 +384,7 @@ collaborativePurchaseOrderRoutes.post("/:id/approve", adminOnly, async (req, res
         throw fail(409, "This order has no approved items left; cancel it instead", "NO_ITEMS_TO_APPROVE");
       }
       order.contributions.forEach(approveShare);
+      order.events.push(orderEvent(req.user, "approved", { fromStatus: order.status, toStatus: "approved" }));
       Object.assign(order, { status: "approved", statusChangedAt: stamp.approvedAt, statusChangedBy: req.user.sub });
     } else {
       const share = order.contributions.find((entry) => String(entry.godownId) === String(godownId));
@@ -372,6 +398,7 @@ collaborativePurchaseOrderRoutes.post("/:id/approve", adminOnly, async (req, res
         if (chosen.some(isRejected)) throw fail(409, "Rejected items cannot be approved; the kitchen can ask for them on a new order", "LINE_REJECTED");
         approveLines(chosen);
       }
+      order.events.push(orderEvent(req.user, "approved", { godownId, items: eventItems(approved) }));
     }
     await order.save();
     notifyKitchens("orders");
@@ -402,14 +429,17 @@ collaborativePurchaseOrderRoutes.post("/:id/reject", adminOnly, async (req, res)
 
     const stamp = { rejectedAt: new Date(), rejectedBy: req.user.sub, rejectionReason: reason };
     if (!items) {
-      share.items.filter((line) => !line.approvedAt && !isRejected(line)).forEach((line) => Object.assign(line, stamp));
+      const rest = share.items.filter((line) => !line.approvedAt && !isRejected(line));
+      rest.forEach((line) => Object.assign(line, stamp));
       Object.assign(share, stamp);
+      order.events.push(orderEvent(req.user, "rejected", { godownId, items: eventItems(rest), note: reason }));
     } else {
       const chosen = pickLines(share, items);
       if (chosen.length === 0) throw fail(404, "Those items are not in this kitchen's share");
       if (chosen.some((line) => line.approvedAt)) throw fail(409, "Approved items cannot be rejected", "LINE_APPROVED");
       if (chosen.some(isRejected)) throw fail(409, "These items have already been rejected", "LINE_REJECTED");
       chosen.forEach((line) => Object.assign(line, stamp));
+      order.events.push(orderEvent(req.user, "rejected", { godownId, items: eventItems(chosen), note: reason }));
     }
     await order.save();
     notifyKitchens("orders");
@@ -445,9 +475,11 @@ collaborativePurchaseOrderRoutes.post("/:id/adjust", adminOnly, async (req, res)
     const next = line.packId ? { packQuantity: amount, qtyBaseUnit: Number((amount * Number(line.packSize)).toFixed(3)) } : { qtyBaseUnit: amount };
     if (next.qtyBaseUnit === Number(line.qtyBaseUnit)) throw fail(400, "That is the quantity already asked for; approve the item instead");
     const now = new Date();
+    const fromQtyBaseUnit = Number(line.qtyBaseUnit);
     if (line.requestedQtyBaseUnit == null) Object.assign(line, { requestedQtyBaseUnit: line.qtyBaseUnit, requestedPackQuantity: line.packQuantity ?? null });
     Object.assign(line, next, { adjustedAt: now, adjustedBy: req.user.sub });
     if (!line.approvedAt) Object.assign(line, { approvedAt: now, approvedBy: req.user.sub });
+    order.events.push(orderEvent(req.user, "quantity_changed", { godownId, items: [{ ...eventItems([line])[0], fromQtyBaseUnit }] }));
     await order.save();
     notifyKitchens("orders");
     return res.json(responseOrder(await loadOrder(order._id), req.user));
@@ -481,7 +513,9 @@ collaborativePurchaseOrderRoutes.post("/:id/dispatch", adminOnly, async (req, re
         lines = pickLines(share, items);
         if (lines.length === 0) throw fail(404, "Those items are not in this kitchen's share");
       }
-      for (const line of lines.filter((candidate) => !isRejected(candidate) && !isSent(candidate, share))) { Object.assign(line, stamp); sent += 1; }
+      const sending = lines.filter((candidate) => !isRejected(candidate) && !isSent(candidate, share));
+      for (const line of sending) { Object.assign(line, stamp); sent += 1; }
+      if (sending.length) order.events.push(orderEvent(req.user, "dispatched", { godownId: share.godownId, items: eventItems(sending) }));
       const live = liveLines(share);
       if (!share.dispatchedAt && live.length > 0 && live.every((line) => isSent(line, share))) Object.assign(share, stamp);
     }
@@ -641,6 +675,8 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
       }, new Map());
       const receivedAt = new Date();
       const today = businessDateOf(receivedAt);
+      const receivedLines = [];
+      const problems = [];
       for (const line of arriving) {
         const supplier = supplierSnapshotFor(order, line.stockItemId);
         const product = await StockItem.findById(line.stockItemId).select("name pricePerUnit expiryRequired").session(session);
@@ -658,6 +694,7 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
             orderedQtyBaseUnit: line.qtyBaseUnit, raisedBy: req.user.sub, raisedAt: receivedAt, ...problem,
           }], { session });
           line.ticketId = ticket._id;
+          problems.push({ line, reason: problem.reason });
           continue;
         }
         const checked = receiptDetails(input, product, today);
@@ -674,8 +711,16 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
           trackingId, ...checked, ...supplier,
         });
         Object.assign(line, { deliveredAt: receivedAt, deliveredBy: req.user.sub, trackingId, receivedQtyBaseUnit: line.qtyBaseUnit });
+        receivedLines.push(line);
       }
       if (liveLines(share).every((line) => isReceived(line, share))) Object.assign(share, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
+      if (receivedLines.length) order.events.push(orderEvent(req.user, "received", { godownId: share.godownId, items: eventItems(receivedLines) }));
+      if (problems.length) {
+        order.events.push(orderEvent(req.user, "problem_raised", {
+          godownId: share.godownId, items: eventItems(problems.map((entry) => entry.line)),
+          note: [...new Set(problems.map((entry) => entry.reason.replace("_", " ")))].join(", "),
+        }));
+      }
       await order.save({ session });
     });
     notifyKitchens("orders");
@@ -744,13 +789,36 @@ const applyPurchaseDetails = async (order, body) => {
 };
 
 /** Admin: supplier and invoice number for an approved or ordered order. Kitchens see both read-only. */
+const purchaseSnapshot = (order) => ({
+  supplierId: order.supplierId ? String(order.supplierId) : "",
+  invoiceNo: order.invoiceNo || "",
+  overrides: JSON.stringify(order.supplierByProduct.map((entry) => [String(entry.stockItemId), String(entry.supplierId)]).sort()),
+  expiry: JSON.stringify(order.expiryByProduct.map((entry) => [String(entry.stockItemId), entry.expiryDate]).sort()),
+});
+/** "Supplier Sri Lakshmi Traders; invoice INV-7; …": what a purchase-details save changed, for the history ("" if nothing). */
+const purchaseChanges = async (before, order) => {
+  const after = purchaseSnapshot(order);
+  const parts = [];
+  if (after.supplierId !== before.supplierId) {
+    const supplier = after.supplierId ? await Supplier.findById(after.supplierId).select("name").lean() : null;
+    parts.push(supplier ? `Supplier ${supplier.name}` : "Supplier removed");
+  }
+  if (after.invoiceNo !== before.invoiceNo) parts.push(after.invoiceNo ? `Invoice ${after.invoiceNo}` : "Invoice removed");
+  if (after.overrides !== before.overrides) parts.push("Per-item suppliers updated");
+  if (after.expiry !== before.expiry) parts.push("Bulk expiry dates updated");
+  return parts.join("; ");
+};
+
 collaborativePurchaseOrderRoutes.patch("/:id/purchase", adminOnly, async (req, res) => {
   try {
     await closeExpiredOrders();
     const order = await CollaborativePurchaseOrder.findById(req.params.id);
     if (!order) throw fail(404, "Collaborative purchase order not found");
     if (!["approved", "ordered"].includes(order.status)) throw fail(409, "Approve the order before adding supplier or invoice details", "NOT_APPROVED");
+    const before = purchaseSnapshot(order);
     if ((await applyPurchaseDetails(order, req.body || {})) === 0) throw fail(400, "Send a supplierId, an invoiceNo, supplierOverrides or expiryDates");
+    const summary = await purchaseChanges(before, order);
+    if (summary) order.events.push(orderEvent(req.user, "purchase_updated", { note: summary }));
     await order.save();
     notifyKitchens("orders");
     return res.json(responseOrder(await loadOrder(order._id), req.user));
@@ -765,11 +833,16 @@ collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res
     const order = await CollaborativePurchaseOrder.findById(req.params.id);
     if (!order) throw fail(404, "Collaborative purchase order not found");
     if (next !== order.status && !TRANSITIONS[order.status].has(next)) throw fail(409, `An ${order.status} order cannot move to ${next}`);
+    const before = purchaseSnapshot(order);
     // "Mark as ordered" may name the supplier in the same call, and must end up with one: kitchens see the
     // supplier's name and FSSAI licence on every batch they receive.
     if (next === "ordered" && req.body.supplierId !== undefined) await applyPurchaseDetails(order, { supplierId: req.body.supplierId });
     if (next === "ordered" && !order.supplierId) throw fail(400, "Choose a supplier before marking the order as ordered", "SUPPLIER_REQUIRED");
     if (next === "cancelled" && order.status !== "cancelled") order.cancellationReason = requiredReason(req.body.reason);
+    if (next !== order.status) {
+      const note = next === "cancelled" ? order.cancellationReason : await purchaseChanges(before, order);
+      order.events.push(orderEvent(req.user, "status_changed", { fromStatus: order.status, toStatus: next, note }));
+    }
     order.status = next;
     order.statusChangedAt = new Date();
     order.statusChangedBy = req.user.sub;

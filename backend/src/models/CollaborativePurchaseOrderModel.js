@@ -57,6 +57,32 @@ const contributionSchema = new mongoose.Schema({
   deliveredBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { _id: true });
 
+// One entry in an order's history. Written in the same save as the change it records, and never edited afterwards.
+export const ORDER_EVENT_ACTIONS = Object.freeze([
+  "raised", "joined", "edited", "left", "approved", "rejected", "quantity_changed",
+  "purchase_updated", "status_changed", "dispatched", "received", "problem_raised", "problem_settled",
+]);
+const orderEventSchema = new mongoose.Schema({
+  action: { type: String, enum: ORDER_EVENT_ACTIONS, required: true },
+  at: { type: Date, required: true },
+  // "system" (no actorId) when the ordering window closes the order by itself.
+  actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  actorRole: { type: String, enum: ["kitchen", "admin", "system"], required: true },
+  // The kitchen the event concerns; null for order-wide events (approve all, status changes, purchase details).
+  godownId: { type: mongoose.Schema.Types.ObjectId, ref: "Godown", default: null },
+  items: { type: [{
+    _id: false,
+    stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: "StockItem", required: true },
+    packId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    qtyBaseUnit: { type: Number, default: null },
+    fromQtyBaseUnit: { type: Number, default: null },
+  }], default: [] },
+  fromStatus: { type: String, default: null },
+  toStatus: { type: String, default: null },
+  // A reason (rejection, cancellation) or a short summary (purchase details, delivery problem settled).
+  note: { type: String, trim: true, maxlength: 1000, default: "" },
+}, { _id: false });
+
 const collaborativePurchaseOrderSchema = new mongoose.Schema({
   orderNo: { type: String, required: true, unique: true },
   title: { type: String, trim: true, maxlength: 120, default: "" },
@@ -84,6 +110,8 @@ const collaborativePurchaseOrderSchema = new mongoose.Schema({
   statusChangedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   // Why the central store cancelled the order; kitchens see it on the cancelled order.
   cancellationReason: { type: String, trim: true, maxlength: 500, default: "" },
+  // Everything that happened to the order, oldest first (see orderEventSchema). Orders from before this read as [].
+  events: { type: [orderEventSchema], default: [] },
 }, { timestamps: true, optimisticConcurrency: true });
 
 collaborativePurchaseOrderSchema.index({ status: 1, updatedAt: -1 });

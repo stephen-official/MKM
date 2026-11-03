@@ -10,6 +10,7 @@ import { createStockBatch } from "../stock/batchService.js";
 import { nextTrackingId } from "../stock/trackingId.js";
 import { readOrderingSettings } from "../ordering/settings.js";
 import { closesAtFor, neededByFor } from "../ordering/window.js";
+import { orderEvent } from "../ordering/orderEvents.js";
 import { supplierSnapshotFor } from "./collaborativePurchaseOrderRoutes.js";
 
 // Admin view of delivery problems kitchens raised while receiving shared orders (raised through
@@ -58,6 +59,10 @@ const openFollowUpOrder = async ({ ticket, order: original, shortfall, actor, no
     neededBy, emergency: false, closesAt: closesAtFor(now, neededBy, settings),
     createdBy: actor, createdByGodown: ticket.godownId, source: "admin",
     contributions: [{ godownId: ticket.godownId, userId: actor, items: [{ stockItemId: ticket.stockItemId, qtyBaseUnit: shortfall }], addedAt: now, updatedAt: now }],
+    events: [orderEvent({ sub: actor, role: "admin" }, "raised", {
+      at: now, godownId: ticket.godownId, items: [{ stockItemId: ticket.stockItemId, qtyBaseUnit: shortfall }], toStatus: "open",
+      note: `For the shortfall on ${ticket.orderNo}`,
+    })],
   }], { session });
   return order;
 };
@@ -111,6 +116,11 @@ deliveryTicketRoutes.post("/:id/settle", adminOnly, async (req, res) => {
       const shortfall = Math.max(0, Number(ticket.orderedQtyBaseUnit) - accepted);
       const followUp = reorder && shortfall > 0 ? await openFollowUpOrder({ ticket, order, shortfall, actor: req.user.sub, now, session }) : null;
       Object.assign(line, { deliveredAt: now, deliveredBy: req.user.sub, trackingId, receivedQtyBaseUnit: accepted });
+      order.events.push(orderEvent(req.user, "problem_settled", {
+        godownId: ticket.godownId,
+        items: [{ stockItemId: ticket.stockItemId, packId: ticket.packId || null, qtyBaseUnit: accepted, fromQtyBaseUnit: ticket.orderedQtyBaseUnit }],
+        note: `Accepted ${accepted} of ${ticket.orderedQtyBaseUnit}${followUp ? `; follow-up order ${followUp.orderNo}` : ""}`,
+      }));
       if (share.items.every((entry) => entry.deliveredAt || entry.rejectedAt)) Object.assign(share, { deliveredAt: now, deliveredBy: req.user.sub });
       await order.save({ session });
       ticket.status = "settled";

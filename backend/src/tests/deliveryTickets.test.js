@@ -170,6 +170,10 @@ test("settling a short delivery puts the accepted quantity into stock and opens 
   assert.equal(rice.receivedQtyBaseUnit, 60);
   assert.equal(rice.ticketId.status, "settled");
   assert.ok(order.contributions[0].deliveredAt, "every line is now delivered");
+  const [raisedProblem, settled] = order.events.filter((event) => event.action.startsWith("problem_"));
+  assert.deepEqual([raisedProblem.action, raisedProblem.actorRole, raisedProblem.note], ["problem_raised", "kitchen", "short"]);
+  assert.deepEqual([settled.action, settled.actorRole, settled.items[0].qtyBaseUnit, settled.items[0].fromQtyBaseUnit], ["problem_settled", "admin", 60, 100]);
+  assert.match(settled.note, /^Accepted 60 of 100; follow-up order CPO-/);
 
   const followUp = (await call(ctx.cookA, "get", `/${res.body.resolution.followUpOrderId}`)).body;
   assert.equal(followUp.status, "open");
@@ -178,6 +182,7 @@ test("settling a short delivery puts the accepted quantity into stock and opens 
   assert.equal(followUp.source, "admin", "the central store opened it for the kitchen");
   assert.deepEqual(followUp.contributions[0].items.map((l) => [l.stockItemId.name, l.qtyBaseUnit]), [["Rice", 40]]);
   assert.ok(followUp.neededBy && followUp.closesAt);
+  assert.deepEqual(followUp.events.map((event) => [event.action, event.actorRole, event.note]), [["raised", "admin", `For the shortfall on ${ctx.order.orderNo}`]]);
 
   const ledger = await request(app).get(`/api/product-ledger/${ctx.rice._id}`).query({ godownId: String(ctx.kitchenA._id) }).set("Authorization", `Bearer ${ctx.admin.token}`);
   assert.deepEqual(ledger.body.ledger.map((row) => [row.type, row.qtyIn, row.balance]), [["RECEIVED", 60, 60]]);
