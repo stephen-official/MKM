@@ -52,7 +52,9 @@ Base path: `/api/ordering-settings`
 
 `PUT /` (super-admin only) with `{ expectedVersion, settings }` saves all four figures. If someone else saved since `expectedVersion`, it fails with 409 `VERSION_CONFLICT`. Figures outside these limits fail with 400 `INVALID_INPUT`: 1–10 options with unique short keys, labels up to 30 characters and 1 hour to 1 year each; emergency 15 minutes to 24 hours; closing before delivery 0–60 days; shortest window 5%–95%.
 
-An admin opens an order for a kitchen by also sending `godownId`. The contribution then belongs to that kitchen, which can edit it like its own, and the same product availability rules as for kitchens apply.
+An admin opens an order for a kitchen by also sending `godownId`. The contribution then belongs to that kitchen, which can edit it like its own (any cook of that kitchen can), and the same product availability rules as for kitchens apply. The order records who raised it in `source`: `"kitchen"` or `"admin"` (orders from before this field read as `"kitchen"`; follow-up orders opened when a delivery problem is settled are `"admin"`).
+
+An admin may also send `"approve": true` ("Approve and send"): that kitchen's items are approved as the order is created, exactly as `POST /:id/approve { godownId }` would. The order stays `open`, so other kitchens can still join until it closes, and their items wait for review as usual. Approval never adds stock; the kitchen's stock goes up only when it receives the delivery. A kitchen sending `approve` gets 403.
 
 ### Join an open order (kitchen only)
 
@@ -96,7 +98,20 @@ The kitchen that originally opened the order cannot leave it, but can edit its c
 | `{ "godownId": "KITCHEN_ID" }` | Approves that kitchen's whole share; other kitchens carry on |
 | `{ "godownId": "KITCHEN_ID", "items": [{ "stockItemId": "PRODUCT_ID", "packId": "optional" }] }` | Approves those lines of that kitchen's share; the rest stays editable |
 
-Approval works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSED`). Approved lines and shares carry `approvedAt` and `approvedBy`. A kitchen or product that is not on the order gives 404.
+Approval works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSED`). Approved lines and shares carry `approvedAt` and `approvedBy`. A kitchen or product that is not on the order gives 404. Rejected lines are skipped by "approve all" and "approve kitchen" (a kitchen whose remaining items were all rejected is not approved); naming a rejected line gives 409 `LINE_REJECTED`, and approving a rejected kitchen 409 `SHARE_REJECTED`.
+
+### Reject (admin only)
+
+`POST /:id/reject`
+
+| Body | Effect |
+| --- | --- |
+| `{ "godownId": "KITCHEN_ID", "reason": "…" }` | Rejects every line of that kitchen's share not yet approved and locks the share (approved lines stay approved) |
+| `{ "godownId": "KITCHEN_ID", "items": [{ "stockItemId": "PRODUCT_ID", "packId": "optional" }], "reason": "…" }` | Rejects just those lines; the rest stays editable and reviewable |
+
+`reason` (up to 500 characters) is required (400 `REASON_REQUIRED`) and the kitchen sees it; other kitchens do not. Rejected lines (and a rejected share) carry `rejectedAt`, `rejectedBy` and `rejectionReason`. A decision is final: an approved line cannot be rejected (409 `LINE_APPROVED`), a rejected one cannot be approved or rejected again (409 `LINE_REJECTED`), and a rejected or fully approved kitchen gives 409 `SHARE_REJECTED` / `SHARE_APPROVED`. Rejecting works while the order is `open` or `closed` (otherwise 409 `ORDER_CLOSED`). To stop the whole order, cancel it through `PATCH /:id/status`.
+
+A rejected line stays on the order as a record. It is left out of `combinedItems` (it is not bought), is never dispatched or received, and does not appear in the product ledger. A share counts as dispatched or delivered once every line that was not rejected is. When the kitchen edits its items, rejected lines are kept whether or not they are sent back; asking for a rejected product again on the same order gives 409 `LINE_REJECTED`, and a rejected share cannot be edited (409 `SHARE_REJECTED`).
 
 ### Dispatch (admin only)
 
@@ -187,6 +202,8 @@ Any key may be sent alone; only the keys present change. `supplierOverrides` is 
 { "status": "closed" }
 ```
 
+Cancelling requires `reason` (`{ "status": "cancelled", "reason": "…" }`, otherwise 400 `REASON_REQUIRED`); it is stored as `cancellationReason` and kitchens see it.
+
 Moving to `ordered` requires a supplier: either already set through `PATCH /:id/purchase`, or named in the same call as `{ "status": "ordered", "supplierId": "<supplier id>" }`. Without one, 400 `SUPPLIER_REQUIRED` and the order stays `approved`.
 
 Allowed transitions:
@@ -225,4 +242,4 @@ Errors use the shared `{ code, message }` shape: `INVALID_INPUT` (400), `NOT_FOU
 
 ## Errors
 
-Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `SUPPLIER_REQUIRED` (400), `ALREADY_SETTLED` (409), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `LINE_REJECTED` (409), `SHARE_REJECTED` (409), `REASON_REQUIRED` (400), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `SUPPLIER_REQUIRED` (400), `ALREADY_SETTLED` (409), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
