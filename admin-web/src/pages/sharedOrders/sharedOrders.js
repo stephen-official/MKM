@@ -31,6 +31,9 @@ export const canCancel = (order) => ["open", "closed", "approved"].includes(orde
 
 export const canDispatchAll = (order) => (order?.contributions || []).some((share) => canDispatch(order, share));
 
+/** Button copy reflects whether this is the kitchen's first dispatch or a later batch. */
+export const dispatchActionLabel = (stage) => (["Incomplete dispatch", "Partly received"].includes(stage) ? "Dispatch the rest" : "Dispatch kitchen");
+
 /** "Not sent", "On the way", "Problem raised" or "Received" for one line. */
 export const lineDelivery = (line, share) => (isRejected(line) ? "Not approved" : isReceived(line, share) ? "Received" : line?.ticketId ? "Problem raised" : isSent(line, share) ? "On the way" : "Not sent");
 

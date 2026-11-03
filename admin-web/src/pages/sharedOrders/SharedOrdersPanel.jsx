@@ -6,7 +6,7 @@ import {
   Badge, Banner, Button, Card, DateField, DetailPanel, EmptyState, ErrorState, Field, Meta, Modal, RailItem, RailList, Select, SplitView
 } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
-import { allSharesApproved, canAdjustLine, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, canSetPurchaseDetails, closesInText, editableQuantity, eventActor, eventText, hasLiveItems, lineDelivery, lineLabel, orderStage, requestedLabel, shareStage, sourceLabel } from "./sharedOrders.js";
+import { allSharesApproved, canAdjustLine, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, canSetPurchaseDetails, closesInText, dispatchActionLabel, editableQuantity, eventActor, eventText, hasLiveItems, lineDelivery, lineLabel, orderStage, requestedLabel, shareStage, sourceLabel } from "./sharedOrders.js";
 import { RaiseOrderDialog } from "./RaiseOrderDialog.jsx";
 
 const BASE = "/procurement/collaborative-purchase-orders";
@@ -288,7 +288,7 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
                           title: `Dispatch to ${share.godownId?.name || "this kitchen"}?`,
                           message: "Its items that have not been sent yet are marked as on the way; the kitchen confirms when they arrive.",
                           confirmLabel: "Dispatch",
-                        })}><Truck size={16} /> {stage === "Partly dispatched" || stage === "Partly received" ? "Dispatch the rest" : "Dispatch kitchen"}</Button>
+                        })}><Truck size={16} /> {dispatchActionLabel(stage)}</Button>
                       )}
                     </div>
                   </div>

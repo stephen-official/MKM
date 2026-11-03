@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAdjustLine, editableQuantity, eventActor, eventText, requestedLabel, allSharesApproved, canSetPurchaseDetails, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, closesInText, hasLiveItems, lineDelivery, orderItems, orderRowsReady, orderStage, shareStage, lineLabel, sourceLabel, unitChoices } from "./sharedOrders.js";
+import { canAdjustLine, dispatchActionLabel, editableQuantity, eventActor, eventText, requestedLabel, allSharesApproved, canSetPurchaseDetails, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, closesInText, hasLiveItems, lineDelivery, orderItems, orderRowsReady, orderStage, shareStage, lineLabel, sourceLabel, unitChoices } from "./sharedOrders.js";
 
 const now = new Date("2026-10-18T04:30:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
@@ -41,6 +41,9 @@ describe("shared orders (admin)", () => {
     expect(canDispatchAll({ status: "ordered", contributions: [share({ items: [sent] })] })).toBe(false);
     expect([lineDelivery(pending, mixed), lineDelivery(sent, mixed), lineDelivery({ ...sent, deliveredAt: at(-1) }, mixed)]).toEqual(["Not sent", "On the way", "Received"]);
     expect(shareStage(ordered, mixed)).toBe("Incomplete dispatch");
+    expect(dispatchActionLabel(shareStage(ordered, mixed))).toBe("Dispatch the rest");
+    expect(dispatchActionLabel("Partly received")).toBe("Dispatch the rest");
+    expect(dispatchActionLabel("Needs to be dispatched")).toBe("Dispatch kitchen");
     expect(shareStage(ordered, share({ items: [{ ...sent, deliveredAt: at(-1) }, sent] }))).toBe("Partly received");
   });
 
