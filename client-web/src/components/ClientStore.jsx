@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, forwardRef } from 'react';
+import React, { Suspense, forwardRef, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from "../api";
 import { toast } from 'react-hot-toast';
@@ -13,7 +13,6 @@ import KitchenBottomNav from "./kitchen/KitchenBottomNav";
 import KitchenStock from "./kitchen/KitchenStock";
 import KitchenUsageScreen from "./kitchen/KitchenUsageScreen";
 import SupplyRequestsDeliveries from "./kitchen/SupplyRequestsDeliveries";
-import KitchenOrders from "./kitchen/KitchenOrders";
 import KitchenActivity from "./kitchen/KitchenActivity";
 import ReportMistakeSheet from "./kitchen/ReportMistakeSheet";
 import KitchenTransfers from "./kitchen/KitchenTransfers";
@@ -31,6 +30,10 @@ import { toastFeatureDisabled } from "../featureToast.js";
 import Select from "./ui/Select";
 import { useConfirm } from "./ui/ConfirmDialog";
 import { draftCounts, hasArriving } from "../features/kitchen/orders";
+
+// Ordering pulls in receiving, camera, voice-note and label-scanning UI. Keep
+// that substantial workflow out of the initial kitchen/home download.
+const KitchenOrders = lazy(() => import("./kitchen/KitchenOrders"));
 
 const CustomDateInput = forwardRef(({ value, onClick, placeholder }, ref) => (
   <button
@@ -884,17 +887,19 @@ setEditIndentId(indent._id);
           {activeTab === "orders-history"
             ? <KitchenSectionNav label="History sections" value="orders-history" items={historySections} onChange={(view) => setActiveTab(view)} />
             : <KitchenSectionNav label="Order sections" value={activeTab} items={requestSections} onChange={(view) => setActiveTab(view)} />}
-          <KitchenOrders
-            products={usableItems}
-            onOrdersLoaded={setSharedOrders}
-            godownId={userInfo?.godown?._id}
-            draft={orderDraft}
-            onDraftChange={setOrderDraft}
-            section={activeTab === "new-order" ? "new" : activeTab === "orders-history" ? "history" : "ongoing"}
-            canTransfer={!hidden.has("transfers")}
-            onNewOrder={() => setActiveTab("new-order")}
-            onLeaveNewOrder={() => setActiveTab("requests")}
-          />
+          <Suspense fallback={<div className="p-6 text-center text-sm text-slate-500">Loading orders…</div>}>
+            <KitchenOrders
+              products={usableItems}
+              onOrdersLoaded={setSharedOrders}
+              godownId={userInfo?.godown?._id}
+              draft={orderDraft}
+              onDraftChange={setOrderDraft}
+              section={activeTab === "new-order" ? "new" : activeTab === "orders-history" ? "history" : "ongoing"}
+              canTransfer={!hidden.has("transfers")}
+              onNewOrder={() => setActiveTab("new-order")}
+              onLeaveNewOrder={() => setActiveTab("requests")}
+            />
+          </Suspense>
         </>
       ) : activeTab === "past-requests" ? (
         <SupplyRequestsDeliveries
