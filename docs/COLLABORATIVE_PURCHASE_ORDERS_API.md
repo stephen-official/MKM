@@ -22,6 +22,32 @@ The response includes each kitchen contribution plus `kitchenCount` and `combine
 
 What a kitchen user sees is limited: its own contribution is complete, but other kitchens' contributions list only `stockItemId` per item (no quantities, pack details or note), and `combinedItems` lists products without `qtyBaseUnit`. Admins see everything. As on every endpoint, price fields (`packPrice`, pack `price`, `pricePerUnit` and so on) are removed from kitchen responses by `kitchenPriceFilter` (`backend/src/utils/kitchenSafe.js`).
 
+### History
+
+Every order (in the list and on its own) carries `events`, its history oldest first. Each event is written in the same save as the change it records and is never edited afterwards:
+
+```json
+{ "action": "rejected", "at": "2026-11-03T17:35:00.000Z", "actorId": { "_id": "…", "name": "Asha" }, "actorRole": "admin",
+  "godownId": { "_id": "…", "name": "Gandhi Nagar School" }, "items": [{ "stockItemId": { "_id": "…", "name": "Dal" }, "packId": null, "qtyBaseUnit": 4, "fromQtyBaseUnit": null }],
+  "fromStatus": null, "toStatus": null, "note": "Dal is still in stock" }
+```
+
+| `action` | Recorded when | `godownId` | Notes |
+| --- | --- | --- | --- |
+| `raised` | An order is opened (also follow-up orders for a delivery shortfall) | the kitchen it is for | `items` as asked; `toStatus` `open` |
+| `joined`, `edited`, `left` | A kitchen joins, changes its items, or leaves | that kitchen | `items` is the kitchen's list (rejected lines left out of `edited`) |
+| `approved` | Lines, a kitchen, or the whole order are approved (also "approve and send") | the kitchen, or null for the whole order | whole order: `fromStatus` → `approved` |
+| `rejected` | Lines or a kitchen's remaining items are rejected | that kitchen | `note` is the reason |
+| `quantity_changed` | An admin changes a quantity | that kitchen | `items[0]` has `fromQtyBaseUnit` and `qtyBaseUnit` |
+| `purchase_updated` | Supplier, invoice, per-item suppliers or bulk expiry dates change | null | `note` lists what changed |
+| `status_changed` | The order is closed, ordered or cancelled | null | `fromStatus`/`toStatus`; `note` is the cancellation reason or the supplier set while ordering. When the ordering window ends, `actorRole` is `system` and `actorId` null |
+| `dispatched` | Lines are sent (one event per kitchen) | that kitchen | the lines sent |
+| `received` | A kitchen receives what arrived | that kitchen | the lines added to stock |
+| `problem_raised` | A kitchen reports a delivery problem while receiving | that kitchen | `note` lists the reasons |
+| `problem_settled` | An admin settles a delivery problem | that kitchen | `items[0]`: accepted `qtyBaseUnit` and ordered `fromQtyBaseUnit`; `note` names any follow-up order |
+
+`actorRole` is `kitchen`, `admin` or `system`. Kitchens see only order-wide events (`godownId` null) and their own kitchen's; admins see all. Orders from before the history was kept have `events: []`.
+
 ### Open an order (kitchen, or admin on a kitchen's behalf)
 
 `POST /`
