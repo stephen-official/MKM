@@ -75,23 +75,48 @@ export const normalizeCollaborativeItems = (items) => {
 
 const lineKey = (line) => `${String(line.stockItemId?._id || line.stockItemId)}:${String(line.packId || "base")}`;
 const productOf = (line) => String(line.stockItemId?._id || line.stockItemId);
+const sameAmount = (a, b) => Number(a.qtyBaseUnit) === Number(b.qtyBaseUnit) && Number(a.packQuantity || 0) === Number(b.packQuantity || 0);
+const isRejected = (line) => Boolean(line?.rejectedAt);
+/** A share's lines that are still wanted: rejected lines are never bought, sent or received. */
+const liveLines = (share) => share.items.filter((line) => !isRejected(line));
+/** The lines of a share named by [{ stockItemId, packId? }] (no packId matches every pack of that product). */
+const pickLines = (share, picks) => share.items.filter((line) => picks.some((pick) => String(pick?.stockItemId) === productOf(line)
+  && (!pick.packId || String(pick.packId) === String(line.packId))));
+/** The reason the kitchen will see for a rejection or cancellation; required. */
+const requiredReason = (value) => {
+  const reason = text(value, 500, "Reason");
+  if (!reason) throw fail(400, "Give a reason the kitchen will see", "REASON_REQUIRED");
+  return reason;
+};
 
 /**
- * A kitchen's new item list, keeping its approved lines: each must come back unchanged (its approval is
- * carried over) and no other line may name an approved product. Throws LINE_APPROVED otherwise.
+ * A kitchen's new item list, keeping the lines the admin has decided on. Approved lines must come back unchanged
+ * (their approval is carried over) and no other line may name an approved product (LINE_APPROVED). Rejected lines
+ * stay on record whether or not they are sent back; asking for a rejected product again fails with LINE_REJECTED.
  */
 export const keepApprovedLines = (currentItems, nextItems) => {
+  const rejected = currentItems.filter(isRejected);
+  const rejectedByKey = new Map(rejected.map((line) => [lineKey(line), line]));
+  const rejectedProducts = new Set(rejected.map(productOf));
+  const wanted = nextItems.filter((line) => {
+    const was = rejectedByKey.get(lineKey(line));
+    return !(was && sameAmount(was, line));
+  });
+  if (wanted.some((line) => rejectedProducts.has(productOf(line)))) {
+    throw fail(409, "Items the central store did not approve cannot be asked for again on this order", "LINE_REJECTED");
+  }
+
   const approved = currentItems.filter((line) => line.approvedAt);
   const approvedProducts = new Set(approved.map(productOf));
-  const byKey = new Map(nextItems.map((line) => [lineKey(line), line]));
+  const byKey = new Map(wanted.map((line) => [lineKey(line), line]));
   const locked = () => fail(409, "Approved items cannot be changed or added to", "LINE_APPROVED");
   for (const line of approved) {
     const next = byKey.get(lineKey(line));
-    if (!next || Number(next.qtyBaseUnit) !== Number(line.qtyBaseUnit) || Number(next.packQuantity || 0) !== Number(line.packQuantity || 0)) throw locked();
+    if (!next || !sameAmount(next, line)) throw locked();
     Object.assign(next, { approvedAt: line.approvedAt, approvedBy: line.approvedBy });
   }
-  if (nextItems.some((line) => approvedProducts.has(productOf(line)) && !line.approvedAt)) throw locked();
-  return nextItems;
+  if (wanted.some((line) => approvedProducts.has(productOf(line)) && !line.approvedAt)) throw locked();
+  return [...wanted, ...rejected.map((line) => (line.toObject ? line.toObject() : line))];
 };
 
 const populateOrder = (query) => query
@@ -116,7 +141,7 @@ const otherKitchensHidden = (value, viewer) => ({
   ...value,
   contributions: (value.contributions || []).map((contribution) => (idOf(contribution.godownId) === String(viewer.godownId)
     ? contribution
-    : { ...contribution, note: undefined, items: contribution.items.map((item) => ({ stockItemId: item.stockItemId })) })),
+    : { ...contribution, note: undefined, rejectionReason: undefined, items: contribution.items.map((item) => ({ stockItemId: item.stockItemId })) })),
   combinedItems: value.combinedItems.map((line) => ({ stockItemId: line.stockItemId })),
 });
 
@@ -125,6 +150,7 @@ const responseOrder = (order, viewer) => {
   const totals = new Map();
   for (const contribution of value.contributions || []) {
     for (const item of contribution.items || []) {
+      if (isRejected(item)) continue;
       const product = item.stockItemId;
       const id = idOf(product);
       const current = totals.get(id) || { stockItemId: product, qtyBaseUnit: 0 };
@@ -191,6 +217,11 @@ const openingKitchen = async (req) => {
 
 collaborativePurchaseOrderRoutes.post("/", everyone, requireAvailableProducts(bodyItemIds), async (req, res) => {
   try {
+    const kitchen = isKitchenRole(req.user.role);
+    // "Approve and send": the central store approves the kitchen's items as it raises the order. Other kitchens
+    // can still join until the order closes, and their items wait for review as usual.
+    const approveNow = req.body.approve === true;
+    if (approveNow && kitchen) throw fail(403, "Only the central store can approve an order");
     const { settings } = await readOrderingSettings();
     const openedAt = new Date();
     const emergency = req.body.emergency === true;
@@ -199,7 +230,13 @@ collaborativePurchaseOrderRoutes.post("/", everyone, requireAvailableProducts(bo
     const godownId = await openingKitchen(req);
     const contribution = contributionFrom(req, godownId);
     contribution.addedAt = contribution.updatedAt;
+    if (approveNow) {
+      const stamp = { approvedAt: openedAt, approvedBy: req.user.sub };
+      contribution.items.forEach((line) => Object.assign(line, stamp));
+      Object.assign(contribution, stamp);
+    }
     const order = await CollaborativePurchaseOrder.create({
+      source: kitchen ? "kitchen" : "admin",
       orderNo: `CPO-${Date.now()}-${new mongoose.Types.ObjectId().toString().slice(-5).toUpperCase()}`,
       title: text(req.body.title, 120, "Title"),
       note: text(req.body.orderNote, 1000, "Order note"),
@@ -257,6 +294,7 @@ collaborativePurchaseOrderRoutes.put("/:id/contributions/me", kitchenOnly, requi
     const mine = order.contributions.find((entry) => String(entry.godownId) === String(req.user.godownId));
     if (!mine) throw fail(404, "Your kitchen has not joined this order");
     if (mine.approvedAt) throw fail(409, "Your kitchen's items have been approved and can no longer be changed", "SHARE_APPROVED");
+    if (mine.rejectedAt) throw fail(409, "The central store has closed your kitchen's items on this order", "SHARE_REJECTED");
     mine.items = keepApprovedLines(mine.items, contribution.items);
     Object.assign(mine, { note: contribution.note, userId: req.user.sub, updatedAt: contribution.updatedAt });
     await order.save();
@@ -307,8 +345,12 @@ collaborativePurchaseOrderRoutes.post("/:id/approve", adminOnly, async (req, res
     if (!["open", "closed"].includes(order.status)) throw fail(409, "This order can no longer be approved", "ORDER_CLOSED");
 
     const stamp = { approvedAt: new Date(), approvedBy: req.user.sub };
-    const approveLines = (lines) => lines.filter((line) => !line.approvedAt).forEach((line) => Object.assign(line, stamp));
-    const approveShare = (share) => { approveLines(share.items); if (!share.approvedAt) Object.assign(share, stamp); };
+    // Rejected lines stay rejected; a share whose remaining items were rejected is not approved.
+    const approveLines = (lines) => lines.filter((line) => !line.approvedAt && !isRejected(line)).forEach((line) => Object.assign(line, stamp));
+    const approveShare = (share) => {
+      approveLines(share.items);
+      if (!share.approvedAt && !share.rejectedAt && liveLines(share).length > 0) Object.assign(share, stamp);
+    };
 
     if (!godownId) {
       order.contributions.forEach(approveShare);
@@ -316,11 +358,13 @@ collaborativePurchaseOrderRoutes.post("/:id/approve", adminOnly, async (req, res
     } else {
       const share = order.contributions.find((entry) => String(entry.godownId) === String(godownId));
       if (!share) throw fail(404, "That kitchen is not on this order");
-      if (!items) approveShare(share);
-      else {
-        const chosen = share.items.filter((line) => items.some((pick) => String(pick?.stockItemId) === productOf(line)
-          && (!pick.packId || String(pick.packId) === String(line.packId))));
+      if (!items) {
+        if (share.rejectedAt) throw fail(409, "This kitchen's items have been rejected", "SHARE_REJECTED");
+        approveShare(share);
+      } else {
+        const chosen = pickLines(share, items);
         if (chosen.length === 0) throw fail(404, "Those items are not in this kitchen's share");
+        if (chosen.some(isRejected)) throw fail(409, "Rejected items cannot be approved; the kitchen can ask for them on a new order", "LINE_REJECTED");
         approveLines(chosen);
       }
     }
@@ -330,8 +374,47 @@ collaborativePurchaseOrderRoutes.post("/:id/approve", adminOnly, async (req, res
   } catch (error) { return sendError(res, error); }
 });
 
-const isSent = (line, share) => Boolean(line.dispatchedAt || share.dispatchedAt);
-const isReceived = (line, share) => Boolean(line.deliveredAt || share.deliveredAt);
+/**
+ * Admin rejection, always with a reason the kitchen sees: { godownId, reason } rejects every line of that kitchen's
+ * share not yet approved and locks the share; { godownId, items: [{ stockItemId, packId? }], reason } rejects just
+ * those lines. A decision is final: approved lines cannot be rejected nor rejected ones approved, and a kitchen that
+ * still needs a rejected item asks for it on a new order. The whole order is cancelled through PATCH /:id/status.
+ */
+collaborativePurchaseOrderRoutes.post("/:id/reject", adminOnly, async (req, res) => {
+  try {
+    await closeExpiredOrders();
+    const { godownId, items } = req.body || {};
+    if (!godownId || !mongoose.isValidObjectId(godownId)) throw fail(400, "Choose a kitchen on this order");
+    if (items !== undefined && (!Array.isArray(items) || items.length === 0)) throw fail(400, "Choose the items to reject");
+    const reason = requiredReason(req.body.reason);
+    const order = await CollaborativePurchaseOrder.findById(req.params.id);
+    if (!order) throw fail(404, "Collaborative purchase order not found");
+    if (!["open", "closed"].includes(order.status)) throw fail(409, "This order can no longer be changed", "ORDER_CLOSED");
+    const share = order.contributions.find((entry) => String(entry.godownId) === String(godownId));
+    if (!share) throw fail(404, "That kitchen is not on this order");
+    if (share.rejectedAt) throw fail(409, "This kitchen's items have already been rejected", "SHARE_REJECTED");
+    if (share.approvedAt) throw fail(409, "This kitchen's items have been approved", "SHARE_APPROVED");
+
+    const stamp = { rejectedAt: new Date(), rejectedBy: req.user.sub, rejectionReason: reason };
+    if (!items) {
+      share.items.filter((line) => !line.approvedAt && !isRejected(line)).forEach((line) => Object.assign(line, stamp));
+      Object.assign(share, stamp);
+    } else {
+      const chosen = pickLines(share, items);
+      if (chosen.length === 0) throw fail(404, "Those items are not in this kitchen's share");
+      if (chosen.some((line) => line.approvedAt)) throw fail(409, "Approved items cannot be rejected", "LINE_APPROVED");
+      if (chosen.some(isRejected)) throw fail(409, "These items have already been rejected", "LINE_REJECTED");
+      chosen.forEach((line) => Object.assign(line, stamp));
+    }
+    await order.save();
+    notifyKitchens("orders");
+    return res.json(responseOrder(await loadOrder(order._id), req.user));
+  } catch (error) { return sendError(res, error); }
+});
+
+// A rejected line is never sent or received, even when its share carries a dispatch or receipt time.
+const isSent = (line, share) => !isRejected(line) && Boolean(line.dispatchedAt || share.dispatchedAt);
+const isReceived = (line, share) => !isRejected(line) && Boolean(line.deliveredAt || share.deliveredAt);
 
 /**
  * Admin, once the order is placed: {} sends every kitchen's remaining lines; { godownId } sends that kitchen's
@@ -353,12 +436,12 @@ collaborativePurchaseOrderRoutes.post("/:id/dispatch", adminOnly, async (req, re
     for (const share of shares) {
       let lines = share.items;
       if (items) {
-        lines = share.items.filter((line) => items.some((pick) => String(pick?.stockItemId) === productOf(line)
-          && (!pick.packId || String(pick.packId) === String(line.packId))));
+        lines = pickLines(share, items);
         if (lines.length === 0) throw fail(404, "Those items are not in this kitchen's share");
       }
-      for (const line of lines.filter((candidate) => !isSent(candidate, share))) { Object.assign(line, stamp); sent += 1; }
-      if (!share.dispatchedAt && share.items.every((line) => isSent(line, share))) Object.assign(share, stamp);
+      for (const line of lines.filter((candidate) => !isRejected(candidate) && !isSent(candidate, share))) { Object.assign(line, stamp); sent += 1; }
+      const live = liveLines(share);
+      if (!share.dispatchedAt && live.length > 0 && live.every((line) => isSent(line, share))) Object.assign(share, stamp);
     }
     if (sent === 0) throw fail(409, "These items have already been dispatched", "ALREADY_DISPATCHED");
     await order.save();
@@ -550,7 +633,7 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
         });
         Object.assign(line, { deliveredAt: receivedAt, deliveredBy: req.user.sub, trackingId, receivedQtyBaseUnit: line.qtyBaseUnit });
       }
-      if (share.items.every((line) => isReceived(line, share))) Object.assign(share, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
+      if (liveLines(share).every((line) => isReceived(line, share))) Object.assign(share, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
       await order.save({ session });
     });
     notifyKitchens("orders");
@@ -644,6 +727,7 @@ collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res
     // supplier's name and FSSAI licence on every batch they receive.
     if (next === "ordered" && req.body.supplierId !== undefined) await applyPurchaseDetails(order, { supplierId: req.body.supplierId });
     if (next === "ordered" && !order.supplierId) throw fail(400, "Choose a supplier before marking the order as ordered", "SUPPLIER_REQUIRED");
+    if (next === "cancelled" && order.status !== "cancelled") order.cancellationReason = requiredReason(req.body.reason);
     order.status = next;
     order.statusChangedAt = new Date();
     order.statusChangedBy = req.user.sub;

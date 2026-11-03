@@ -56,7 +56,7 @@ const openFollowUpOrder = async ({ ticket, order: original, shortfall, actor, no
     title: original.title ? `Missing items from "${original.title}"` : `Missing ${product?.name || "items"}`,
     note: `Opened by the central store for the ${shortfall} still missing from ${ticket.orderNo}.`,
     neededBy, emergency: false, closesAt: closesAtFor(now, neededBy, settings),
-    createdBy: actor, createdByGodown: ticket.godownId,
+    createdBy: actor, createdByGodown: ticket.godownId, source: "admin",
     contributions: [{ godownId: ticket.godownId, userId: actor, items: [{ stockItemId: ticket.stockItemId, qtyBaseUnit: shortfall }], addedAt: now, updatedAt: now }],
   }], { session });
   return order;
@@ -111,7 +111,7 @@ deliveryTicketRoutes.post("/:id/settle", adminOnly, async (req, res) => {
       const shortfall = Math.max(0, Number(ticket.orderedQtyBaseUnit) - accepted);
       const followUp = reorder && shortfall > 0 ? await openFollowUpOrder({ ticket, order, shortfall, actor: req.user.sub, now, session }) : null;
       Object.assign(line, { deliveredAt: now, deliveredBy: req.user.sub, trackingId, receivedQtyBaseUnit: accepted });
-      if (share.items.every((entry) => entry.deliveredAt)) Object.assign(share, { deliveredAt: now, deliveredBy: req.user.sub });
+      if (share.items.every((entry) => entry.deliveredAt || entry.rejectedAt)) Object.assign(share, { deliveredAt: now, deliveredBy: req.user.sub });
       await order.save({ session });
       ticket.status = "settled";
       ticket.resolution = { acceptedQtyBaseUnit: accepted, reorderShortfall: Boolean(followUp), followUpOrderId: followUp?._id || null, note, settledBy: req.user.sub, settledAt: now };

@@ -175,6 +175,7 @@ test("settling a short delivery puts the accepted quantity into stock and opens 
   assert.equal(followUp.status, "open");
   assert.equal(followUp.title, "Missing Rice", "an untitled order falls back to the product name");
   assert.equal(followUp.createdByGodown.name, "Kitchen A");
+  assert.equal(followUp.source, "admin", "the central store opened it for the kitchen");
   assert.deepEqual(followUp.contributions[0].items.map((l) => [l.stockItemId.name, l.qtyBaseUnit]), [["Rice", 40]]);
   assert.ok(followUp.neededBy && followUp.closesAt);
 

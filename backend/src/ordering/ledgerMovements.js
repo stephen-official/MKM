@@ -10,6 +10,7 @@ export const collaborativeReceiptMovements = async (godownId, productId) => {
     for (const share of order.contributions) {
       if (String(share.godownId) !== String(godownId)) continue;
       for (const line of share.items) {
+        if (line.rejectedAt) continue; // rejected lines never entered stock
         // Lines carry their own receipt time; shares received before that was tracked carry it on the share.
         const receivedAt = line.deliveredAt || share.deliveredAt;
         // What entered stock: the accepted quantity after a delivery problem, else the ordered quantity.

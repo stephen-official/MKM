@@ -11,6 +11,10 @@ const collaborativeLineSchema = new mongoose.Schema({
   // Set when an admin approves this line; the kitchen can no longer change or add to this product.
   approvedAt: { type: Date, default: null },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  // Set when an admin rejects this line (with the reason the kitchen sees); it is never bought, sent or received.
+  rejectedAt: { type: Date, default: null },
+  rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  rejectionReason: { type: String, trim: true, maxlength: 500, default: "" },
   // Lines can be sent and received on different days. Shares dispatched before lines were tracked
   // carry these on the share instead, so read them as line.x || share.x.
   dispatchedAt: { type: Date, default: null },
@@ -35,6 +39,10 @@ const contributionSchema = new mongoose.Schema({
   // Set when an admin approves the whole share; the kitchen can no longer change it.
   approvedAt: { type: Date, default: null },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  // Set when an admin rejects the rest of the share: its lines not yet approved are rejected and the kitchen can no longer change it.
+  rejectedAt: { type: Date, default: null },
+  rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  rejectionReason: { type: String, trim: true, maxlength: 500, default: "" },
   // Set once every line of the share has been sent (each kitchen's share is sent separately).
   dispatchedAt: { type: Date, default: null },
   dispatchedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
@@ -52,6 +60,9 @@ const collaborativePurchaseOrderSchema = new mongoose.Schema({
   // Other kitchens can join until this time; after it the order counts as closed (see closeExpiredOrders).
   closesAt: { type: Date, default: null },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  // Who raised it: a kitchen, or the central store on a kitchen's behalf (createdByGodown is then that kitchen).
+  // Orders from before this field read as "kitchen".
+  source: { type: String, enum: ["kitchen", "admin"], default: "kitchen" },
   createdByGodown: { type: mongoose.Schema.Types.ObjectId, ref: "Godown", required: true },
   contributions: { type: [contributionSchema], default: [] },
   // Who the admin bought from and the paid invoice; kitchens see both read-only and every batch they receive copies the supplier.
@@ -65,6 +76,8 @@ const collaborativePurchaseOrderSchema = new mongoose.Schema({
   status: { type: String, enum: ["open", "closed", "approved", "ordered", "cancelled"], default: "open" },
   statusChangedAt: { type: Date, default: null },
   statusChangedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  // Why the central store cancelled the order; kitchens see it on the cancelled order.
+  cancellationReason: { type: String, trim: true, maxlength: 500, default: "" },
 }, { timestamps: true, optimisticConcurrency: true });
 
 collaborativePurchaseOrderSchema.index({ status: 1, updatedAt: -1 });
