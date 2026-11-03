@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useToast } from "../useToast.js";
-import { Search, CheckCircle2, PackageCheck, History, Download, Users, Building2, AlertTriangle } from "lucide-react";
+import { Search, CheckCircle2, PackageCheck, History, Download, Users, Building2, AlertTriangle, Plus } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
   PageHeader, Button, Badge, EmptyState, Field, Tabs, StatusBadge, SplitView,
@@ -30,6 +30,8 @@ export const PurchaseOrdersPage = () => {
   const { showToast } = useToast();
   const { confirm, dialog } = useConfirm();
   const [view, setView] = useState("history");
+  // The Shared orders tab's "Raise order" dialog; the button lives in the page header like the other tabs' actions.
+  const [raising, setRaising] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
   const [indents, setIndents] = useState([]);
@@ -381,7 +383,9 @@ export const PurchaseOrdersPage = () => {
       <PageHeader
         title="Purchase Orders"
         actions={
-          view === "history" && (
+          view === "shared" ? (
+            <Button onClick={() => setRaising(true)}><Plus size={18} /> Raise order</Button>
+          ) : view === "history" && (
             <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
               <Search size={16} aria-hidden="true" style={{ position: "absolute", left: 12, color: "var(--muted-soft)" }} />
               <input
@@ -399,7 +403,7 @@ export const PurchaseOrdersPage = () => {
         <Tabs items={VIEW_TABS} value={view} onChange={setView} label="Purchase order views" />
       </PageHeader>
 
-      {view === "history" ? renderHistory() : view === "shared" ? <SharedOrdersPanel /> : view === "suppliers" ? <SuppliersPanel /> : view === "problems" ? <ProblemsPanel /> : renderIntake()}
+      {view === "history" ? renderHistory() : view === "shared" ? <SharedOrdersPanel raising={raising} onRaiseClose={() => setRaising(false)} /> : view === "suppliers" ? <SuppliersPanel /> : view === "problems" ? <ProblemsPanel /> : renderIntake()}
       {dialog}
     </div>
   );

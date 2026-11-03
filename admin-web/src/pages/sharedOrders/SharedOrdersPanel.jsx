@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Save, ShoppingCart, Truck } from "lucide-react";
+import { Ban, CheckCircle2, Save, ShoppingCart, Truck } from "lucide-react";
 import { api } from "../../api.js";
 import { useToast } from "../../useToast.js";
 import {
-  Badge, Button, Card, DateField, DetailPanel, EmptyState, ErrorState, Field, Meta, RailItem, RailList, Select, SplitView
+  Badge, Banner, Button, Card, DateField, DetailPanel, EmptyState, ErrorState, Field, Meta, Modal, RailItem, RailList, Select, SplitView
 } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
-import { allSharesApproved, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canSetPurchaseDetails, closesInText, lineDelivery, lineLabel, orderStage, shareStage } from "./sharedOrders.js";
+import { allSharesApproved, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, canSetPurchaseDetails, closesInText, lineDelivery, lineLabel, orderStage, shareStage, sourceLabel } from "./sharedOrders.js";
+import { RaiseOrderDialog } from "./RaiseOrderDialog.jsx";
 
 const BASE = "/procurement/collaborative-purchase-orders";
 const errorMessage = (error, fallback) => error?.response?.data?.message || error?.response?.data?.error || fallback;
@@ -14,11 +15,14 @@ const when = (value, withTime = false) => (value ? new Intl.DateTimeFormat("en-I
   timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", ...(withTime ? { hour: "numeric", minute: "2-digit" } : {})
 }).format(new Date(value)) : "—");
 const itemNames = (order) => [...new Set((order.combinedItems || []).map((line) => line.stockItemId?.name).filter(Boolean))].join(", ");
-const STAGE_VARIANT = { "Needs approval": "warn", "Place order": "warn", "Needs to be dispatched": "warn", "Incomplete dispatch": "warn", Dispatched: "info", "Partly received": "info", "Problem to settle": "alert", Delivered: "success", Cancelled: "neutral" };
-const DELIVERY_VARIANT = { "Not sent": "neutral", "On the way": "info", "Problem raised": "warn", Received: "success" };
+const STAGE_VARIANT = { "Not approved": "neutral", "Needs approval": "warn", "Place order": "warn", "Needs to be dispatched": "warn", "Incomplete dispatch": "warn", Dispatched: "info", "Partly received": "info", "Problem to settle": "alert", Delivered: "success", Cancelled: "neutral" };
+const DELIVERY_VARIANT = { "Not approved": "neutral", "Not sent": "neutral", "On the way": "info", "Problem raised": "warn", Received: "success" };
 
-/** Kitchens' shared orders: approve lines, kitchens or everything, mark the order as placed, and dispatch each kitchen. */
-export function SharedOrdersPanel() {
+/**
+ * Kitchens' shared orders: approve or reject lines, kitchens or everything, mark the order as placed, and dispatch
+ * each kitchen. `raising` opens the "Raise order for a kitchen" dialog (the page header's button sets it).
+ */
+export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) {
   const { showToast } = useToast();
   const { confirm, dialog } = useConfirm();
   const [orders, setOrders] = useState([]);
@@ -30,6 +34,8 @@ export function SharedOrdersPanel() {
   const [suppliers, setSuppliers] = useState([]);
   // Supplier and invoice as typed per order (keyed by order id); "Mark as ordered" sends the chosen supplier too.
   const [purchaseEdits, setPurchaseEdits] = useState({});
+  // A rejection or cancellation waiting for its reason: { path, body, title, confirmLabel, success, note }.
+  const [rejecting, setRejecting] = useState(null);
   const requestId = useRef(0);
 
   const fetchList = () => api.get(BASE, { params: { limit: 100 } }).then((res) => res.data.items || []);
@@ -69,23 +75,39 @@ export function SharedOrdersPanel() {
 
   /** Runs one admin action, optionally after a confirmation, then reloads so every kitchen's state is current. */
   const act = async (path, body, success, question) => {
-    if (busy) return;
-    if (question && !(await confirm(question))) return;
+    if (busy) return false;
+    if (question && !(await confirm(question))) return false;
     setBusy(true);
+    let done = false;
     try {
       if (path === "status" || path === "purchase") await api.patch(`${BASE}/${order._id}/${path}`, body);
       else await api.post(`${BASE}/${order._id}/${path}`, body);
       showToast(success, "success");
       setPurchaseEdits((edits) => ({ ...edits, [order._id]: undefined }));
+      done = true;
     } catch (error) {
       showToast(errorMessage(error, "That did not work. Reload and try again."), "error");
     } finally {
       setBusy(false);
       await load();
     }
+    return done;
+  };
+  /** Asks for the reason the kitchen will see, then rejects or cancels. */
+  const askReason = (path, body, title, confirmLabel, success) => setRejecting({ path, body, title, confirmLabel, success, note: "" });
+  const sendRejection = async () => {
+    const reason = rejecting.note.trim();
+    if (!reason) return;
+    if (await act(rejecting.path, { ...rejecting.body, reason }, rejecting.success)) setRejecting(null);
+  };
+  const raised = async (created) => {
+    onRaiseClose();
+    await load();
+    setSelectedId(created._id);
   };
 
-  if (loadError && !orders.length) return <ErrorState message={loadError} onRetry={load} />;
+  const raiseDialog = raising && <RaiseOrderDialog onClose={onRaiseClose} onCreated={raised} />;
+  if (loadError && !orders.length) return <>{raiseDialog}<ErrorState message={loadError} onRetry={load} /></>;
 
   const approvable = order && canApprove(order);
   return (
@@ -93,7 +115,7 @@ export function SharedOrdersPanel() {
       <SplitView
         rail={
           <RailList title="Shared orders" count={orders.length} loading={loading && !orders.length}
-            empty={<EmptyState title="No shared orders yet">Orders kitchens start in the kitchen app appear here.</EmptyState>}>
+            empty={<EmptyState title="No shared orders yet">Orders kitchens start in the kitchen app, and orders you raise for a kitchen, appear here.</EmptyState>}>
             {orders.map((candidate) => (
               <RailItem key={candidate._id} active={candidate._id === selectedId} onClick={() => setSelectedId(candidate._id)}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -102,6 +124,7 @@ export function SharedOrdersPanel() {
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 6, fontSize: 12, color: "var(--muted)" }}>
                   {candidate.emergency && <Badge variant="alert">Urgent</Badge>}
+                  {candidate.source === "admin" && <Badge variant="info">{sourceLabel(candidate)}</Badge>}
                   <span>{candidate.kitchenCount} {candidate.kitchenCount === 1 ? "kitchen" : "kitchens"}</span>
                   <span>{candidate.status === "open" ? closesInText(candidate.closesAt, now) : `Needed by ${when(candidate.neededBy)}`}</span>
                 </div>
@@ -114,18 +137,29 @@ export function SharedOrdersPanel() {
           <DetailPanel
             head={
               <>
-                <Meta label="Order">{order.orderNo}</Meta>
+                <Meta label="Order">
+                  {order.orderNo}
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                    {order.source === "admin" ? `${sourceLabel(order)}${order.createdBy?.name ? ` · ${order.createdBy.name}` : ""}` : `Requested by ${order.createdByGodown?.name || "a kitchen"}`}
+                  </div>
+                </Meta>
                 <Meta label="Next step"><Badge variant={STAGE_VARIANT[orderStage(order)]}>{orderStage(order)}</Badge> {order.emergency && <Badge variant="alert">Urgent</Badge>}</Meta>
                 <Meta label="Needed by">{when(order.neededBy, order.emergency)}</Meta>
                 <Meta label="Ordering" align="end">{order.status === "open" ? closesInText(order.closesAt, now) : "Ordering closed"}</Meta>
               </>
             }
             foot={
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", width: "100%" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end", width: "100%" }}>
+                {canCancel(order) && (
+                  <Button variant="ghost" disabled={busy} style={{ marginRight: "auto" }}
+                    onClick={() => askReason("status", { status: "cancelled" }, "Cancel this order?", "Cancel order", "Order cancelled")}>
+                    <Ban size={18} /> Cancel order
+                  </Button>
+                )}
                 {approvable && (allSharesApproved(order) ? (
                   <>
-                    <span style={{ alignSelf: "center", color: "var(--muted)", fontSize: 13, marginRight: "auto" }}>
-                      All kitchens are approved. Close the order so no one else can join, then mark it as ordered.
+                    <span style={{ alignSelf: "center", color: "var(--muted)", fontSize: 13 }}>
+                      Every kitchen has been reviewed. Close the order so no one else can join, then mark it as ordered.
                     </span>
                     <Button disabled={busy} onClick={() => act("approve", {}, "Order closed and approved", {
                       title: "Close and finish approval?",
@@ -160,6 +194,10 @@ export function SharedOrdersPanel() {
               </div>
             }
           >
+            {order.status === "cancelled" && order.cancellationReason && (
+              <Banner variant="warn" style={{ marginBottom: 12 }}>Cancelled: {order.cancellationReason}</Banner>
+            )}
+            {order.note && <p style={{ margin: "0 0 12px", fontSize: 13, color: "var(--muted)" }}>Order note: {order.note}</p>}
             {canSetPurchaseDetails(order) && (
               <Card tight style={{ marginBottom: 12 }}>
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
@@ -221,9 +259,16 @@ export function SharedOrdersPanel() {
                       <strong>{share.godownId?.name || "Kitchen"}</strong>{" "}
                       <Badge variant={STAGE_VARIANT[stage]}>{stage}</Badge>
                       {share.note && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Note: {share.note}</div>}
+                      {share.rejectedAt && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Rest not approved: {share.rejectionReason}</div>}
                     </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      {approvable && !share.approvedAt && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {canRejectShare(order, share) && (
+                        <Button size="sm" variant="ghost" disabled={busy}
+                          onClick={() => askReason("reject", { godownId: kitchenId }, `Reject ${share.godownId?.name || "this kitchen"}'s remaining items?`, "Reject", `${share.godownId?.name || "Kitchen"} rejected`)}>
+                          Reject kitchen
+                        </Button>
+                      )}
+                      {approvable && !share.approvedAt && !share.rejectedAt && (
                         <Button size="sm" variant="ghost" disabled={busy}
                           onClick={() => act("approve", { godownId: kitchenId }, `${share.godownId?.name || "Kitchen"} approved`)}>
                           Approve kitchen
@@ -243,9 +288,14 @@ export function SharedOrdersPanel() {
                     <tbody>
                       {share.items.map((line) => {
                         const productId = line.stockItemId?._id || line.stockItemId;
+                        const pick = { godownId: kitchenId, items: [{ stockItemId: productId, packId: line.packId || undefined }] };
+                        const name = line.stockItemId?.name || "Item";
                         return (
                           <tr key={`${productId}:${line.packId || "base"}`}>
-                            <td>{line.stockItemId?.name || "Item"}</td>
+                            <td>
+                              {name}
+                              {line.rejectedAt && line.rejectionReason && <div style={{ fontSize: 12, color: "var(--muted)" }}>{line.rejectionReason}</div>}
+                            </td>
                             <td>{lineLabel(line)}</td>
                             <td style={{ textAlign: "right" }}>
                               {placed ? (
@@ -258,11 +308,18 @@ export function SharedOrdersPanel() {
                                     </Button>
                                   )}
                                 </span>
-                              ) : line.approvedAt ? <Badge variant="success">Approved</Badge> : approvable ? (
-                                <Button size="sm" variant="ghost" disabled={busy}
-                                  onClick={() => act("approve", { godownId: kitchenId, items: [{ stockItemId: productId, packId: line.packId || undefined }] }, `${line.stockItemId?.name || "Item"} approved`)}>
-                                  Approve
-                                </Button>
+                              ) : line.approvedAt ? <Badge variant="success">Approved</Badge> : line.rejectedAt ? <Badge variant="neutral">Not approved</Badge> : approvable ? (
+                                <span style={{ display: "inline-flex", gap: 8 }}>
+                                  {canRejectLine(order, line) && (
+                                    <Button size="sm" variant="ghost" disabled={busy}
+                                      onClick={() => askReason("reject", pick, `Reject ${name}?`, "Reject", `${name} rejected`)}>
+                                      Reject
+                                    </Button>
+                                  )}
+                                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => act("approve", pick, `${name} approved`)}>
+                                    Approve
+                                  </Button>
+                                </span>
                               ) : "—"}
                             </td>
                           </tr>
@@ -291,6 +348,22 @@ export function SharedOrdersPanel() {
         )}
       </SplitView>
       {dialog}
+      {raiseDialog}
+      {rejecting && (
+        <Modal title={rejecting.title} onClose={() => !busy && setRejecting(null)} actions={(
+          <>
+            <Button variant="ghost" disabled={busy} onClick={() => setRejecting(null)}>Back</Button>
+            <Button variant="danger" disabled={busy || !rejecting.note.trim()} onClick={sendRejection}>{rejecting.confirmLabel}</Button>
+          </>
+        )}>
+          <Field label="Reason the kitchen will see">
+            <textarea rows={3} value={rejecting.note} maxLength={500} onChange={(e) => setRejecting({ ...rejecting, note: e.target.value })} />
+          </Field>
+          <p className="confirm-message" style={{ marginTop: 10 }}>
+            {rejecting.path === "status" ? "No kitchen can add to or change this order afterwards." : "This cannot be undone. The kitchen can ask for these items again on a new order."}
+          </p>
+        </Modal>
+      )}
     </>
   );
 }

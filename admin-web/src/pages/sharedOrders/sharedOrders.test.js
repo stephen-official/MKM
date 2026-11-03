@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allSharesApproved, canSetPurchaseDetails, canApprove, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, closesInText, lineDelivery, orderStage, shareStage, lineLabel } from "./sharedOrders.js";
+import { allSharesApproved, canSetPurchaseDetails, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, closesInText, lineDelivery, orderItems, orderStage, shareStage, lineLabel, sourceLabel, unitChoices } from "./sharedOrders.js";
 
 const now = new Date("2026-10-18T04:30:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
@@ -101,5 +101,80 @@ describe("order stage badge", () => {
     expect(orderStage({ status: "ordered", contributions: [share({ deliveredAt: "x", items: [received] })] })).toBe("Delivered");
     expect(orderStage({ status: "cancelled", contributions: [share({ items: [{}] })] })).toBe("Cancelled");
     expect(orderStage({ status: "open", contributions: [] })).toBe("Needs approval");
+  });
+});
+
+describe("rejected items", () => {
+  const rejected = { rejectedAt: "2026-10-18T05:00:00.000Z", rejectionReason: "Not this week" };
+  it("a rejected line is never sent and says so", () => {
+    const ordered = { status: "ordered" };
+    const mixed = share({ items: [rejected, {}] });
+    expect(lineDelivery(rejected, mixed)).toBe("Not approved");
+    expect(lineDelivery(rejected, share({ dispatchedAt: "x", items: [rejected] }))).toBe("Not approved");
+    expect(canDispatchLine(ordered, rejected, mixed)).toBe(false);
+    expect(canDispatch(ordered, share({ items: [rejected] }))).toBe(false);
+    expect(canDispatch(ordered, mixed)).toBe(true);
+  });
+
+  it("stages ignore rejected lines, and a kitchen with nothing left is Not approved", () => {
+    const sent = { dispatchedAt: "x" };
+    expect(shareStage({ status: "ordered" }, share({ items: [rejected, sent] }))).toBe("Dispatched");
+    expect(shareStage({ status: "ordered" }, share({ items: [rejected, { ...sent, deliveredAt: "y" }], deliveredAt: "y" }))).toBe("Delivered");
+    expect(shareStage({ status: "open" }, share({ rejectedAt: "x", items: [rejected] }))).toBe("Not approved");
+    expect(shareStage({ status: "ordered" }, share({ rejectedAt: "x", items: [rejected] }))).toBe("Not approved");
+    expect(shareStage({ status: "open" }, share({ rejectedAt: "x", items: [rejected, { approvedAt: "x" }] }))).toBe("Place order");
+    expect(orderStage({ status: "open", contributions: [share({ rejectedAt: "x", items: [rejected] })] })).toBe("Not approved");
+    expect(orderStage({ status: "open", contributions: [share({ rejectedAt: "x", items: [rejected] }), share({ items: [{}] })] })).toBe("Needs approval");
+  });
+
+  it("a rejected kitchen counts as reviewed", () => {
+    expect(allSharesApproved({ contributions: [share({ approvedAt: "x" }), share({ rejectedAt: "x" })] })).toBe(true);
+  });
+
+  it("only undecided lines and kitchens can be rejected, while the order is being reviewed", () => {
+    expect(canRejectLine({ status: "open" }, {})).toBe(true);
+    expect(canRejectLine({ status: "closed" }, {})).toBe(true);
+    expect(canRejectLine({ status: "open" }, { approvedAt: "x" })).toBe(false);
+    expect(canRejectLine({ status: "open" }, rejected)).toBe(false);
+    expect(canRejectLine({ status: "approved" }, {})).toBe(false);
+    expect(canRejectShare({ status: "open" }, share({ items: [{}] }))).toBe(true);
+    expect(canRejectShare({ status: "open" }, share({ items: [{ approvedAt: "x" }, {}] }))).toBe(true);
+    expect(canRejectShare({ status: "open" }, share({ items: [{ approvedAt: "x" }] }))).toBe(false);
+    expect(canRejectShare({ status: "open" }, share({ approvedAt: "x", items: [{}] }))).toBe(false);
+    expect(canRejectShare({ status: "open" }, share({ rejectedAt: "x", items: [rejected] }))).toBe(false);
+    expect(canRejectShare({ status: "ordered" }, share({ items: [{}] }))).toBe(false);
+  });
+
+  it("orders can be cancelled until they are placed with the supplier", () => {
+    expect(["open", "closed", "approved"].map((status) => canCancel({ status }))).toEqual([true, true, true]);
+    expect(["ordered", "cancelled"].map((status) => canCancel({ status }))).toEqual([false, false]);
+  });
+});
+
+describe("raising an order for a kitchen", () => {
+  it("names who raised the order", () => {
+    expect(sourceLabel({ source: "admin" })).toBe("Raised by admin");
+    expect(sourceLabel({ source: "kitchen" })).toBe("Requested by kitchen");
+    expect(sourceLabel({})).toBe("Requested by kitchen", "orders from before the field are kitchen requests");
+  });
+
+  it("turns the form's rows into order lines in the base unit, with the pack when one is chosen", () => {
+    const rice = { _id: "r", unit: { symbol: "kg" }, soldInPacks: true, packs: [{ _id: "bag", name: "25 kg bag", size: 25 }] };
+    const oil = { _id: "o", unit: { symbol: "L" }, soldInPacks: false, packs: [] };
+    expect(orderItems([rice, oil], [
+      { productId: "r", qty: "2", packId: "bag" },
+      { productId: "o", qty: "3.5", packId: "base" },
+      { productId: "r", qty: "", packId: "base" },
+      { productId: "missing", qty: "4", packId: "base" },
+    ])).toEqual([
+      { stockItemId: "r", qtyBaseUnit: 50, packId: "bag", packName: "25 kg bag", packSize: 25, packQuantity: 2 },
+      { stockItemId: "o", qtyBaseUnit: 3.5 },
+    ]);
+  });
+
+  it("lists a product's units: the base unit, then its packs", () => {
+    const rice = { unit: { symbol: "kg" }, soldInPacks: true, packs: [{ _id: "bag", name: "25 kg bag", size: 25 }, { _id: "x", name: "Broken", size: 0 }] };
+    expect(unitChoices(rice)).toEqual([{ value: "base", label: "kg" }, { value: "bag", label: "25 kg bag (25 kg)" }]);
+    expect(unitChoices({ unit: { symbol: "L" }, soldInPacks: false, packs: [{ _id: "p", name: "Tin", size: 15 }] })).toEqual([{ value: "base", label: "L" }]);
   });
 });
