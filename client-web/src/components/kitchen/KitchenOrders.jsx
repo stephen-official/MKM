@@ -4,7 +4,7 @@ import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { useKitchenChanges } from "../../liveUpdates";
 import { formatStockQuantity, getStockHealth, productPacks } from "../../features/kitchen";
-import { canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myOrders, myShare, needsQuantity, orderTimeline, otherOpenOrders } from "../../features/kitchen/orders";
+import { canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myOrders, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, withOrderProducts } from "../../features/kitchen/orders";
 import { arrivingLines } from "../../features/kitchen/receiving";
 import KitchenReceiveItems from "./KitchenReceiveItems";
 import { TransferCard } from "./KitchenTransfers";
@@ -19,10 +19,11 @@ const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFract
 const errorText = (error, fallback) => error?.response?.data?.message || fallback;
 const productName = (line) => line.stockItemId?.name || "Item";
 const unitOf = (line) => line.stockItemId?.unitId?.symbol || "";
-const LINE_STATE = { not_sent: { label: "Not sent yet", pill: "kg-pill--routine" }, on_the_way: { label: "On the way", pill: "kg-pill--low" }, problem: { label: "Problem raised · waiting for central store", pill: "kg-pill--soon" }, received: { label: "Received", pill: "ko-pill--received" } };
+const LINE_STATE = { rejected: { label: "Not approved", pill: "kg-pill--routine" }, not_sent: { label: "Not sent yet", pill: "kg-pill--routine" }, on_the_way: { label: "On the way", pill: "kg-pill--low" }, problem: { label: "Problem raised · waiting for central store", pill: "kg-pill--soon" }, received: { label: "Received", pill: "ko-pill--received" } };
 /** "Received · MKM-2610-0001", or what the central store decided after a problem. */
 const lineStateText = (line, share) => {
   const state = lineState(line, share);
+  if (state === "rejected") return line.rejectionReason ? `Not approved · ${line.rejectionReason}` : "Not approved";
   if (state === "received" && line.ticketId) return line.receivedQtyBaseUnit > 0 ? `Received ${qty(line.receivedQtyBaseUnit)} ${unitOf(line)} · ${line.trackingId}` : "Settled · nothing added";
   return `${LINE_STATE[state].label}${line.trackingId ? ` · ${line.trackingId}` : ""}`;
 };
@@ -61,7 +62,7 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
   const notSent = share.items.filter((line) => lineState(line, share) === "not_sent").length;
   return <article className={`kg-glass kg-lift ko-card${order.emergency ? " ko-card--urgent" : ""}`}>
     <header className="ko-card__head">
-      <div><p className="kg-label">{order.emergency ? "Emergency order" : "Shared order"}</p><h2>{order.title || share.items.map(productName).join(", ")}</h2></div>
+      <div><p className="kg-label">{order.emergency ? "Emergency order" : orderSourceLabel(order) || "Shared order"}</p><h2>{order.title || share.items.map(productName).join(", ")}</h2></div>
       {order.emergency && <span className="kg-pill kg-pill--expired">Urgent</span>}
     </header>
     <div className="ko-meta">
@@ -69,11 +70,14 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive }) {
       {order.status === "open" && <span><Clock size={15} aria-hidden="true" /> {closesInText(order.closesAt, now)}</span>}
       {others > 0 && <span><Users size={15} aria-hidden="true" /> {others} other {others === 1 ? "kitchen" : "kitchens"}</span>}
     </div>
-    {stage === "cancelled" ? <p className="ko-note">This order was cancelled by the central store.</p> : <Timeline order={order} godownId={godownId} />}
+    {order.source === "admin" && order.note && <p className="ko-note">Note from the central store: {order.note}</p>}
+    {stage === "cancelled" ? <p className="ko-note">This order was cancelled by the central store{order.cancellationReason ? `: ${order.cancellationReason}` : "."}</p>
+      : stage === "rejected" ? <p className="ko-note">The central store did not approve your items{share.rejectionReason ? `: ${share.rejectionReason}` : "."} Ask again on a new order if you still need them.</p>
+      : <Timeline order={order} godownId={godownId} />}
     <ul className="ko-lines" aria-label="Your items">
       {share.items.map((line) => <li key={`${line.stockItemId?._id}:${line.packId || "base"}`} className="ko-line">
         <strong>{productName(line)}</strong><span>{lineAmount(line)}</span>
-        {order.status === "ordered"
+        {order.status === "ordered" || line.rejectedAt
           ? <span className={`kg-pill ${LINE_STATE[lineState(line, share)].pill}`}>{lineStateText(line, share)}</span>
           : line.approvedAt && <small className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved</small>}
       </li>)}
@@ -118,7 +122,9 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
   const [confirm, confirmDialog] = useConfirm();
   const share = mode.order ? myShare(mode.order, mode.godownId) : null;
   const locked = new Set((share?.items || []).filter((line) => line.approvedAt).map((line) => String(line.stockItemId?._id || line.stockItemId)));
-  const shown = products.filter((product) => product.name.toLowerCase().includes(search.trim().toLowerCase()));
+  // Items the central store rejected on this order cannot be asked for again here; they stay on the order's card.
+  const rejected = new Set((share?.items || []).filter((line) => line.rejectedAt).map((line) => String(line.stockItemId?._id || line.stockItemId)));
+  const shown = products.filter((product) => !rejected.has(String(product._id)) && product.name.toLowerCase().includes(search.trim().toLowerCase()));
   const rows = ticketRows(cart, products, locked);
   const count = rows.length;
   const option = settings?.neededInOptions.find((candidate) => candidate.key === neededIn);
@@ -356,6 +362,8 @@ export default function KitchenOrders({ products = [], godownId, onOrdersLoaded,
   const [localCart, setLocalCart] = useState({});
   const isNew = mode?.type === "new";
   const cart = isNew ? draft : localCart;
+  // Editing an order offers its own products too, even ones this kitchen holds no stock of yet.
+  const pickable = mode?.order ? withOrderProducts(products, myShare(mode.order, godownId)) : products;
   const setCart = isNew && onDraftChange ? onDraftChange : setLocalCart;
   const [neededIn, setNeededIn] = useState("");
   const [emergency, setEmergency] = useState(false);
@@ -408,14 +416,14 @@ export default function KitchenOrders({ products = [], godownId, onOrdersLoaded,
   const start = (type, order) => {
     const share = order ? myShare(order, godownId) : null;
     // A new order starts from the shared draft as it is (items added from Home, or left half-filled); join and edit start from the order's own lines.
-    if (type !== "new") setLocalCart(Object.fromEntries((share?.items || []).map((line) => [String(line.stockItemId?._id || line.stockItemId), { qty: String(line.packId ? line.packQuantity : line.qtyBaseUnit), packId: line.packId || "base" }])));
+    if (type !== "new") setLocalCart(Object.fromEntries((share?.items || []).filter((line) => !line.rejectedAt).map((line) => [String(line.stockItemId?._id || line.stockItemId), { qty: String(line.packId ? line.packQuantity : line.qtyBaseUnit), packId: line.packId || "base" }])));
     setNeededIn(settings?.neededInOptions[0]?.key || "");
     setEmergency(false);
     setMode({ type, order, godownId });
   };
 
   const submit = async () => {
-    const items = toItems(cart, products);
+    const items = toItems(cart, pickable);
     setBusy(true);
     try {
       if (mode.type === "new") await api.post(BASE, emergency ? { emergency: true, items } : { neededIn, items });
@@ -458,7 +466,7 @@ export default function KitchenOrders({ products = [], godownId, onOrdersLoaded,
   }
 
   if (mode) {
-    return <ItemPicker mode={mode} products={products} cart={cart} setCart={setCart} settings={settings} neededIn={neededIn} setNeededIn={setNeededIn}
+    return <ItemPicker mode={mode} products={pickable} cart={cart} setCart={setCart} settings={settings} neededIn={neededIn} setNeededIn={setNeededIn}
       emergency={emergency} setEmergency={setEmergency} busy={busy} onBack={() => { if (isNew) onLeaveNewOrder?.(); setMode(null); }} onSubmit={submit} now={now} />;
   }
 

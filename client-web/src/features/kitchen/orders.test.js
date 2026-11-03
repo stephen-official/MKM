@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canJoin, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myShare, needsQuantity, orderTimeline, otherOpenOrders, myOrders } from "./orders.js";
+import { canEditShare, canJoin, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, myOrders, withOrderProducts } from "./orders.js";
 
 const me = "kitchenA";
 const now = new Date("2026-10-18T04:30:00.000Z"); // 10:00 in India
@@ -93,4 +93,42 @@ test("an order draft counts its items and the ones still missing a quantity", ()
   assert.equal(needsQuantity(draft.oil), true);
   assert.equal(needsQuantity(draft.salt), false);
   assert.equal(needsQuantity(draft.atta), false);
+});
+
+test("a rejected line is never on the way or received, even when its share was sent", () => {
+  const rejected = { rejectedAt: at(-3), rejectionReason: "Not this week" };
+  assert.equal(lineState(rejected, share(me)), "rejected");
+  assert.equal(lineState(rejected, share(me, { dispatchedAt: at(-1), deliveredAt: at(0) })), "rejected");
+  const sentShare = share(me, { dispatchedAt: at(-1), items: [rejected, { dispatchedAt: at(-1) }] });
+  assert.equal(hasArriving(order({ status: "ordered", contributions: [sentShare] }), me), true);
+  assert.equal(hasArriving(order({ status: "ordered", contributions: [share(me, { items: [rejected] })] }), me), false);
+});
+
+test("a kitchen whose items were all rejected sees Not approved, and cannot edit a rejected share", () => {
+  const rejected = { rejectedAt: at(-3), rejectionReason: "Kitchen closed" };
+  const allRejected = share(me, { rejectedAt: at(-3), rejectionReason: "Kitchen closed", items: [rejected] });
+  assert.equal(kitchenStage(order({ contributions: [allRejected] }), me), "rejected");
+  assert.equal(kitchenStage(order({ status: "ordered", contributions: [allRejected] }), me), "rejected");
+  assert.equal(kitchenStage(order({ contributions: [share(me, { items: [rejected, { approvedAt: at(-1) }] })] }), me), "requested", "approved items still go ahead");
+  assert.equal(canEditShare(order({ contributions: [share(me, { items: [rejected, {}] })] }), me, now), true, "a rejected line alone does not lock the rest");
+  assert.equal(canEditShare(order({ contributions: [allRejected] }), me, now), false);
+});
+
+test("an order the central store raised for the kitchen says so", () => {
+  assert.equal(orderSourceLabel({ source: "admin" }), "Sent by central store");
+  assert.equal(orderSourceLabel({ source: "kitchen" }), null);
+  assert.equal(orderSourceLabel({}), null);
+});
+
+test("an order's products are offered when editing, even ones the kitchen holds no stock of yet", () => {
+  const rice = { _id: "rice", name: "Rice", unitId: { symbol: "kg" }, imageUrl: "r.jpg", soldInPacks: true, packs: [{ _id: "bag", name: "25 kg bag", size: 25 }] };
+  const oil = { _id: "oil", name: "Oil", unitId: { symbol: "L" } };
+  const dal = { _id: "dal", name: "Dal", unitId: { symbol: "kg" } };
+  const held = [{ _id: "oil", name: "Oil", unit: "L", currentQty: 4 }];
+  const mine = share(me, { items: [{ stockItemId: rice, packId: "bag", packQuantity: 2 }, { stockItemId: oil }, { stockItemId: dal, rejectedAt: at(-1) }] });
+  const offered = withOrderProducts(held, mine);
+  assert.deepEqual(offered.map((product) => product._id), ["oil", "rice"], "held stock first, rejected products left out");
+  assert.equal(offered[0], held[0], "a product the kitchen holds keeps its stock figures");
+  assert.deepEqual(offered[1], { _id: "rice", name: "Rice", unit: "kg", image: "r.jpg", soldInPacks: true, packs: [{ _id: "bag", name: "25 kg bag", size: 25 }], currentQty: 0, thresholdBaseUnit: 0, available: true });
+  assert.equal(withOrderProducts(held, null), held);
 });

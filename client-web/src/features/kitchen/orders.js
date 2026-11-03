@@ -9,8 +9,10 @@ const LABELS = Object.freeze({ requested: "Requested", approved: "Approved", ord
 export const myShare = (order, godownId) =>
   (order?.contributions || []).find((share) => idOf(share.godownId) === String(godownId)) || null;
 
-/** One line of a share: not_sent | on_the_way | received. Older shares carry these times on the share itself. */
+/** One line of a share: rejected | not_sent | on_the_way | problem | received. Older shares carry these times on the
+ *  share itself; a line the central store rejected is never sent or received, whatever the share says. */
 export const lineState = (line, share) => {
+  if (line?.rejectedAt) return "rejected";
   if (line?.deliveredAt || share?.deliveredAt) return "received";
   if (line?.ticketId) return "problem";
   if (line?.dispatchedAt || share?.dispatchedAt) return "on_the_way";
@@ -25,10 +27,12 @@ export const hasArriving = (order, godownId) => {
 
 const firstSent = (share) => share?.dispatchedAt || (share?.items || []).map((line) => line.dispatchedAt).filter(Boolean).sort()[0] || null;
 
-/** Where this kitchen's share is: requested | approved | ordered | dispatched | delivered | cancelled. */
+/** Where this kitchen's share is: requested | approved | ordered | dispatched | delivered | cancelled | rejected
+ *  (every item the kitchen asked for was rejected). */
 export const kitchenStage = (order, godownId) => {
   if (order?.status === "cancelled") return "cancelled";
   const share = myShare(order, godownId);
+  if (share?.items?.length && share.items.every((line) => line.rejectedAt)) return "rejected";
   if (share?.deliveredAt) return "delivered";
   if (firstSent(share)) return "dispatched";
   if (order?.status === "ordered") return "ordered";
@@ -62,7 +66,7 @@ export const myOrders = (orders, godownId) => orders.filter((order) => myShare(o
 /** True while this kitchen may still change the items it has not had approved. */
 export const canEditShare = (order, godownId, now = new Date()) => {
   const share = myShare(order, godownId);
-  return Boolean(share) && !share.approvedAt && order.status === "open" && new Date(order.closesAt).getTime() > now.getTime();
+  return Boolean(share) && !share.approvedAt && !share.rejectedAt && order.status === "open" && new Date(order.closesAt).getTime() > now.getTime();
 };
 
 /** "Closes in 2 days 4 h", "Closes in 5 h 30 min", "Closes in 15 min" or "Ordering closed". */
@@ -90,4 +94,27 @@ export const needsQuantity = (entry) => Boolean(entry?.needsQty) && !(Number(ent
 export const draftCounts = (draft) => {
   const entries = Object.values(draft || {});
   return { items: entries.filter((entry) => entry?.needsQty || Number(entry?.qty) > 0).length, missing: entries.filter(needsQuantity).length };
+};
+
+/** "Sent by central store" on an order the central store raised for the kitchen; null for the kitchen's own requests. */
+export const orderSourceLabel = (order) => (order?.source === "admin" ? "Sent by central store" : null);
+
+/** The products a kitchen can pick from while editing its items: the stock it holds, plus the order's own products it
+ *  holds none of yet (an order the central store raised may name those), built from the order's lines. Rejected
+ *  products are left out; they cannot be asked for again on this order. */
+export const withOrderProducts = (products, share) => {
+  if (!share) return products;
+  const known = new Set(products.map((product) => idOf(product._id)));
+  const extra = [];
+  for (const line of share.items || []) {
+    const product = line.stockItemId;
+    const id = idOf(product);
+    if (line.rejectedAt || !product?.name || known.has(id)) continue;
+    known.add(id);
+    extra.push({
+      _id: product._id, name: product.name, unit: product.unitId?.symbol || product.unitId?.name || "Units", image: product.imageUrl || "",
+      soldInPacks: Boolean(product.soldInPacks), packs: product.packs || [], currentQty: 0, thresholdBaseUnit: 0, available: true,
+    });
+  }
+  return extra.length ? [...products, ...extra] : products;
 };
