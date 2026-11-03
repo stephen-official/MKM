@@ -19,6 +19,24 @@ test("production requires both JWT secrets", () => {
   assert.doesNotThrow(() => assertProductionSecrets({ nodeEnv: "development" }));
 });
 
+test("production refuses process-wide TLS verification bypass", () => {
+  assert.throws(
+    () => assertProductionSecrets({
+      nodeEnv: "production",
+      jwtSecret: "access",
+      jwtRefreshSecret: "refresh",
+      tlsRejectUnauthorized: "0",
+    }),
+    /TLS certificate verification/,
+  );
+  assert.doesNotThrow(() => assertProductionSecrets({
+    nodeEnv: "production",
+    jwtSecret: "access",
+    jwtRefreshSecret: "refresh",
+    tlsRejectUnauthorized: "1",
+  }));
+});
+
 test("password validation enforces the minimum length", () => {
   assert.equal(isValidPassword("short"), false);
   assert.equal(isValidPassword("12345678"), true);

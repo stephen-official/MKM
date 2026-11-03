@@ -1,13 +1,16 @@
 import dotenv from "dotenv";
 
-dotenv.config();
+// Tests use deterministic defaults and explicit fixtures. Loading the normal
+// development .env here would expose live email/upload credentials to tests
+// and can make the same suite behave differently on each developer machine.
+if (process.env.NODE_ENV !== "test") dotenv.config();
 
 const toNumber = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-export const assertProductionSecrets = ({ nodeEnv, jwtSecret, jwtRefreshSecret }) => {
+export const assertProductionSecrets = ({ nodeEnv, jwtSecret, jwtRefreshSecret, tlsRejectUnauthorized }) => {
   if (nodeEnv !== "production") return;
 
   const missing = [];
@@ -16,12 +19,16 @@ export const assertProductionSecrets = ({ nodeEnv, jwtSecret, jwtRefreshSecret }
   if (missing.length) {
     throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
   }
+  if (String(tlsRejectUnauthorized ?? "") === "0") {
+    throw new Error("Production cannot disable TLS certificate verification (NODE_TLS_REJECT_UNAUTHORIZED=0)");
+  }
 };
 
 assertProductionSecrets({
   nodeEnv: process.env.NODE_ENV,
   jwtSecret: process.env.JWT_SECRET,
-  jwtRefreshSecret: process.env.JWT_REFRESH_SECRET
+  jwtRefreshSecret: process.env.JWT_REFRESH_SECRET,
+  tlsRejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED,
 });
 
 export const env = {
