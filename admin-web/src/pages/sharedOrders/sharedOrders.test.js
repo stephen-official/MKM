@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAdjustLine, editableQuantity, requestedLabel, allSharesApproved, canSetPurchaseDetails, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, closesInText, hasLiveItems, lineDelivery, orderItems, orderRowsReady, orderStage, shareStage, lineLabel, sourceLabel, unitChoices } from "./sharedOrders.js";
+import { canAdjustLine, editableQuantity, eventActor, eventText, requestedLabel, allSharesApproved, canSetPurchaseDetails, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, closesInText, hasLiveItems, lineDelivery, orderItems, orderRowsReady, orderStage, shareStage, lineLabel, sourceLabel, unitChoices } from "./sharedOrders.js";
 
 const now = new Date("2026-10-18T04:30:00.000Z");
 const at = (hours) => new Date(now.getTime() + hours * 3_600_000).toISOString();
@@ -208,5 +208,43 @@ describe("changing a kitchen's quantity", () => {
     expect(requestedLabel({ ...kg, qtyBaseUnit: 6 })).toBe(null);
     expect(requestedLabel({ ...kg, qtyBaseUnit: 6, requestedQtyBaseUnit: 10 })).toBe("10 kg");
     expect(requestedLabel({ ...kg, qtyBaseUnit: 75, packId: "p", packName: "25 kg bag", packQuantity: 3, requestedQtyBaseUnit: 100, requestedPackQuantity: 4 })).toBe("4 × 25 kg bag");
+  });
+});
+
+describe("order history", () => {
+  const kitchen = { _id: "k1", name: "Gandhi Nagar School" };
+  const rice = { stockItemId: { name: "Rice", unitId: { symbol: "kg" } }, qtyBaseUnit: 10 };
+  const dal = { stockItemId: { name: "Dal", unitId: { symbol: "kg" } }, qtyBaseUnit: 4 };
+  const event = (action, extra = {}) => ({ action, at: "2026-11-03T17:35:00.000Z", actorRole: "admin", actorId: { name: "Asha" }, godownId: null, items: [], fromStatus: null, toStatus: null, note: "", ...extra });
+
+  it("says what happened, to which kitchen and items, with the reason", () => {
+    expect(eventText(event("raised", { godownId: kitchen, items: [rice, dal] }))).toBe("Raised the order for Gandhi Nagar School: Rice, Dal");
+    expect(eventText(event("joined", { actorRole: "kitchen", godownId: kitchen, items: [rice] }))).toBe("Gandhi Nagar School joined: Rice");
+    expect(eventText(event("edited", { actorRole: "kitchen", godownId: kitchen, items: [rice] }))).toBe("Gandhi Nagar School changed its items: Rice");
+    expect(eventText(event("left", { actorRole: "kitchen", godownId: kitchen }))).toBe("Gandhi Nagar School left the order");
+    expect(eventText(event("approved", { godownId: kitchen, items: [rice] }))).toBe("Approved Rice for Gandhi Nagar School");
+    expect(eventText(event("approved", { fromStatus: "open", toStatus: "approved" }))).toBe("Approved the whole order");
+    expect(eventText(event("rejected", { godownId: kitchen, items: [dal], note: "Dal in stock" }))).toBe("Rejected Dal for Gandhi Nagar School: Dal in stock");
+    expect(eventText(event("quantity_changed", { godownId: kitchen, items: [{ ...rice, qtyBaseUnit: 6, fromQtyBaseUnit: 10 }] }))).toBe("Changed Rice for Gandhi Nagar School from 10 kg to 6 kg");
+    expect(eventText(event("purchase_updated", { note: "Invoice INV-7" }))).toBe("Purchase details: Invoice INV-7");
+    expect(eventText(event("dispatched", { godownId: kitchen, items: [rice] }))).toBe("Dispatched Rice to Gandhi Nagar School");
+    expect(eventText(event("received", { actorRole: "kitchen", godownId: kitchen, items: [rice] }))).toBe("Gandhi Nagar School received Rice");
+    expect(eventText(event("problem_raised", { actorRole: "kitchen", godownId: kitchen, items: [rice], note: "short" }))).toBe("Gandhi Nagar School reported a problem with Rice: short");
+    expect(eventText(event("problem_settled", { godownId: kitchen, items: [rice], note: "Accepted 60 of 100" }))).toBe("Settled the problem with Rice for Gandhi Nagar School: Accepted 60 of 100");
+  });
+
+  it("describes status changes in plain words", () => {
+    expect(eventText(event("status_changed", { actorRole: "system", actorId: null, fromStatus: "open", toStatus: "closed" }))).toBe("Ordering closed");
+    expect(eventText(event("status_changed", { fromStatus: "open", toStatus: "closed" }))).toBe("Closed the order to new items");
+    expect(eventText(event("status_changed", { fromStatus: "approved", toStatus: "ordered", note: "Supplier Sri Lakshmi Traders" }))).toBe("Marked as ordered: Supplier Sri Lakshmi Traders");
+    expect(eventText(event("status_changed", { fromStatus: "approved", toStatus: "ordered" }))).toBe("Marked as ordered");
+    expect(eventText(event("status_changed", { fromStatus: "open", toStatus: "cancelled", note: "Supplier closed" }))).toBe("Cancelled the order: Supplier closed");
+  });
+
+  it("names who did it", () => {
+    expect(eventActor(event("approved"))).toBe("Asha");
+    expect(eventActor(event("joined", { actorRole: "kitchen", actorId: { name: "Cook A" } }))).toBe("Cook A");
+    expect(eventActor(event("status_changed", { actorRole: "system", actorId: null }))).toBe("System");
+    expect(eventActor(event("approved", { actorId: null }))).toBe("Admin");
   });
 });

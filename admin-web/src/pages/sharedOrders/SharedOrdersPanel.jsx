@@ -6,7 +6,7 @@ import {
   Badge, Banner, Button, Card, DateField, DetailPanel, EmptyState, ErrorState, Field, Meta, Modal, RailItem, RailList, Select, SplitView
 } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
-import { allSharesApproved, canAdjustLine, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, canSetPurchaseDetails, closesInText, editableQuantity, hasLiveItems, lineDelivery, lineLabel, orderStage, requestedLabel, shareStage, sourceLabel } from "./sharedOrders.js";
+import { allSharesApproved, canAdjustLine, canApprove, canCancel, canDispatch, canDispatchAll, canDispatchLine, canMarkOrdered, canRejectLine, canRejectShare, canSetPurchaseDetails, closesInText, editableQuantity, eventActor, eventText, hasLiveItems, lineDelivery, lineLabel, orderStage, requestedLabel, shareStage, sourceLabel } from "./sharedOrders.js";
 import { RaiseOrderDialog } from "./RaiseOrderDialog.jsx";
 
 const BASE = "/procurement/collaborative-purchase-orders";
@@ -361,6 +361,23 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
                 ))}
               </tbody>
             </table>
+            {(order.events || []).length > 0 && (
+              <>
+                <h3 style={{ fontSize: 14, margin: "16px 0 8px" }}>History</h3>
+                <table className="table">
+                  <thead><tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">What happened</th></tr></thead>
+                  <tbody>
+                    {[...order.events].reverse().map((event, index) => (
+                      <tr key={`${event.at}:${event.action}:${index}`}>
+                        <td style={{ whiteSpace: "nowrap", color: "var(--muted)" }}>{when(event.at, true)}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>{eventActor(event)}</td>
+                        <td>{eventText(event)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
           </DetailPanel>
         ) : (
           <EmptyState title={loading ? "Loading…" : "Select an order"}>Choose a shared order on the left.</EmptyState>

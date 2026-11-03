@@ -124,3 +124,43 @@ export const requestedLabel = (line) => {
   if (line.packId && line.requestedPackQuantity != null) return `${qty(line.requestedPackQuantity)} × ${line.packName}`;
   return `${qty(line.requestedQtyBaseUnit)} ${line?.stockItemId?.unitId?.symbol || ""}`.trim();
 };
+
+// ---- Order history (events, oldest first; see the API doc) ----
+
+const names = (items) => [...new Set((items || []).map((item) => item?.stockItemId?.name || "an item"))].join(", ");
+const amountOf = (value, item) => `${qty(value)} ${item?.stockItemId?.unitId?.symbol || ""}`.trim();
+const withNote = (text, note) => (note ? `${text}: ${note}` : text);
+const STATUS_TEXT = { closed: "Closed the order to new items", approved: "Approved the whole order", ordered: "Marked as ordered", cancelled: "Cancelled the order" };
+
+/** One history entry in plain words, e.g. "Rejected Dal for Gandhi Nagar School: Dal in stock". */
+export const eventText = (event) => {
+  const kitchen = event?.godownId?.name || "a kitchen";
+  const items = names(event?.items);
+  switch (event?.action) {
+    case "raised": return `Raised the order for ${kitchen}${items ? `: ${items}` : ""}`;
+    case "joined": return `${kitchen} joined${items ? `: ${items}` : ""}`;
+    case "edited": return `${kitchen} changed its items${items ? `: ${items}` : ""}`;
+    case "left": return `${kitchen} left the order`;
+    case "approved": return event.godownId ? `Approved ${items || "the items"} for ${kitchen}` : "Approved the whole order";
+    case "rejected": return withNote(`Rejected ${items || "the items"} for ${kitchen}`, event.note);
+    case "quantity_changed": {
+      const item = event.items?.[0];
+      return `Changed ${names([item])} for ${kitchen} from ${amountOf(item?.fromQtyBaseUnit, item)} to ${amountOf(item?.qtyBaseUnit, item)}`;
+    }
+    case "purchase_updated": return withNote("Purchase details", event.note);
+    case "status_changed":
+      if (event.actorRole === "system" && event.toStatus === "closed") return "Ordering closed";
+      return withNote(STATUS_TEXT[event.toStatus] || `Moved from ${event.fromStatus} to ${event.toStatus}`, event.note);
+    case "dispatched": return `Dispatched ${items} to ${kitchen}`;
+    case "received": return `${kitchen} received ${items}`;
+    case "problem_raised": return withNote(`${kitchen} reported a problem with ${items}`, event.note);
+    case "problem_settled": return withNote(`Settled the problem with ${items} for ${kitchen}`, event.note);
+    default: return event?.action || "";
+  }
+};
+
+/** Who did it: the person's name, "System" when the ordering window closed the order, else their role. */
+export const eventActor = (event) => {
+  if (event?.actorRole === "system") return "System";
+  return event?.actorId?.name || (event?.actorRole === "kitchen" ? "Kitchen" : "Admin");
+};
