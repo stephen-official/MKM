@@ -89,6 +89,18 @@ test("admins control lifecycle and closed orders reject kitchen changes", async 
   assert.equal((await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "open" })).status, 409);
 });
 
+test("retrying the current status does not rewrite its audit fields", async () => {
+  const order = (await createOrder()).body;
+  const closed = await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "closed" });
+  assert.equal(closed.status, 200);
+
+  const retried = await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "closed" });
+  assert.equal(retried.status, 200);
+  assert.equal(retried.body.statusChangedAt, closed.body.statusChangedAt);
+  assert.equal(String(retried.body.statusChangedBy._id), String(closed.body.statusChangedBy._id));
+  assert.equal(retried.body.events.filter((event) => event.action === "status_changed").length, 1);
+});
+
 test("invalid products and quantities are rejected", async () => {
   const empty = await call(ctx.cookA, "post", "/").send({ neededIn: "1w", items: [] });
   assert.equal(empty.status, 400);

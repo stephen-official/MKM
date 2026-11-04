@@ -17,7 +17,9 @@ import { businessDateOf, isIsoDate, startOfBusinessDay } from "../executive/para
 import { isKitchenRole } from "../utils/roles.js";
 import { closesAtFor, neededByFor } from "../ordering/window.js";
 import { readOrderingSettings } from "../ordering/settings.js";
-import { eventItems, orderEvent, visibleEvents } from "../ordering/orderEvents.js";
+import { eventItems, orderEvent } from "../ordering/orderEvents.js";
+import { fail, sendError as sendHttpError } from "../shared/httpErrors.js";
+import { presentOrder } from "../modules/collaborative-orders/orderPresenter.js";
 
 export const collaborativePurchaseOrderRoutes = express.Router();
 const everyone = authorize(["admin", "user"]);
@@ -34,15 +36,9 @@ const TRANSITIONS = {
   cancelled: new Set(),
 };
 
-const CODES = { 400: "INVALID_INPUT", 403: "FORBIDDEN", 404: "NOT_FOUND", 409: "CONFLICT" };
-const fail = (status, message, code = CODES[status]) => Object.assign(new Error(message), { status, code });
-const sendError = (res, error) => {
-  if (error.name === "VersionError") {
-    return res.status(409).json({ code: "VERSION_CONFLICT", message: "This order was changed by someone else. Reload and try again." });
-  }
-  const status = error.status || (error.name === "CastError" ? 404 : 500);
-  return res.status(status).json({ code: error.code || CODES[status] || "SERVER_ERROR", message: error.message });
-};
+const sendError = (res, error) => sendHttpError(res, error, {
+  versionConflictMessage: "This order was changed by someone else. Reload and try again.",
+});
 
 /** Orders whose ordering window has passed are closed here, so every read and write sees the current status. */
 export const closeExpiredOrders = (now = new Date()) => CollaborativePurchaseOrder.updateMany(
@@ -146,41 +142,6 @@ const populateOrder = (query) => query
     populate: [{ path: "unitId", select: "name symbol" }, { path: "stockGroupId", select: "name" }],
   });
 
-const idOf = (ref) => String(ref?._id || ref);
-
-/** A kitchen sees which items other kitchens asked for, but not how much or their notes. */
-const otherKitchensHidden = (value, viewer) => ({
-  ...value,
-  contributions: (value.contributions || []).map((contribution) => (idOf(contribution.godownId) === String(viewer.godownId)
-    ? contribution
-    : { ...contribution, note: undefined, rejectionReason: undefined, items: contribution.items.map((item) => ({ stockItemId: item.stockItemId })) })),
-  combinedItems: value.combinedItems.map((line) => ({ stockItemId: line.stockItemId })),
-});
-
-const responseOrder = (order, viewer) => {
-  const value = order.toObject ? order.toObject() : order;
-  const totals = new Map();
-  for (const contribution of value.contributions || []) {
-    for (const item of contribution.items || []) {
-      if (isRejected(item)) continue;
-      const product = item.stockItemId;
-      const id = idOf(product);
-      const current = totals.get(id) || { stockItemId: product, qtyBaseUnit: 0 };
-      current.qtyBaseUnit += Number(item.qtyBaseUnit) || 0;
-      totals.set(id, current);
-    }
-  }
-  // The populated supplier moves to `supplier`; admins also keep the raw id for their picker.
-  const supplier = value.supplierId && typeof value.supplierId === "object" ? value.supplierId : null;
-  const full = {
-    ...value, supplierId: supplier ? supplier._id : value.supplierId, supplier,
-    kitchenCount: value.contributions?.length || 0, combinedItems: [...totals.values()],
-    events: visibleEvents(value.events, viewer),
-  };
-  if (!isKitchenRole(viewer?.role)) return full;
-  return otherKitchensHidden({ ...full, supplierId: undefined }, viewer);
-};
-
 const loadOrder = async (id) => {
   if (!mongoose.isValidObjectId(id)) throw fail(404, "Collaborative purchase order not found");
   const order = await populateOrder(CollaborativePurchaseOrder.findById(id));
@@ -213,7 +174,7 @@ collaborativePurchaseOrderRoutes.get("/", everyone, async (req, res) => {
       populateOrder(CollaborativePurchaseOrder.find(filter).sort({ updatedAt: -1 }).skip((page - 1) * limit).limit(limit)),
       CollaborativePurchaseOrder.countDocuments(filter),
     ]);
-    return res.json({ items: orders.map((order) => responseOrder(order, req.user)), page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) });
+    return res.json({ items: orders.map((order) => presentOrder(order, req.user)), page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) });
   } catch (error) { return sendError(res, error); }
 });
 
@@ -265,14 +226,14 @@ collaborativePurchaseOrderRoutes.post("/", everyone, requireAvailableProducts(bo
       ],
     });
     notifyKitchens("orders");
-    return res.status(201).json(responseOrder(await loadOrder(order._id), req.user));
+    return res.status(201).json(presentOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
 collaborativePurchaseOrderRoutes.get("/:id", everyone, async (req, res) => {
   try {
     await closeExpiredOrders();
-    return res.json(responseOrder(await loadOrder(req.params.id), req.user));
+    return res.json(presentOrder(await loadOrder(req.params.id), req.user));
   }
   catch (error) { return sendError(res, error); }
 });
@@ -298,7 +259,7 @@ collaborativePurchaseOrderRoutes.post("/:id/contributions", kitchenOnly, require
       throw fail(409, "Your kitchen has already joined this order; edit its contribution instead", "ALREADY_JOINED");
     }
     notifyKitchens("orders");
-    return res.status(201).json(responseOrder(await loadOrder(order._id), req.user));
+    return res.status(201).json(presentOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
@@ -320,7 +281,7 @@ collaborativePurchaseOrderRoutes.put("/:id/contributions/me", kitchenOnly, requi
     order.events.push(orderEvent(req.user, "edited", { godownId: req.user.godownId, items: eventItems(liveLines(mine)) }));
     await order.save();
     notifyKitchens("orders");
-    return res.json(responseOrder(await loadOrder(order._id), req.user));
+    return res.json(presentOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
@@ -351,7 +312,7 @@ collaborativePurchaseOrderRoutes.delete("/:id/contributions/me", kitchenOnly, as
     }
     if (!order) throw fail(404, "Your kitchen has not joined this order");
     notifyKitchens("orders");
-    return res.json(responseOrder(await loadOrder(order._id), req.user));
+    return res.json(presentOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
@@ -391,18 +352,20 @@ collaborativePurchaseOrderRoutes.post("/:id/approve", adminOnly, async (req, res
       if (!share) throw fail(404, "That kitchen is not on this order");
       if (!items) {
         if (share.rejectedAt) throw fail(409, "This kitchen's items have been rejected", "SHARE_REJECTED");
+        if (share.approvedAt) throw fail(409, "This kitchen's items have already been approved", "SHARE_APPROVED");
         approveShare(share);
       } else {
         const chosen = pickLines(share, items);
         if (chosen.length === 0) throw fail(404, "Those items are not in this kitchen's share");
         if (chosen.some(isRejected)) throw fail(409, "Rejected items cannot be approved; the kitchen can ask for them on a new order", "LINE_REJECTED");
+        if (chosen.some((line) => line.approvedAt)) throw fail(409, "Approved items cannot be approved again", "LINE_APPROVED");
         approveLines(chosen);
       }
       order.events.push(orderEvent(req.user, "approved", { godownId, items: eventItems(approved) }));
     }
     await order.save();
     notifyKitchens("orders");
-    return res.json(responseOrder(await loadOrder(order._id), req.user));
+    return res.json(presentOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
@@ -443,7 +406,7 @@ collaborativePurchaseOrderRoutes.post("/:id/reject", adminOnly, async (req, res)
     }
     await order.save();
     notifyKitchens("orders");
-    return res.json(responseOrder(await loadOrder(order._id), req.user));
+    return res.json(presentOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
@@ -482,7 +445,7 @@ collaborativePurchaseOrderRoutes.post("/:id/adjust", adminOnly, async (req, res)
     order.events.push(orderEvent(req.user, "quantity_changed", { godownId, items: [{ ...eventItems([line])[0], fromQtyBaseUnit }] }));
     await order.save();
     notifyKitchens("orders");
-    return res.json(responseOrder(await loadOrder(order._id), req.user));
+    return res.json(presentOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
@@ -522,7 +485,7 @@ collaborativePurchaseOrderRoutes.post("/:id/dispatch", adminOnly, async (req, re
     if (sent === 0) throw fail(409, "These items have already been dispatched", "ALREADY_DISPATCHED");
     await order.save();
     notifyKitchens("orders");
-    return res.json(responseOrder(await loadOrder(order._id), req.user));
+    return res.json(presentOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
@@ -725,7 +688,7 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
     });
     notifyKitchens("orders");
     notifyKitchen(req.user.godownId, "stock");
-    return res.json(responseOrder(await loadOrder(req.params.id), req.user));
+    return res.json(presentOrder(await loadOrder(req.params.id), req.user));
   } catch (error) {
     return sendError(res, error);
   } finally {
@@ -821,7 +784,7 @@ collaborativePurchaseOrderRoutes.patch("/:id/purchase", adminOnly, async (req, r
     if (summary) order.events.push(orderEvent(req.user, "purchase_updated", { note: summary }));
     await order.save();
     notifyKitchens("orders");
-    return res.json(responseOrder(await loadOrder(order._id), req.user));
+    return res.json(presentOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
@@ -833,6 +796,8 @@ collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res
     const order = await CollaborativePurchaseOrder.findById(req.params.id);
     if (!order) throw fail(404, "Collaborative purchase order not found");
     if (next !== order.status && !TRANSITIONS[order.status].has(next)) throw fail(409, `An ${order.status} order cannot move to ${next}`);
+    // Treat retries as reads: a no-op must not rewrite the status audit fields or append misleading history.
+    if (next === order.status) return res.json(presentOrder(await loadOrder(order._id), req.user));
     const before = purchaseSnapshot(order);
     // "Mark as ordered" may name the supplier in the same call, and must end up with one: kitchens see the
     // supplier's name and FSSAI licence on every batch they receive.
@@ -848,6 +813,6 @@ collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res
     order.statusChangedBy = req.user.sub;
     await order.save();
     notifyKitchens("orders");
-    return res.json(responseOrder(await loadOrder(order._id), req.user));
+    return res.json(presentOrder(await loadOrder(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });

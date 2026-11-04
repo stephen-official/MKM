@@ -101,6 +101,23 @@ test("only admins approve, and only lines and kitchens that are on the order", a
   assert.equal((await approve({ godownId: "not-an-id" })).status, 400);
 });
 
+test("approving an already decided line or kitchen does not add false history", async () => {
+  const pick = { stockItemId: ctx.rice._id };
+  assert.equal((await approve({ godownId: ctx.kitchenA._id, items: [pick] })).status, 200);
+
+  const repeatedLine = await approve({ godownId: ctx.kitchenA._id, items: [pick] });
+  assert.equal(repeatedLine.status, 409);
+  assert.equal(repeatedLine.body.code, "LINE_APPROVED");
+
+  assert.equal((await approve({ godownId: ctx.kitchenB._id })).status, 200);
+  const repeatedShare = await approve({ godownId: ctx.kitchenB._id });
+  assert.equal(repeatedShare.status, 409);
+  assert.equal(repeatedShare.body.code, "SHARE_APPROVED");
+
+  const saved = await CollaborativePurchaseOrder.findById(ctx.order._id).lean();
+  assert.equal(saved.events.filter((event) => event.action === "approved").length, 2);
+});
+
 test("ordering needs approval first, and finished orders cannot be approved", async () => {
   await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "closed" });
   assert.equal((await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" })).status, 409);
