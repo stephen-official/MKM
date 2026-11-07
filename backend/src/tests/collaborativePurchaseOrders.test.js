@@ -179,3 +179,10 @@ test("an admin cannot order a product kitchens are not allowed to use", async ()
   assert.equal(res.status, 409);
   assert.equal(res.body.code, "PRODUCT_UNAVAILABLE");
 });
+
+test("an admin's order with a malformed item list is refused, not a server error", async () => {
+  for (const items of ["rice", { stockItemId: ctx.rice._id }, null]) {
+    const res = await call(ctx.admin, "post", "/").send({ godownId: ctx.kitchenB._id, neededIn: "1w", items });
+    assert.equal(res.status, 400, `${JSON.stringify(items)} → ${JSON.stringify(res.body)}`);
+  }
+});

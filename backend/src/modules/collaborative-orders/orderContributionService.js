@@ -28,7 +28,7 @@ const openingKitchen = async (input, actor) => {
   if (!mongoose.isValidObjectId(godownId) || !(await Godown.exists({ _id: godownId, active: { $ne: false } }))) {
     throw fail(400, "Choose the kitchen this order is for");
   }
-  await assertKitchenCanUse({ role: "user" }, (input.items || []).map((item) => item?.stockItemId));
+  await assertKitchenCanUse({ role: "user" }, Array.isArray(input.items) ? input.items.map((item) => item?.stockItemId) : []);
   return godownId;
 };
 
