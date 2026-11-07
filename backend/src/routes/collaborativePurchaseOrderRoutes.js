@@ -5,57 +5,29 @@ import multer from "multer";
 import { authorize } from "../middleware/auth.js";
 import { bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
-import { Supplier } from "../models/SupplierModel.js";
 import { isAudioType, isPhotoType, storePhoto, storeVoiceNote } from "../stock/photoStorage.js";
-import { businessDateOf, isIsoDate } from "../executive/params.js";
-import { orderEvent } from "../ordering/orderEvents.js";
 import { fail, sendError as sendHttpError } from "../shared/httpErrors.js";
-import { text } from "../shared/text.js";
 import { presentOrder } from "../modules/collaborative-orders/orderPresenter.js";
-import { getOrderDetails, getOrderPage, isOrderStatus } from "../modules/collaborative-orders/orderReadService.js";
+import { getOrderDetails, getOrderPage } from "../modules/collaborative-orders/orderReadService.js";
 import { createCollaborativeOrder, editOwnContribution, joinCollaborativeOrder, leaveCollaborativeOrder } from "../modules/collaborative-orders/orderContributionService.js";
 import {
   adjustCollaborativeOrderQuantity, approveCollaborativeOrder, rejectCollaborativeOrderItems, replaceKitchenItems,
 } from "../modules/collaborative-orders/orderReviewService.js";
 import { dispatchCollaborativeOrder } from "../modules/collaborative-orders/orderDispatchService.js";
 import { receiveCollaborativeOrder } from "../modules/collaborative-orders/orderReceivingService.js";
+import { updateOrderPurchaseDetails } from "../modules/collaborative-orders/orderPurchaseService.js";
+import { changeOrderClosingTime, closeExpiredOrders, transitionOrderStatus } from "../modules/collaborative-orders/orderLifecycleService.js";
 
 export const collaborativePurchaseOrderRoutes = express.Router();
 const everyone = authorize(["admin", "user"]);
 const kitchenOnly = authorize(["user"]);
 const adminOnly = authorize(["admin"]);
-// A closed order is never reopened; a kitchen that still needs items starts a new order (or an admin does for it).
-// "approved" is reached only through POST /:id/approve, and an order must be approved before it is ordered.
-const TRANSITIONS = {
-  open: new Set(["closed", "cancelled"]),
-  closed: new Set(["cancelled"]),
-  approved: new Set(["ordered", "cancelled"]),
-  ordered: new Set(),
-  cancelled: new Set(),
-};
 
 const sendError = (res, error) => sendHttpError(res, error, {
   versionConflictMessage: "This order was changed by someone else. Reload and try again.",
 });
 
-/** Orders whose ordering window has passed are closed here, so every read and write sees the current status. */
-export const closeExpiredOrders = (now = new Date()) => CollaborativePurchaseOrder.updateMany(
-  { status: "open", closesAt: { $ne: null, $lte: now } },
-  [{ $set: {
-    status: "closed", statusChangedAt: "$closesAt", statusChangedBy: null,
-    events: { $concatArrays: [{ $ifNull: ["$events", []] }, [{
-      action: "status_changed", at: "$closesAt", actorId: null, actorRole: "system", godownId: null, items: [],
-      fromStatus: "open", toStatus: "closed", note: "Ordering window ended",
-    }]] },
-  } }],
-);
-
-/** The reason the kitchen will see for a rejection or cancellation; required. */
-const requiredReason = (value) => {
-  const reason = text(value, 500, "Reason");
-  if (!reason) throw fail(400, "Give a reason the kitchen will see", "REASON_REQUIRED");
-  return reason;
-};
+export { closeExpiredOrders } from "../modules/collaborative-orders/orderLifecycleService.js";
 
 collaborativePurchaseOrderRoutes.get("/", everyone, async (req, res) => {
   try {
@@ -260,93 +232,10 @@ collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, r
   }
 });
 
-/**
- * Applies the admin's purchase details (`supplierId`, `invoiceNo`) from `body` to `order` without saving.
- * Only keys present in `body` change. Returns how many changed.
- */
-const applyPurchaseDetails = async (order, body) => {
-  let changed = 0;
-  if (body.supplierId !== undefined) {
-    if (body.supplierId === null || body.supplierId === "") {
-      if (order.status === "ordered") throw fail(400, "An ordered order must keep a supplier", "SUPPLIER_REQUIRED");
-      order.supplierId = null;
-    } else {
-      const supplier = mongoose.isValidObjectId(body.supplierId) ? await Supplier.findById(body.supplierId).select("active") : null;
-      if (!supplier || !supplier.active) throw fail(400, "Choose an active supplier");
-      order.supplierId = supplier._id;
-    }
-    changed += 1;
-  }
-  if (body.invoiceNo !== undefined) {
-    order.invoiceNo = text(body.invoiceNo, 60, "Invoice number");
-    changed += 1;
-  }
-  if (body.supplierOverrides !== undefined) {
-    if (!Array.isArray(body.supplierOverrides)) throw fail(400, "supplierOverrides must be a list of { stockItemId, supplierId }");
-    const onOrder = new Set(order.contributions.flatMap((share) => share.items.map((line) => String(line.stockItemId))));
-    const kept = new Map(order.supplierByProduct.map((entry) => [String(entry.stockItemId), entry.supplierId]));
-    for (const entry of body.supplierOverrides) {
-      const productId = String(entry?.stockItemId || "");
-      if (!onOrder.has(productId)) throw fail(400, "A supplier can only be set for products on this order");
-      if (entry.supplierId === null || entry.supplierId === "") { kept.delete(productId); continue; }
-      const supplier = mongoose.isValidObjectId(entry.supplierId) ? await Supplier.findById(entry.supplierId).select("active") : null;
-      if (!supplier || !supplier.active) throw fail(400, "Choose an active supplier for each item");
-      kept.set(productId, supplier._id);
-    }
-    order.supplierByProduct = [...kept].map(([stockItemId, supplierId]) => ({ stockItemId, supplierId }));
-    changed += 1;
-  }
-  if (body.expiryDates !== undefined) {
-    if (!Array.isArray(body.expiryDates)) throw fail(400, "expiryDates must be a list of { stockItemId, expiryDate }");
-    const onOrder = new Set(order.contributions.flatMap((share) => share.items.map((line) => String(line.stockItemId))));
-    const today = businessDateOf(new Date());
-    const kept = new Map(order.expiryByProduct.map((entry) => [String(entry.stockItemId), entry.expiryDate]));
-    for (const entry of body.expiryDates) {
-      const productId = String(entry?.stockItemId || "");
-      if (!onOrder.has(productId)) throw fail(400, "Expiry dates can only be set for products on this order");
-      if (entry.expiryDate === null || entry.expiryDate === "") { kept.delete(productId); continue; }
-      if (!isIsoDate(String(entry.expiryDate))) throw fail(400, "Expiry date must be a date like 2026-12-31");
-      if (String(entry.expiryDate) < today) throw fail(400, "The expiry date has already passed", "EXPIRED_GOODS");
-      kept.set(productId, String(entry.expiryDate));
-    }
-    order.expiryByProduct = [...kept].map(([stockItemId, expiryDate]) => ({ stockItemId, expiryDate }));
-    changed += 1;
-  }
-  return changed;
-};
-
-/** Admin: supplier and invoice number for an approved or ordered order. Kitchens see both read-only. */
-const purchaseSnapshot = (order) => ({
-  supplierId: order.supplierId ? String(order.supplierId) : "",
-  invoiceNo: order.invoiceNo || "",
-  overrides: JSON.stringify(order.supplierByProduct.map((entry) => [String(entry.stockItemId), String(entry.supplierId)]).sort()),
-  expiry: JSON.stringify(order.expiryByProduct.map((entry) => [String(entry.stockItemId), entry.expiryDate]).sort()),
-});
-/** "Supplier Sri Lakshmi Traders; invoice INV-7; …": what a purchase-details save changed, for the history ("" if nothing). */
-const purchaseChanges = async (before, order) => {
-  const after = purchaseSnapshot(order);
-  const parts = [];
-  if (after.supplierId !== before.supplierId) {
-    const supplier = after.supplierId ? await Supplier.findById(after.supplierId).select("name").lean() : null;
-    parts.push(supplier ? `Supplier ${supplier.name}` : "Supplier removed");
-  }
-  if (after.invoiceNo !== before.invoiceNo) parts.push(after.invoiceNo ? `Invoice ${after.invoiceNo}` : "Invoice removed");
-  if (after.overrides !== before.overrides) parts.push("Per-item suppliers updated");
-  if (after.expiry !== before.expiry) parts.push("Bulk expiry dates updated");
-  return parts.join("; ");
-};
-
 collaborativePurchaseOrderRoutes.patch("/:id/purchase", adminOnly, async (req, res) => {
   try {
     await closeExpiredOrders();
-    const order = await CollaborativePurchaseOrder.findById(req.params.id);
-    if (!order) throw fail(404, "Collaborative purchase order not found");
-    if (!["approved", "ordered"].includes(order.status)) throw fail(409, "Approve the order before adding supplier or invoice details", "NOT_APPROVED");
-    const before = purchaseSnapshot(order);
-    if ((await applyPurchaseDetails(order, req.body || {})) === 0) throw fail(400, "Send a supplierId, an invoiceNo, supplierOverrides or expiryDates");
-    const summary = await purchaseChanges(before, order);
-    if (summary) order.events.push(orderEvent(req.user, "purchase_updated", { note: summary }));
-    await order.save();
+    const order = await updateOrderPurchaseDetails({ orderId: req.params.id, input: req.body, actor: req.user });
     notifyKitchens("orders");
     return res.json(presentOrder(await getOrderDetails(order._id), req.user));
   } catch (error) { return sendError(res, error); }
@@ -355,55 +244,17 @@ collaborativePurchaseOrderRoutes.patch("/:id/purchase", adminOnly, async (req, r
 collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res) => {
   try {
     await closeExpiredOrders();
-    const next = String(req.body.status || "");
-    if (!isOrderStatus(next)) throw fail(400, "Status must be open, closed, approved, ordered or cancelled");
-    const order = await CollaborativePurchaseOrder.findById(req.params.id);
-    if (!order) throw fail(404, "Collaborative purchase order not found");
-    if (next !== order.status && !TRANSITIONS[order.status].has(next)) throw fail(409, `An ${order.status} order cannot move to ${next}`);
-    // Treat retries as reads: a no-op must not rewrite the status audit fields or append misleading history.
-    if (next === order.status) return res.json(presentOrder(await getOrderDetails(order._id), req.user));
-    const before = purchaseSnapshot(order);
-    // "Mark as ordered" may name the supplier in the same call, and must end up with one: kitchens see the
-    // supplier's name and FSSAI licence on every batch they receive.
-    if (next === "ordered" && req.body.supplierId !== undefined) await applyPurchaseDetails(order, { supplierId: req.body.supplierId });
-    if (next === "ordered" && !order.supplierId) throw fail(400, "Choose a supplier before marking the order as ordered", "SUPPLIER_REQUIRED");
-    if (next === "cancelled" && order.status !== "cancelled") order.cancellationReason = requiredReason(req.body.reason);
-    if (next !== order.status) {
-      const note = next === "cancelled" ? order.cancellationReason : await purchaseChanges(before, order);
-      order.events.push(orderEvent(req.user, "status_changed", { fromStatus: order.status, toStatus: next, note }));
-    }
-    order.status = next;
-    order.statusChangedAt = new Date();
-    order.statusChangedBy = req.user.sub;
-    await order.save();
+    const order = await transitionOrderStatus({ orderId: req.params.id, input: req.body, actor: req.user });
     notifyKitchens("orders");
     return res.json(presentOrder(await getOrderDetails(order._id), req.user));
   } catch (error) { return sendError(res, error); }
 });
 
-// Kitchens need time to be supplied after joining closes, so a moved closing time stays this far before needed-by (Anand, 2026-11-02).
-const CLOSING_LEAD_MS = 48 * 3_600_000;
-
 /** Super-admin: move an open order's closing time later or earlier. Closing it right now stays PATCH /:id/status. */
 collaborativePurchaseOrderRoutes.patch("/:id/closing-time", authorize(["super_admin"]), async (req, res) => {
   try {
     await closeExpiredOrders();
-    const closesAt = new Date(req.body?.closesAt ?? "");
-    if (Number.isNaN(closesAt.getTime())) throw fail(400, "Send closesAt as a date and time");
-    const now = new Date();
-    if (closesAt <= now) throw fail(400, "The closing time must be in the future. To close the order now, close it instead.");
-    const order = await CollaborativePurchaseOrder.findById(req.params.id).select("status neededBy closesAt");
-    if (!order) throw fail(404, "Collaborative purchase order not found");
-    if (order.status !== "open") throw fail(409, "This order is no longer open", "ORDER_CLOSED");
-    if (!order.neededBy || closesAt.getTime() > order.neededBy.getTime() - CLOSING_LEAD_MS) {
-      throw fail(400, "The order must close at least 2 days before it is needed", "TOO_CLOSE_TO_NEEDED_BY");
-    }
-    // Only if it is still open at this moment: a kitchen may not slip in after a close that happened meanwhile.
-    const updated = await CollaborativePurchaseOrder.updateOne(
-      { _id: order._id, status: "open", $or: [{ closesAt: null }, { closesAt: { $gt: now } }] },
-      { $set: { closesAt }, $push: { events: orderEvent(req.user, "closing_time_changed", { fromClosesAt: order.closesAt || null, toClosesAt: closesAt }) } },
-    );
-    if (updated.matchedCount === 0) throw fail(409, "This order is no longer open", "ORDER_CLOSED");
+    const order = await changeOrderClosingTime({ orderId: req.params.id, input: req.body, actor: req.user });
     notifyKitchens("orders");
     return res.json(presentOrder(await getOrderDetails(order._id), req.user));
   } catch (error) { return sendError(res, error); }
