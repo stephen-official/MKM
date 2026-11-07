@@ -1,11 +1,9 @@
 import express from "express";
 import { notifyKitchen, notifyKitchens } from "../realtime.js";
 import mongoose from "mongoose";
-import multer from "multer";
 import { authorize } from "../middleware/auth.js";
 import { bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
-import { isAudioType, isPhotoType, storePhoto, storeVoiceNote } from "../stock/photoStorage.js";
 import { fail, sendError as sendHttpError } from "../shared/httpErrors.js";
 import { presentOrder } from "../modules/collaborative-orders/orderPresenter.js";
 import { getOrderDetails, getOrderPage } from "../modules/collaborative-orders/orderReadService.js";
@@ -17,6 +15,9 @@ import { dispatchCollaborativeOrder } from "../modules/collaborative-orders/orde
 import { receiveCollaborativeOrder } from "../modules/collaborative-orders/orderReceivingService.js";
 import { updateOrderPurchaseDetails } from "../modules/collaborative-orders/orderPurchaseService.js";
 import { changeOrderClosingTime, closeExpiredOrders, transitionOrderStatus } from "../modules/collaborative-orders/orderLifecycleService.js";
+import {
+  ORDER_PHOTO_LIMIT_MB, ORDER_VOICE_LIMIT_MB, parseOrderPhoto, parseOrderVoiceNote, uploadOrderPhoto, uploadOrderVoiceNote,
+} from "../modules/collaborative-orders/orderUploadService.js";
 
 export const collaborativePurchaseOrderRoutes = express.Router();
 const everyone = authorize(["admin", "user"]);
@@ -162,41 +163,19 @@ collaborativePurchaseOrderRoutes.post("/:id/dispatch", adminOnly, async (req, re
   } catch (error) { return sendError(res, error); }
 });
 
-const PHOTO_LIMIT_MB = 8;
-const photoUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: PHOTO_LIMIT_MB * 1024 * 1024, files: 1 },
-  fileFilter: (_req, file, done) => (isPhotoType(file.mimetype) ? done(null, true) : done(fail(400, "Photos must be JPEG, PNG or WebP"))),
-}).single("photo");
-const VOICE_LIMIT_MB = 5;
-const voiceUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: VOICE_LIMIT_MB * 1024 * 1024, files: 1 },
-  fileFilter: (_req, file, done) => (isAudioType(file.mimetype) ? done(null, true) : done(fail(400, "Voice notes must be a recording (webm, m4a, mp3, ogg or wav)"))),
-}).single("audio");
-/** multer's own errors as { code, message } like every other error here. */
+/** Multer's own errors as { code, message } like every other route error. */
 const readUpload = (upload, what, limitMb) => (req, res, next) => upload(req, res, (error) => {
   if (!error) return next();
   if (error.code === "LIMIT_FILE_SIZE") return sendError(res, fail(400, `The ${what} is too big. Keep it under ${limitMb} MB.`, "PHOTO_TOO_LARGE"));
   return sendError(res, error.status ? error : fail(400, error.message));
 });
-const readPhoto = readUpload(photoUpload, "photo", PHOTO_LIMIT_MB);
-const readVoice = readUpload(voiceUpload, "voice note", VOICE_LIMIT_MB);
-
-/** The kitchen must be on the order to attach files to it. */
-const assertOnOrder = async (req) => {
-  if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
-  const order = await CollaborativePurchaseOrder.findById(req.params.id).select("contributions.godownId").lean();
-  if (!order) throw fail(404, "Collaborative purchase order not found");
-  if (!order.contributions.some((entry) => String(entry.godownId) === String(req.user.godownId))) throw fail(404, "Your kitchen is not on this order");
-};
+const readPhoto = readUpload(parseOrderPhoto, "photo", ORDER_PHOTO_LIMIT_MB);
+const readVoiceNote = readUpload(parseOrderVoiceNote, "voice note", ORDER_VOICE_LIMIT_MB);
 
 /** Kitchen: upload a voice note for a delivery problem on an order it is on. Returns `{ url }` for `problem.voiceNoteUrl`. */
-collaborativePurchaseOrderRoutes.post("/:id/voice-notes", kitchenOnly, readVoice, async (req, res) => {
+collaborativePurchaseOrderRoutes.post("/:id/voice-notes", kitchenOnly, readVoiceNote, async (req, res) => {
   try {
-    await assertOnOrder(req);
-    if (!req.file) throw fail(400, "Record a voice note first", "PHOTO_REQUIRED");
-    const url = await storeVoiceNote({ buffer: req.file.buffer, mimetype: req.file.mimetype, baseUrl: `${req.protocol}://${req.get("host")}` });
+    const url = await uploadOrderVoiceNote({ orderId: req.params.id, godownId: req.user.godownId, file: req.file, baseUrl: `${req.protocol}://${req.get("host")}` });
     return res.status(201).json({ url });
   } catch (error) { return sendError(res, error); }
 });
@@ -207,9 +186,7 @@ collaborativePurchaseOrderRoutes.post("/:id/voice-notes", kitchenOnly, readVoice
  */
 collaborativePurchaseOrderRoutes.post("/:id/photos", kitchenOnly, readPhoto, async (req, res) => {
   try {
-    await assertOnOrder(req);
-    if (!req.file) throw fail(400, "Choose a photo to upload", "PHOTO_REQUIRED");
-    const url = await storePhoto({ buffer: req.file.buffer, mimetype: req.file.mimetype, baseUrl: `${req.protocol}://${req.get("host")}` });
+    const url = await uploadOrderPhoto({ orderId: req.params.id, godownId: req.user.godownId, file: req.file, baseUrl: `${req.protocol}://${req.get("host")}` });
     return res.status(201).json({ url });
   } catch (error) { return sendError(res, error); }
 });
