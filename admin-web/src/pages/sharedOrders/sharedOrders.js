@@ -1,4 +1,5 @@
 // Pure helpers for the Shared orders tab (collaborative purchase orders); see docs/COLLABORATIVE_PURCHASE_ORDERS_API.md.
+import { formatDateTime } from "../../businessTime.js";
 
 const qty = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
 
@@ -133,6 +134,13 @@ export const requestedLabel = (line) => {
 const names = (items) => [...new Set((items || []).map((item) => item?.stockItemId?.name || "an item"))].join(", ");
 const amountOf = (value, item) => `${qty(value)} ${item?.stockItemId?.unitId?.symbol || ""}`.trim();
 const withNote = (text, note) => (note ? `${text}: ${note}` : text);
+/** "Rice 10 → 8 kg, Sugar 3 kg added, Oats removed" for an items_changed event. */
+const changeList = (items) => (items || []).map((item) => {
+  const name = item?.stockItemId?.name || "an item";
+  if (item.fromQtyBaseUnit == null) return `${name} ${amountOf(item.qtyBaseUnit, item)} added`;
+  if (item.qtyBaseUnit == null) return `${name} removed`;
+  return `${name} ${qty(item.fromQtyBaseUnit)} → ${amountOf(item.qtyBaseUnit, item)}`;
+}).join(", ");
 const STATUS_TEXT = { closed: "Closed the order to new items", approved: "Approved the whole order", ordered: "Marked as ordered", cancelled: "Cancelled the order" };
 
 /** One history entry in plain words, e.g. "Rejected Dal for Gandhi Nagar School: Dal in stock". */
@@ -150,6 +158,12 @@ export const eventText = (event) => {
       const item = event.items?.[0];
       return `Changed ${names([item])} for ${kitchen} from ${amountOf(item?.fromQtyBaseUnit, item)} to ${amountOf(item?.qtyBaseUnit, item)}`;
     }
+    case "items_changed": {
+      const list = changeList(event.items);
+      return `Changed the items for ${kitchen}${list ? `: ${list}` : ""}`;
+    }
+    case "closing_time_changed":
+      return `Moved the closing time${event.fromClosesAt ? ` from ${formatDateTime(event.fromClosesAt)}` : ""} to ${formatDateTime(event.toClosesAt)}`;
     case "purchase_updated": return withNote("Purchase details", event.note);
     case "status_changed":
       if (event.actorRole === "system" && event.toStatus === "closed") return "Ordering closed";

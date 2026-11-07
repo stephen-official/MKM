@@ -106,3 +106,38 @@ test("only a super-admin may change a kitchen's items, and only for a kitchen on
   assert.equal((await edit(ctx.owner, order, stranger, items)).status, 404);
   assert.equal((await call(ctx.owner, "post", `/${order._id}/contributions/me/change-seen`)).status, 403);
 });
+
+test("a super-admin's change is recorded in the history, naming what went up, down, in and out", async () => {
+  const order = await openOrder();
+  await edit(ctx.owner, order, ctx.kitchenA, [{ stockItemId: ctx.rice._id, qtyBaseUnit: 8 }, { stockItemId: ctx.oil._id, qtyBaseUnit: 5 }]);
+  const seen = (await call(ctx.cookA, "get", `/${order._id}`)).body;
+  const event = seen.events[seen.events.length - 1];
+  assert.equal(event.action, "items_changed");
+  assert.equal(event.actorRole, "admin");
+  assert.equal(String(event.godownId?._id || event.godownId), String(ctx.kitchenA._id));
+  assert.deepEqual(event.items.map((item) => [item.stockItemId.name, item.fromQtyBaseUnit, item.qtyBaseUnit]), [["Rice", 10, 8], ["Dal", 4, null], ["Oil", null, 5]]);
+  // Kitchen B does not see Kitchen A's change in its history.
+  assert.ok(!(await call(ctx.cookB, "get", `/${order._id}`)).body.events.some((entry) => entry.action === "items_changed"));
+
+  // Sending the same list again changes nothing and records nothing.
+  const count = (await call(ctx.owner, "get", `/${order._id}`)).body.events.length;
+  await edit(ctx.owner, order, ctx.kitchenA, [{ stockItemId: ctx.rice._id, qtyBaseUnit: 8 }, { stockItemId: ctx.oil._id, qtyBaseUnit: 5 }]);
+  assert.equal((await call(ctx.owner, "get", `/${order._id}`)).body.events.length, count);
+});
+
+test("Change & approve (adjust) shows the kitchen the same 'admin changed items' notice", async () => {
+  const order = await openOrder();
+  const adjusted = await call(ctx.admin, "post", `/${order._id}/adjust`).send({ godownId: ctx.kitchenA._id, stockItemId: ctx.rice._id, quantity: 6 });
+  assert.equal(adjusted.status, 200, JSON.stringify(adjusted.body));
+  const mine = shareOf((await call(ctx.cookA, "get", `/${order._id}`)).body, ctx.kitchenA);
+  assert.deepEqual(Object.fromEntries(mine.adminChange.before.map((line) => [line.stockItemId.name, line.qtyBaseUnit])), { Rice: 10, Dal: 4 });
+  assert.deepEqual(amounts(mine), { Rice: 6, Dal: 4 });
+
+  // A later popup change keeps the first "before", so the kitchen sees both changes as one.
+  await edit(ctx.owner, order, ctx.kitchenA, [{ stockItemId: ctx.rice._id, qtyBaseUnit: 6 }, { stockItemId: ctx.dal._id, qtyBaseUnit: 4 }, { stockItemId: ctx.oil._id, qtyBaseUnit: 1 }]);
+  const both = shareOf((await call(ctx.cookA, "get", `/${order._id}`)).body, ctx.kitchenA);
+  assert.deepEqual(Object.fromEntries(both.adminChange.before.map((line) => [line.stockItemId.name, line.qtyBaseUnit])), { Rice: 10, Dal: 4 });
+
+  const ok = await call(ctx.cookA, "post", `/${order._id}/contributions/me/change-seen`);
+  assert.equal(shareOf(ok.body, ctx.kitchenA).adminChange, null);
+});

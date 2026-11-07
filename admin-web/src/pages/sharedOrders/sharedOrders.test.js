@@ -229,6 +229,11 @@ describe("order history", () => {
     expect(eventText(event("approved", { fromStatus: "open", toStatus: "approved" }))).toBe("Approved the whole order");
     expect(eventText(event("rejected", { godownId: kitchen, items: [dal], note: "Dal in stock" }))).toBe("Rejected Dal for Gandhi Nagar School: Dal in stock");
     expect(eventText(event("quantity_changed", { godownId: kitchen, items: [{ ...rice, qtyBaseUnit: 6, fromQtyBaseUnit: 10 }] }))).toBe("Changed Rice for Gandhi Nagar School from 10 kg to 6 kg");
+    expect(eventText(event("items_changed", { godownId: kitchen, items: [
+      { ...rice, fromQtyBaseUnit: 10, qtyBaseUnit: 8 }, { ...dal, fromQtyBaseUnit: null, qtyBaseUnit: 3 }, { ...rice, stockItemId: { name: "Oats" }, fromQtyBaseUnit: 2, qtyBaseUnit: null },
+    ] }))).toBe("Changed the items for Gandhi Nagar School: Rice 10 → 8 kg, Dal 3 kg added, Oats removed");
+    expect(eventText(event("closing_time_changed", { fromClosesAt: "2026-11-04T06:30:00.000Z", toClosesAt: "2026-11-05T12:00:00.000Z" })))
+      .toBe("Moved the closing time from 04/11/2026, 12:00 IST to 05/11/2026, 17:30 IST");
     expect(eventText(event("purchase_updated", { note: "Invoice INV-7" }))).toBe("Purchase details: Invoice INV-7");
     expect(eventText(event("dispatched", { godownId: kitchen, items: [rice] }))).toBe("Dispatched Rice to Gandhi Nagar School");
     expect(eventText(event("received", { actorRole: "kitchen", godownId: kitchen, items: [rice] }))).toBe("Gandhi Nagar School received Rice");

@@ -326,6 +326,33 @@ const snapshotOf = (items) => items.map((line) => ({
 }));
 
 /**
+ * After an admin changed a kitchen's items (from `previous`, a snapshot taken before the change), tell the kitchen:
+ * adminChange.before keeps what it last saw until it taps OK. Both the super-admin items popup and Change & approve
+ * (POST /:id/adjust) go through here, so the kitchen gets one notice for either.
+ */
+const noteAdminChange = (share, previous, user) => {
+  const before = share.adminChange?.before?.length ? share.adminChange.before : previous;
+  // Changed back to what the kitchen last saw: nothing to tell it.
+  share.adminChange = sameLines(before, share.items) ? null : { before, changedAt: new Date(), changedBy: user.sub };
+};
+
+/** The lines that differ between two item lists, as event items: fromQtyBaseUnit null = added, qtyBaseUnit null = removed. */
+const changedEventItems = (beforeLines, afterLines) => {
+  const live = (lines) => new Map(lines.filter((line) => !isRejected(line)).map((line) => [lineKey(line), line]));
+  const was = live(beforeLines);
+  const now = live(afterLines);
+  const item = (line, fromQtyBaseUnit, qtyBaseUnit) => ({ stockItemId: line.stockItemId?._id || line.stockItemId, packId: line.packId || null, fromQtyBaseUnit, qtyBaseUnit });
+  const changes = [];
+  for (const [key, old] of was) {
+    const next = now.get(key);
+    if (!next) changes.push(item(old, old.qtyBaseUnit, null));
+    else if (Number(next.qtyBaseUnit) !== Number(old.qtyBaseUnit)) changes.push(item(old, old.qtyBaseUnit, next.qtyBaseUnit));
+  }
+  for (const [key, line] of now) if (!was.has(key)) changes.push(item(line, null, line.qtyBaseUnit));
+  return changes;
+};
+
+/**
  * Super-admin: replace one kitchen's items until the order is approved (Anand, 2026-11-03). Approved lines stay as they
  * are. The kitchen is shown what changed (adminChange.before → items) until it taps OK.
  */
@@ -346,11 +373,11 @@ collaborativePurchaseOrderRoutes.put("/:id/kitchens/:godownId/items", authorize(
     await assertKitchenCanUse({ role: "user" }, items.map((line) => line.stockItemId).filter((id) => !had.has(String(id))));
     const next = keepApprovedLines(share.items, items);
     if (!sameLines(share.items, next)) {
-      const before = share.adminChange?.before?.length ? share.adminChange.before : snapshotOf(share.items);
+      const previous = snapshotOf(share.items);
       share.items = next;
       share.updatedAt = new Date();
-      // Changed back to what the kitchen last saw: nothing to tell it.
-      share.adminChange = sameLines(before, next) ? null : { before, changedAt: new Date(), changedBy: req.user.sub };
+      noteAdminChange(share, previous, req.user);
+      order.events.push(orderEvent(req.user, "items_changed", { godownId: share.godownId, items: changedEventItems(previous, share.items) }));
       await order.save();
       notifyKitchens("orders");
     }
@@ -496,9 +523,11 @@ collaborativePurchaseOrderRoutes.post("/:id/adjust", adminOnly, async (req, res)
     if (next.qtyBaseUnit === Number(line.qtyBaseUnit)) throw fail(400, "That is the quantity already asked for; approve the item instead");
     const now = new Date();
     const fromQtyBaseUnit = Number(line.qtyBaseUnit);
+    const previous = snapshotOf(share.items);
     if (line.requestedQtyBaseUnit == null) Object.assign(line, { requestedQtyBaseUnit: line.qtyBaseUnit, requestedPackQuantity: line.packQuantity ?? null });
     Object.assign(line, next, { adjustedAt: now, adjustedBy: req.user.sub });
     if (!line.approvedAt) Object.assign(line, { approvedAt: now, approvedBy: req.user.sub });
+    noteAdminChange(share, previous, req.user);
     order.events.push(orderEvent(req.user, "quantity_changed", { godownId, items: [{ ...eventItems([line])[0], fromQtyBaseUnit }] }));
     await order.save();
     notifyKitchens("orders");
@@ -885,7 +914,7 @@ collaborativePurchaseOrderRoutes.patch("/:id/closing-time", authorize(["super_ad
     if (Number.isNaN(closesAt.getTime())) throw fail(400, "Send closesAt as a date and time");
     const now = new Date();
     if (closesAt <= now) throw fail(400, "The closing time must be in the future. To close the order now, close it instead.");
-    const order = await CollaborativePurchaseOrder.findById(req.params.id).select("status neededBy");
+    const order = await CollaborativePurchaseOrder.findById(req.params.id).select("status neededBy closesAt");
     if (!order) throw fail(404, "Collaborative purchase order not found");
     if (order.status !== "open") throw fail(409, "This order is no longer open", "ORDER_CLOSED");
     if (!order.neededBy || closesAt.getTime() > order.neededBy.getTime() - CLOSING_LEAD_MS) {
@@ -894,7 +923,7 @@ collaborativePurchaseOrderRoutes.patch("/:id/closing-time", authorize(["super_ad
     // Only if it is still open at this moment: a kitchen may not slip in after a close that happened meanwhile.
     const updated = await CollaborativePurchaseOrder.updateOne(
       { _id: order._id, status: "open", $or: [{ closesAt: null }, { closesAt: { $gt: now } }] },
-      { $set: { closesAt } },
+      { $set: { closesAt }, $push: { events: orderEvent(req.user, "closing_time_changed", { fromClosesAt: order.closesAt || null, toClosesAt: closesAt }) } },
     );
     if (updated.matchedCount === 0) throw fail(409, "This order is no longer open", "ORDER_CLOSED");
     notifyKitchens("orders");

@@ -77,7 +77,7 @@ const contributionSchema = new mongoose.Schema({
 // One entry in an order's history. Written in the same save as the change it records, and never edited afterwards.
 export const ORDER_EVENT_ACTIONS = Object.freeze([
   "raised", "joined", "edited", "left", "approved", "rejected", "quantity_changed",
-  "purchase_updated", "status_changed", "dispatched", "received", "problem_raised", "problem_settled",
+  "items_changed", "closing_time_changed", "purchase_updated", "status_changed", "dispatched", "received", "problem_raised", "problem_settled",
 ]);
 const orderEventSchema = new mongoose.Schema({
   action: { type: String, enum: ORDER_EVENT_ACTIONS, required: true },
@@ -96,6 +96,9 @@ const orderEventSchema = new mongoose.Schema({
   }], default: [] },
   fromStatus: { type: String, default: null },
   toStatus: { type: String, default: null },
+  // closing_time_changed only: the ordering window's old and new closing time.
+  fromClosesAt: { type: Date, default: null },
+  toClosesAt: { type: Date, default: null },
   // A reason (rejection, cancellation) or a short summary (purchase details, delivery problem settled).
   note: { type: String, trim: true, maxlength: 1000, default: "" },
 }, { _id: false });

@@ -119,22 +119,19 @@ export const withOrderProducts = (products, share) => {
   return extra.length ? [...products, ...extra] : products;
 };
 
-/** "You asked for 10 kg" / "You asked for 4 × 25 kg bag" on a line whose quantity the central store changed; else null. */
-export const requestedAmountText = (line) => {
-  if (line?.requestedQtyBaseUnit == null) return null;
-  const amount = (value) => Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
-  const asked = line.packId && line.requestedPackQuantity != null
-    ? `${amount(line.requestedPackQuantity)} × ${line.packName}`
-    : `${amount(line.requestedQtyBaseUnit)} ${line.stockItemId?.unitId?.symbol || ""}`.trim();
-  return `You asked for ${asked}`;
-};
-
 // ---- Order history, as the kitchen sees it (the API sends only order-wide events and this kitchen's own) ----
 
 const itemNames = (items) => [...new Set((items || []).map((item) => item?.stockItemId?.name || "an item"))].join(", ");
 const amountWithUnit = (value, item) => `${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 })} ${item?.stockItemId?.unitId?.symbol || ""}`.trim();
 const noted = (text, note) => (note ? `${text}: ${note}` : text);
 const STORE = "Central store";
+/** "Rice 10 → 8 kg, Sugar 3 kg added, Oats removed" for an items_changed event. */
+const changeList = (items) => (items || []).map((item) => {
+  const name = item?.stockItemId?.name || "an item";
+  if (item.fromQtyBaseUnit == null) return `${name} ${amountWithUnit(item.qtyBaseUnit, item)} added`;
+  if (item.qtyBaseUnit == null) return `${name} removed`;
+  return `${name} ${amountWithUnit(item.fromQtyBaseUnit)} → ${amountWithUnit(item.qtyBaseUnit, item)}`;
+}).join(", ");
 
 /** One history entry in the kitchen's words, e.g. "Central store did not approve Rice: In stock". */
 export const kitchenEventText = (event) => {
@@ -151,6 +148,11 @@ export const kitchenEventText = (event) => {
       const item = event.items?.[0];
       return `${STORE} changed ${itemNames([item])} from ${amountWithUnit(item?.fromQtyBaseUnit, item)} to ${amountWithUnit(item?.qtyBaseUnit, item)}`;
     }
+    case "items_changed": {
+      const list = changeList(event.items);
+      return `${STORE} changed your items${list ? `: ${list}` : ""}`;
+    }
+    case "closing_time_changed": return `${STORE} moved the closing time to ${deliveryDateText(event.toClosesAt, { withTime: true })}`;
     case "purchase_updated": return noted(`${STORE} updated the purchase details`, event.note);
     case "status_changed":
       if (event.actorRole === "system") return "Ordering closed";

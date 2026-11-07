@@ -38,7 +38,9 @@ Every order (in the list and on its own) carries `events`, its history oldest fi
 | `joined`, `edited`, `left` | A kitchen joins, changes its items, or leaves | that kitchen | `items` is the kitchen's list (rejected lines left out of `edited`) |
 | `approved` | Lines, a kitchen, or the whole order are approved (also "approve and send") | the kitchen, or null for the whole order | whole order: `fromStatus` → `approved` |
 | `rejected` | Lines or a kitchen's remaining items are rejected | that kitchen | `note` is the reason |
-| `quantity_changed` | An admin changes a quantity | that kitchen | `items[0]` has `fromQtyBaseUnit` and `qtyBaseUnit` |
+| `quantity_changed` | An admin changes a quantity (Change & approve, `POST /:id/adjust`) | that kitchen | `items[0]` has `fromQtyBaseUnit` and `qtyBaseUnit` |
+| `items_changed` | A super-admin changes a kitchen's items (`PUT /:id/kitchens/:godownId/items`) | that kitchen | `items` lists only the lines that changed: `fromQtyBaseUnit` null = added, `qtyBaseUnit` null = removed. Nothing is recorded when the list did not change |
+| `closing_time_changed` | A super-admin moves the closing time (`PATCH /:id/closing-time`) | null | `fromClosesAt` and `toClosesAt` |
 | `purchase_updated` | Supplier, invoice, per-item suppliers or bulk expiry dates change | null | `note` lists what changed |
 | `status_changed` | The order is closed, ordered or cancelled | null | `fromStatus`/`toStatus`; `note` is the cancellation reason or the supplier set while ordering. When the ordering window ends, `actorRole` is `system` and `actorId` null |
 | `dispatched` | Lines are sent (one event per kitchen) | that kitchen | the lines sent |
@@ -141,7 +143,7 @@ A rejected line stays on the order as a record. It is left out of `combinedItems
 
 ### Change a requested quantity (admin only)
 
-`POST /:id/adjust` with `{ "godownId": "KITCHEN_ID", "stockItemId": "PRODUCT_ID", "packId": "optional", "quantity": 3 }` changes one line while the order is `open` or `closed`. For a packed line, `quantity` is the number of packs; otherwise it is in the product's base unit. The change also approves that line. The response keeps the kitchen's original amount in `requestedQtyBaseUnit` and, for packed lines, `requestedPackQuantity`, and records `adjustedAt` and `adjustedBy`. Rejected lines and finished orders cannot be changed.
+`POST /:id/adjust` with `{ "godownId": "KITCHEN_ID", "stockItemId": "PRODUCT_ID", "packId": "optional", "quantity": 3 }` changes one line while the order is `open` or `closed`. For a packed line, `quantity` is the number of packs; otherwise it is in the product's base unit. The change also approves that line. The response keeps the kitchen's original amount in `requestedQtyBaseUnit` and, for packed lines, `requestedPackQuantity`, and records `adjustedAt` and `adjustedBy`. Like the super-admin's items change below, it sets the kitchen's `adminChange`, so the kitchen sees one "Your admin changed items" notice for either kind of change. Rejected lines and finished orders cannot be changed.
 
 ### Dispatch (admin only)
 
@@ -253,7 +255,7 @@ Closing the order immediately prevents kitchens from adding, editing, or removin
 
 `PUT /:id/kitchens/:godownId/items` with `{ "items": [{ "stockItemId": "...", "qtyBaseUnit": 8 }] }` (the same line shape as a contribution, packs allowed) replaces that kitchen's items while the order is `open` or `closed`, i.e. until it is approved (otherwise 409 `ORDER_CLOSED`). An approved share gives 409 `SHARE_APPROVED`; approved lines must come back unchanged (409 `LINE_APPROVED`). Products new to the kitchen's list follow the kitchen availability rules (409 `PRODUCT_UNAVAILABLE`). A kitchen not on the order gives 404; admins and kitchens get 403.
 
-The kitchen is told: its contribution carries `adminChange: { before: [{ stockItemId: { name, unitId: { symbol } }, qtyBaseUnit, packId, packName, packQuantity }], changedAt, changedBy }`, where `before` is what it had asked for before the first change it has not seen yet (several changes show as one). `adminChange` is `null` when there is nothing to show, including when the super-admin changes the items back. Other kitchens never see it.
+The kitchen is told: its contribution carries `adminChange: { before: [{ stockItemId: { name, unitId: { symbol } }, qtyBaseUnit, packId, packName, packQuantity }], changedAt, changedBy }`, where `before` is what it had asked for before the first change it has not seen yet (several changes show as one). `adminChange` is `null` when there is nothing to show, including when the super-admin changes the items back. Other kitchens never see it. `POST /:id/adjust` sets it the same way. Each change is recorded as an `items_changed` event.
 
 `POST /:id/contributions/me/change-seen` (kitchen) clears it for that kitchen ("OK"). A kitchen editing its own items clears it too.
 
@@ -265,7 +267,7 @@ The kitchen is told: its contribution carries `adminChange: { before: [{ stockIt
 { "closesAt": "2026-11-09T18:00:00+05:30" }
 ```
 
-Moves an `open` order's closing time later or earlier. The new time must be in the future (400 `INVALID_INPUT`; to close now, use `PATCH /:id/status`) and at least 2 days before `neededBy` (400 `TOO_CLOSE_TO_NEEDED_BY`, so an order needed within 2 days cannot be kept open longer). A closed, approved, ordered or cancelled order, or one whose window has just run out, gives 409 `ORDER_CLOSED`. Admins and kitchens get 403. Returns the order, like the other admin actions.
+Moves an `open` order's closing time later or earlier. The new time must be in the future (400 `INVALID_INPUT`; to close now, use `PATCH /:id/status`) and at least 2 days before `neededBy` (400 `TOO_CLOSE_TO_NEEDED_BY`, so an order needed within 2 days cannot be kept open longer). A closed, approved, ordered or cancelled order, or one whose window has just run out, gives 409 `ORDER_CLOSED`. Admins and kitchens get 403. Returns the order, like the other admin actions. Each move is recorded as a `closing_time_changed` event (order-wide, so every kitchen on the order sees it).
 
 ## Delivery problems (admin only)
 

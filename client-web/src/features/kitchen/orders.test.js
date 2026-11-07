@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { adminChanges, canEditShare, canJoin, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, myOrders, kitchenEventText, kitchenHistory, requestedAmountText, withOrderProducts } from "./orders.js";
+import { adminChanges, canEditShare, canJoin, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, myOrders, kitchenEventText, kitchenHistory, withOrderProducts } from "./orders.js";
 
 const me = "kitchenA";
 const now = new Date("2026-10-18T04:30:00.000Z"); // 10:00 in India
@@ -133,13 +133,6 @@ test("an order's products are offered when editing, even ones the kitchen holds 
   assert.equal(withOrderProducts(held, null), held);
 });
 
-test("a quantity the central store changed shows what the kitchen first asked for", () => {
-  const rice = { stockItemId: { unitId: { symbol: "kg" } } };
-  assert.equal(requestedAmountText({ ...rice, qtyBaseUnit: 6 }), null);
-  assert.equal(requestedAmountText({ ...rice, qtyBaseUnit: 6, requestedQtyBaseUnit: 10, adjustedAt: at(-1) }), "You asked for 10 kg");
-  assert.equal(requestedAmountText({ ...rice, qtyBaseUnit: 75, packId: "bag", packName: "25 kg bag", packQuantity: 3, requestedQtyBaseUnit: 100, requestedPackQuantity: 4, adjustedAt: at(-1) }), "You asked for 4 × 25 kg bag");
-});
-
 test("the kitchen's history reads from the kitchen's side, newest first", () => {
   const rice = { stockItemId: { name: "Rice", unitId: { symbol: "kg" } }, qtyBaseUnit: 10 };
   const ev = (action, extra = {}) => ({ action, at: at(0), actorRole: "admin", actorId: { name: "Asha" }, godownId: { _id: me }, items: [], fromStatus: null, toStatus: null, note: "", ...extra });
@@ -154,6 +147,9 @@ test("the kitchen's history reads from the kitchen's side, newest first", () => 
     [ev("approved", { godownId: null, toStatus: "approved" }), "Central store approved the order"],
     [ev("rejected", { items: [rice], note: "In stock" }), "Central store did not approve Rice: In stock"],
     [ev("quantity_changed", { items: [{ ...rice, qtyBaseUnit: 6, fromQtyBaseUnit: 10 }] }), "Central store changed Rice from 10 kg to 6 kg"],
+    [ev("items_changed", { items: [{ ...rice, fromQtyBaseUnit: 10, qtyBaseUnit: 8 }, { stockItemId: { name: "Dal", unitId: { symbol: "kg" } }, fromQtyBaseUnit: null, qtyBaseUnit: 3 }, { stockItemId: { name: "Oats" }, fromQtyBaseUnit: 2, qtyBaseUnit: null }] }),
+      "Central store changed your items: Rice 10 → 8 kg, Dal 3 kg added, Oats removed"],
+    [ev("closing_time_changed", { godownId: null, fromClosesAt: "2026-11-04T06:30:00.000Z", toClosesAt: "2026-11-05T12:00:00.000Z" }), "Central store moved the closing time to Thu, 5 Nov, 5:30 pm"],
     [ev("purchase_updated", { godownId: null, note: "Invoice INV-7" }), "Central store updated the purchase details: Invoice INV-7"],
     [ev("status_changed", { godownId: null, actorRole: "system", actorId: null, toStatus: "closed" }), "Ordering closed"],
     [ev("status_changed", { godownId: null, toStatus: "closed" }), "Central store closed the order to new items"],

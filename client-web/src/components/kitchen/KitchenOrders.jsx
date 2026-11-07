@@ -4,7 +4,7 @@ import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { useKitchenChanges } from "../../liveUpdates";
 import { formatStockQuantity, getStockHealth, productPacks } from "../../features/kitchen";
-import { adminChanges, canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myOrders, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, kitchenEventText, kitchenHistory, requestedAmountText, withOrderProducts } from "../../features/kitchen/orders";
+import { adminChanges, canEditShare, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myOrders, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, kitchenEventText, kitchenHistory, withOrderProducts } from "../../features/kitchen/orders";
 import { arrivingLines } from "../../features/kitchen/receiving";
 import KitchenReceiveItems from "./KitchenReceiveItems";
 import { TransferCard } from "./KitchenTransfers";
@@ -82,7 +82,6 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive, onShowChange }) 
     <ul className="ko-lines" aria-label="Your items">
       {share.items.map((line) => <li key={`${line.stockItemId?._id}:${line.packId || "base"}`} className="ko-line">
         <strong>{productName(line)}</strong><span>{lineAmount(line)}</span>
-        {requestedAmountText(line) && <span className="kg-pill kg-pill--routine">Changed by central store · {requestedAmountText(line)}</span>}
         {order.status === "ordered" || line.rejectedAt
           ? <span className={`kg-pill ${LINE_STATE[lineState(line, share)].pill}`}>{lineStateText(line, share)}</span>
           : line.approvedAt && <small className="ko-locked"><Lock size={12} aria-hidden="true" /> Approved</small>}

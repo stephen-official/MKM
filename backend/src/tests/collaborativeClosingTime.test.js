@@ -86,3 +86,19 @@ test("only a super-admin may change it, and only while the order is open", async
 
   assert.equal((await setClosing(ctx.owner, { _id: "64b000000000000000000000" }, when)).status, 404);
 });
+
+test("moving the closing time is recorded in the history, from and to, for every kitchen to see", async () => {
+  const order = await openOrder("1w");
+  const to = new Date(new Date(order.neededBy).getTime() - 48 * HOUR).toISOString();
+  assert.equal((await setClosing(ctx.owner, order, to)).status, 200);
+  const seen = (await call(ctx.cook, "get", `/${order._id}`)).body;
+  const event = seen.events[seen.events.length - 1];
+  assert.equal(event.action, "closing_time_changed");
+  assert.equal(event.godownId, null, "order-wide");
+  assert.equal(new Date(event.fromClosesAt).toISOString(), new Date(order.closesAt).toISOString());
+  assert.equal(new Date(event.toClosesAt).toISOString(), to);
+
+  // A refused change leaves no entry.
+  await setClosing(ctx.owner, order, new Date(Date.now() - HOUR).toISOString());
+  assert.equal((await call(ctx.cook, "get", `/${order._id}`)).body.events.length, seen.events.length);
+});
