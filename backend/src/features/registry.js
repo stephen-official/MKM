@@ -50,10 +50,15 @@ export const ROUTE_RULES = Object.freeze([
 
   // --- products (master catalog) + kitchen product requests ---
   feature("GET", "/api/products/units", ["products"], "read"),
+  feature("POST", "/api/products/units", ["products"], "mutation"),
+  feature("DELETE", "/api/products/units/:id", ["products"], "mutation"),
   feature("GET", "/api/products/export/excel", ["products"], "read"),
+  feature("GET", "/api/products/export/pdf", ["products"], "read"),
   feature("GET", "/api/products/import-template", ["products"], "read"),
   feature("POST", "/api/products/import", ["products"], "mutation"),
   feature("POST", "/api/products/upload-image", ["products"], "mutation"),
+  feature("GET", "/api/products/pack-names", ["products"], "read"),
+  feature("POST", "/api/products/pack-names", ["products"], "mutation"),
   feature("GET", "/api/products/pack-types/spellcheck", ["products"], "read"),
   feature("GET", "/api/products/pack-types/usage", ["products"], "read"),
   feature("POST", "/api/products/pack-types/remove", ["products"], "mutation"),
@@ -72,6 +77,8 @@ export const ROUTE_RULES = Object.freeze([
   // --- inventory ---
   feature("GET", "/api/inventory/:type/export/excel", ["inventory"], "read"),
   feature("POST", "/api/inventory/:type", ["inventory"], "mutation"),
+  feature("POST", "/api/inventory/godowns/:id/logo", ["inventory"], "mutation"),
+  feature("DELETE", "/api/inventory/godowns/:id/logo", ["inventory"], "mutation"),
   feature("PUT", "/api/inventory/:type/:id", ["inventory"], "mutation"),
   feature("DELETE", "/api/inventory/:type/:id", ["inventory"], "mutation"),
 
@@ -108,6 +115,9 @@ export const ROUTE_RULES = Object.freeze([
   feature("POST", "/api/procurement/collaborative-purchase-orders/:id/voice-notes", ["purchase-orders"], "mutation", "kitchen"),
   feature("POST", "/api/procurement/collaborative-purchase-orders/:id/receive", ["purchase-orders"], "mutation", "kitchen"),
   feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/status", ["purchase-orders"], "mutation"),
+  feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/closing-time", ["purchase-orders"], "mutation"),
+  feature("PUT", "/api/procurement/collaborative-purchase-orders/:id/kitchens/:godownId/items", ["purchase-orders"], "mutation"),
+  feature("POST", "/api/procurement/collaborative-purchase-orders/:id/contributions/me/change-seen", ["purchase-orders"], "mutation", "kitchen"),
   feature("PATCH", "/api/procurement/collaborative-purchase-orders/:id/purchase", ["purchase-orders"], "mutation"),
 
   // --- delivery problems kitchens raise while receiving shared orders ---
@@ -158,9 +168,10 @@ export const ROUTE_RULES = Object.freeze([
   feature("DELETE", "/api/consumptions/:id", ["consumption"], "mutation"),
   feature("GET", "/api/usage-days", ["consumption"], "read", "kitchen"),
   feature("POST", "/api/usage-days/none", ["consumption"], "mutation", "kitchen"),
-  // Corrections: a kitchen reports a mistake, an admin approves it (today: reopening a "no usage" day).
+  // Corrections: a kitchen asks to change what it recorded (reopen a "no usage" day with usage, or edit a record); an admin approves it.
   feature("POST", "/api/usage-corrections", ["consumption"], "mutation", "kitchen"),
   feature("GET", "/api/usage-corrections/me", ["consumption"], "read", "kitchen"),
+  feature("DELETE", "/api/usage-corrections/:id", ["consumption"], "mutation", "kitchen"),
   feature("GET", "/api/usage-corrections", ["consumption"], "read"),
   feature("POST", "/api/usage-corrections/:id/approve", ["consumption"], "mutation"),
   feature("POST", "/api/usage-corrections/:id/reject", ["consumption"], "mutation"),

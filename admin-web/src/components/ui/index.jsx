@@ -5,7 +5,7 @@
 
 import { Children, forwardRef, isValidElement, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -289,22 +289,30 @@ export function Select({ value, onChange, children, disabled = false, className,
   );
 }
 
-export function Modal({ title, onClose, children, actions, wide = false }) {
+/* dismissible=false keeps a long form open on an outside tap or Escape (only the cross and the buttons close it);
+   closeButton adds a cross at the top left of the title row; closeButton="right" puts it at the top right. */
+export function Modal({ title, onClose, children, actions, wide = false, dismissible = true, closeButton = false }) {
   useEffect(() => {
+    if (!dismissible) return undefined;
     const onKey = (event) => event.key === "Escape" && onClose?.();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, dismissible]);
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className="modal-backdrop" onClick={dismissible ? onClose : undefined}>
       <div
         className={cx("modal", wide && "modal--wide")}
         role="dialog"
         aria-modal="true"
         onClick={(event) => event.stopPropagation()}
       >
-        {title && <h2 className="modal-title">{title}</h2>}
+        {(title || closeButton) && (
+          <div className="modal-head">
+            {closeButton && <button type="button" className={cx("modal-close", closeButton === "right" && "modal-close--right")} onClick={onClose} aria-label="Close"><X size={18} aria-hidden="true" /></button>}
+            {title && <h2 className="modal-title">{title}</h2>}
+          </div>
+        )}
         {children}
         {actions && <div className="modal-actions">{actions}</div>}
       </div>

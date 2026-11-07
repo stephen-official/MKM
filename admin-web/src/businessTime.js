@@ -9,6 +9,10 @@ const dateParts = (date) => {
 
 export const todayInBusinessTz = (now = new Date()) => dateParts(now);
 
+/** Download file names read Section_Date_MKM, e.g. Products_02-Nov-2026_MKM.xlsx. Keep in step with backend productRoutes downloadName. */
+export const downloadName = (section, ext, now = new Date()) =>
+  `${section}_${new Intl.DateTimeFormat("en-GB", { timeZone: BUSINESS_TZ, day: "2-digit", month: "short", year: "numeric" }).format(now).replace(/ /g, "-")}_MKM.${ext}`;
+
 export const addDays = (dateStr, days) => {
   const [y, m, d] = dateStr.split("-").map(Number);
   const utc = new Date(Date.UTC(y, m - 1, d + days));

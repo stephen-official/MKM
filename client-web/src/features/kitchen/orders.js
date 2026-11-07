@@ -168,3 +168,36 @@ export const kitchenEventText = (event) => {
 
 /** The order's history for the kitchen card, newest first. */
 export const kitchenHistory = (order) => [...(order?.events || [])].reverse();
+
+/**
+ * What the central team changed in this kitchen's items (share.adminChange.before → share.items), one row per product:
+ * { id, name, unit, before, after, kind } with kind "up" | "down" | "added" | "removed" (unchanged products left out).
+ * Amounts are in the base unit. Same idea as the admin's usage-correction ticket
+ * (admin-web/src/pages/consumption/correctionSummary.js correctionChanges) — keep the two in step.
+ */
+export const adminChanges = (share) => {
+  if (!share?.adminChange) return [];
+  const totals = (lines) => {
+    const map = new Map();
+    for (const line of lines || []) {
+      const product = line.stockItemId || {};
+      const id = idOf(product);
+      const entry = map.get(id) || { id, name: product.name || "Item", unit: product.unitId?.symbol || "", qty: 0 };
+      entry.qty += Number(line.qtyBaseUnit) || 0;
+      map.set(id, entry);
+    }
+    return map;
+  };
+  const before = totals(share.adminChange.before);
+  const after = totals(share.items);
+  const rows = [];
+  for (const [id, was] of before) {
+    const now = after.get(id);
+    if (!now) rows.push({ id, name: was.name, unit: was.unit, before: was.qty, after: null, kind: "removed" });
+    else if (now.qty !== was.qty) rows.push({ id, name: was.name, unit: was.unit || now.unit, before: was.qty, after: now.qty, kind: now.qty > was.qty ? "up" : "down" });
+  }
+  for (const [id, now] of after) {
+    if (!before.has(id)) rows.push({ id, name: now.name, unit: now.unit, before: null, after: now.qty, kind: "added" });
+  }
+  return rows;
+};

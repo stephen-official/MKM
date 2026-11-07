@@ -58,6 +58,7 @@ authRoutes.post("/login", async (req, res) => {
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user);
   user.refreshToken = refreshToken;
+  user.lastLoginAt = new Date();
   await user.save();
   return res.json({ accessToken, refreshToken, role: user.role, godownId: user.godownId });
 });
@@ -134,6 +135,7 @@ authRoutes.post("/reset-password", async (req, res) => {
   if (!user) return res.status(400).json({ message: "Invalid or expired token" });
   
   user.passwordHash = await bcrypt.hash(newPassword, 10);
+  user.viewablePassword = null; // the user chose this one: super-admins no longer see it
   user.resetToken = null;
   user.resetTokenExpiry = null;
   user.refreshToken = null;
@@ -152,7 +154,7 @@ authRoutes.get("/me", authenticate, async (req, res) => {
   try {
     const user = await User.findById(req.user.sub)
       .select("-passwordHash -refreshToken -resetToken")
-      .populate("godownId", "name"); // ✅ IMPORTANT
+      .populate("godownId", "name logoUrl"); // the kitchen app shows the kitchen's name and logo
 
     if (!user || !user.active) return res.status(401).json({ message: "Account is inactive" });
 

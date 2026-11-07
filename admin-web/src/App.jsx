@@ -17,7 +17,7 @@ import { NO_ACCESS_PATH, buildSections, disabledFeatureForPath, firstAllowedPath
 const lazyNamed = (load, name) => lazy(() => load().then((module) => ({ default: module[name] })));
 const ConsumptionPage = lazyNamed(() => import("./pages/ConsumptionPage.jsx"), "ConsumptionPage");
 const GodownsPage = lazyNamed(() => import("./pages/GodownsPage.jsx"), "GodownsPage");
-const IndentPage = lazyNamed(() => import("./pages/IndentPage.jsx"), "IndentPage");
+const PlanningPage = lazyNamed(() => import("./pages/planning/PlanningPage.jsx"), "PlanningPage");
 const InventoryPage = lazyNamed(() => import("./pages/InventoryPage.jsx"), "InventoryPage");
 const ProductsPage = lazyNamed(() => import("./pages/ProductsPage.jsx"), "ProductsPage");
 const PurchaseOrdersPage = lazyNamed(() => import("./pages/PurchaseOrdersPage.jsx"), "PurchaseOrdersPage");
@@ -30,6 +30,7 @@ const FeatureVisibilityPage = lazyNamed(() => import("./pages/FeatureVisibilityP
 const UsersPage = lazyNamed(() => import("./pages/UsersPage.jsx"), "UsersPage");
 const ExecutiveReportPage = lazyNamed(() => import("./pages/ExecutiveReportPage.jsx"), "ExecutiveReportPage");
 const ReportSchedulesPage = lazyNamed(() => import("./pages/ReportSchedulesPage.jsx"), "ReportSchedulesPage");
+const SettingsPage = lazyNamed(() => import("./pages/SettingsPage.jsx"), "SettingsPage");
 
 function AdminShell({ onLogout, routeMap }) {
   const { flags, role, status } = useFeatureFlags();
@@ -102,8 +103,9 @@ export const App = () => {
   const routeMap = useMemo(
     () => ({
       "/products": <ProductsPage />,
-      "/inventory-info": <InventoryPage />,
-      "/indent": <IndentPage />,
+      "/products/requests": <ProductsPage view="requests" />,
+      "/inventory-info": <InventoryPage canManageUsers={isSuperAdmin(session.role)} />,
+      "/indent": <PlanningPage superAdmin={isSuperAdmin(session.role)} />,
       "/purchase-orders": <PurchaseOrdersPage />,
       "/stock-distribution": <StockDistributionPage />,
       "/godowns": <GodownsPage canSetOpeningBalance={isSuperAdmin(session.role)} />,
@@ -115,7 +117,8 @@ export const App = () => {
       "/executive-report": <ExecutiveReportPage />,
       "/feature-visibility": <FeatureVisibilityPage />,
       "/users": <UsersPage />,
-      "/report-schedules": <ReportSchedulesPage />
+      "/report-schedules": <ReportSchedulesPage />,
+      "/settings": <SettingsPage />
     }),
     [session.role]
   );

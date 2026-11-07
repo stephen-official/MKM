@@ -10,10 +10,11 @@ import { pathToFileURL } from "node:url";
 import { StockItem, Unit } from "../models/InventoryModels.js";
 import { ensurePresetUnits } from "../catalog/productService.js";
 import { MISSING_LABELS, missingFields } from "../catalog/completeness.js";
-import { UNIT_PRESETS, isPresetSymbol, presetFor } from "../catalog/units.js";
+import { UNIT_PRESETS, isOfferedSymbol, presetFor, refreshOfferedUnits } from "../catalog/units.js";
 
 /** Read-only: what --apply would do. */
 export const planCatalogMigration = async () => {
+  await refreshOfferedUnits(); // units added in Settings are not "look-alikes" to merge
   const [units, products] = await Promise.all([Unit.find().lean(), StockItem.find().lean()]);
   const productsByUnit = new Map();
   for (const product of products) {
@@ -24,7 +25,7 @@ export const planCatalogMigration = async () => {
   const merges = [];
   const unmatched = [];
   for (const unit of units) {
-    if (isPresetSymbol(unit.symbol)) continue;
+    if (isOfferedSymbol(unit.symbol)) continue;
     const preset = presetFor(unit);
     const entry = { unitId: String(unit._id), symbol: unit.symbol, name: unit.name, products: productsByUnit.get(String(unit._id)) || [] };
     if (preset) merges.push({ ...entry, into: preset.symbol });

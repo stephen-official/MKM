@@ -1,5 +1,7 @@
-// The only units a product may use. Kitchens enter quantities in exactly these units (no conversion),
-// so adding one here is the whole change: the products page and the migration read this list.
+import { Unit } from "../models/InventoryModels.js";
+
+// The built-in units. Kitchens enter quantities in exactly a product's unit (no conversion). A super-admin may add more in
+// Settings (Unit.offered); built-in ones cannot be removed. The aliases help read spreadsheets and old data.
 export const UNIT_PRESETS = Object.freeze([
   { symbol: "kg", name: "Kilogram", aliases: ["kg", "kgs", "kilo", "kilos", "kilogram", "kilograms"] },
   { symbol: "g", name: "Gram", aliases: ["g", "gm", "gms", "gram", "grams", "gr"] },
@@ -13,8 +15,24 @@ export const UNIT_PRESETS = Object.freeze([
 export const PRESET_SYMBOLS = Object.freeze(UNIT_PRESETS.map((unit) => unit.symbol));
 const SYMBOL_SET = new Set(PRESET_SYMBOLS);
 
-/** True only for the exact preset symbol: "Kg" or "kgs" must be corrected before a product is complete. */
+/** True only for the exact built-in symbol. */
 export const isPresetSymbol = (symbol) => SYMBOL_SET.has(symbol);
+
+// Units a product may use: the built-in ones plus those added in Settings. Held in memory because the completeness check
+// is synchronous and runs wherever kitchens see a product; refreshed at start-up, after every Settings change and each minute.
+let offered = new Set(PRESET_SYMBOLS);
+/** True for an exact built-in or added symbol: "Kg" or "kgs" must be corrected before a product is complete. */
+export const isOfferedSymbol = (symbol) => offered.has(symbol);
+export const refreshOfferedUnits = async () => {
+  const added = await Unit.find({ offered: true }).select("symbol").lean();
+  offered = new Set([...PRESET_SYMBOLS, ...added.map((unit) => unit.symbol)]);
+  return offered;
+};
+export const startOfferedUnitsRefresh = () => {
+  refreshOfferedUnits().catch(() => {});
+  const timer = setInterval(() => refreshOfferedUnits().catch(() => {}), 60_000);
+  timer.unref?.();
+};
 
 const norm = (text) => String(text ?? "").trim().toLowerCase();
 

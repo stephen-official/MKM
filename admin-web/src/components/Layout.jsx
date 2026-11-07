@@ -1,161 +1,82 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import {
-  BookOpen,
-  Boxes,
-  ChartColumn,
-  ClipboardCheck,
-  ClipboardList,
-  LogOut,
-  Menu,
-  PackageOpen,
-  Share2,
-  ShoppingCart,
-  Utensils,
-  Warehouse,
-  ArrowLeftRight
-} from "lucide-react";
+import { LogOut } from "lucide-react";
 import logo from "../mkmLogo.png";
 
-// A pointer that can hover gets the hover-driven rail; touch screens keep the
-// menu button. Read live so a tablet docked to a mouse switches over.
-const HOVER_QUERY = "(hover: hover) and (pointer: fine)";
-
-const useCanHover = () => {
-  const [canHover, setCanHover] = useState(() => window.matchMedia(HOVER_QUERY).matches);
-  useEffect(() => {
-    const query = window.matchMedia(HOVER_QUERY);
-    const update = () => setCanHover(query.matches);
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return canHover;
-};
-
-const stagger = (index) => ({ "--i": index });
-
+/* The shell mirrors the kitchen app (client-web KitchenHeader + KitchenBottomNav): a glass header
+   with the brand and Log out, and one nav that is a floating pill at the bottom of a phone and a
+   glass sidebar on a laptop. Every entry is listed; with many entries the phone pill scrolls sideways. */
 export const Layout = ({ onLogout, sections, children }) => {
   const location = useLocation();
-  const canHover = useCanHover();
-  const [hovering, setHovering] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const isExpanded = canHover ? hovering : pinned;
-  const leaveTimer = useRef(null);
+  const items = sections.flatMap((section) => section.items);
+  const activeIndex = items.findIndex((item) => location.pathname === item.path || location.pathname.startsWith(`${item.path}/`));
+  const itemRefs = useRef([]);
+  const listRef = useRef(null);
+  const [bubble, setBubble] = useState(null);
+  const [scrolls, setScrolls] = useState(false); // the phone pill holds more entries than fit: fade its right edge as a hint
 
-  useEffect(() => () => clearTimeout(leaveTimer.current), []);
-
-  // A route change should always return the touch drawer to its compact state
-  // and move keyboard focus to the newly rendered page, matching HungerHunt's
-  // predictable navigation behaviour.
+  // A route change moves keyboard focus to the newly rendered page.
   useEffect(() => {
-    setPinned(false);
-    setHovering(false);
     requestAnimationFrame(() => document.querySelector("#admin-main")?.focus());
   }, [location.pathname]);
 
-  const openRail = () => {
-    clearTimeout(leaveTimer.current);
-    setHovering(true);
-  };
-
-  // A short grace period so a pointer crossing the rail's edge does not make it
-  // flicker shut and open again.
-  const closeRail = () => {
-    clearTimeout(leaveTimer.current);
-    leaveTimer.current = setTimeout(() => setHovering(false), 140);
-  };
-
-  const handleRailClick = (event) => {
-    if (!canHover && isExpanded && event.target.closest("a")) setPinned(false);
-  };
-
-  let index = 0;
+  // The glass bubble under the current tab (phone only; the sidebar styles the item itself). Measured
+  // rather than divided into equal slots because a long list scrolls sideways.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const list = listRef.current;
+      setScrolls(Boolean(list && list.scrollWidth > list.clientWidth + 1));
+      const el = itemRefs.current[activeIndex];
+      if (!el) { setBubble(null); return; }
+      setBubble({ width: `${el.offsetWidth}px`, transform: `translateX(${el.offsetLeft}px)` });
+      el.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [activeIndex, items.length]);
 
   return (
     <div className="layout">
       <a className="skip-link" href="#admin-main">Skip to main content</a>
-      <div className="sidenav-slot">
-        {isExpanded && !canHover && (
-          <button
-            type="button"
-            className="sidenav-scrim"
-            aria-label="Close menu"
-            onClick={() => setPinned(false)}
-          />
-        )}
-        <aside
-          className={`sidenav${isExpanded ? "" : " sidenav--collapsed"}`}
-          onMouseEnter={canHover ? openRail : undefined}
-          onMouseLeave={canHover ? closeRail : undefined}
-          onFocus={canHover ? (event) => event.target.matches(":focus-visible") && openRail() : undefined}
-          onBlur={canHover ? (event) => !event.currentTarget.contains(event.relatedTarget) && closeRail() : undefined}
-          onClick={handleRailClick}
-        >
-          <div className="sidenav-top">
-            <Link
-              to="/"
-              className="sidenav-brand"
-              aria-label={!canHover && !isExpanded ? "Expand menu" : "Montessori Kitchen dashboard"}
-              onClick={(event) => {
-                if (!canHover && !isExpanded) {
-                  event.preventDefault();
-                  setPinned(true);
-                }
-              }}
-            >
-              <img src={logo} alt="" className="sidenav-logo" />
-              <span className="sidenav-brand__text">
-                <strong>Montessori Kitchen</strong>
-                <small>Admin console</small>
-              </span>
-            </Link>
-            {!canHover && isExpanded && (
-              <button
-                type="button"
-                className="sidenav-toggle"
-                onClick={() => setPinned(false)}
-                aria-label="Collapse menu"
+      <header className="app-header">
+        <Link to="/" className="app-header__brand" aria-label="Montessori Kitchen admin console">
+          <span className="app-header__mark" aria-hidden="true"><img src={logo} alt="" /></span>
+          <span className="app-header__identity">
+            <p className="app-header__organization">Montessori Group of Schools</p>
+            <h1 className="app-header__title">Admin console</h1>
+          </span>
+        </Link>
+        <div className="app-header__actions">
+          <button type="button" className="app-header__action" aria-label="Log out" title="Log out" onClick={onLogout}>
+            <LogOut size={21} aria-hidden="true" />
+          </button>
+        </div>
+      </header>
+
+      {items.length > 0 && (
+        <nav className={`app-nav${scrolls ? " app-nav--scrolls" : ""}`} aria-label="Main navigation">
+          <div className="app-nav__items" ref={listRef}>
+            {bubble && <span className="app-nav__bubble" aria-hidden="true" style={bubble} />}
+            {items.map(({ label, path, icon: Icon, hiddenFromAdmins }, index) => (
+              <NavLink
+                key={path}
+                to={path}
+                ref={(el) => { itemRefs.current[index] = el; }}
+                className={({ isActive }) => `app-nav__item${isActive ? " app-nav__item--active" : ""}`}
+                title={hiddenFromAdmins ? `${label} (hidden from admins)` : undefined}
               >
-                <Menu size={20} />
-              </button>
-            )}
-          </div>
-
-          <nav className="sidenav-nav" aria-label="Main navigation">
-            {sections.map((section) => (
-              <div key={section.title} style={{ display: "contents" }}>
-                <p className="sidenav-section-label"><span>{section.title}</span></p>
-                {section.items.map(({ label, path, icon: Icon, hiddenFromAdmins }) => (
-                  <NavLink
-                    key={path}
-                    to={path}
-                    className={({ isActive }) => `sidenav-link${isActive ? " sidenav-link--active" : ""}`}
-                    style={stagger(index++)}
-                    title={isExpanded ? undefined : label}
-                  >
-                    <span className="sidenav-icon"><Icon size={19} /></span>
-                    <span className="sidenav-label">{label}</span>
-                    {hiddenFromAdmins && <span className="sidenav-hidden-badge" title="Hidden from admins">Off</span>}
-                  </NavLink>
-                ))}
-              </div>
+                <span className="app-nav__icon-wrap" aria-hidden="true">
+                  <Icon size={20} strokeWidth={index === activeIndex ? 1.8 : 1.6} />
+                  {hiddenFromAdmins && <span className="app-nav__dot" />}
+                </span>
+                <span className="app-nav__label">{label}</span>
+                {hiddenFromAdmins && <span className="sr-only">Hidden from admins</span>}
+              </NavLink>
             ))}
-          </nav>
-
-          <div className="sidenav-footer">
-            <button
-              type="button"
-              className="sidenav-link sidenav-logout"
-              onClick={onLogout}
-              style={stagger(index)}
-              title={isExpanded ? undefined : "Sign out"}
-            >
-              <span className="sidenav-icon"><LogOut size={19} /></span>
-              <span className="sidenav-label">Sign out</span>
-            </button>
           </div>
-        </aside>
-      </div>
+        </nav>
+      )}
 
       <main id="admin-main" className="layout-main" tabIndex="-1">
         {children}

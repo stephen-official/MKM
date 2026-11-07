@@ -5,8 +5,9 @@ import { api } from "../../api";
 import Select from "../ui/Select";
 import "./ProductRequestSheet.css";
 
-// Keep in step with backend/src/catalog/units.js.
-const UNITS = [
+// The built-in units (backend/src/catalog/units.js), used until the server's list arrives or when the phone is offline.
+// The server's list also has any unit a super-admin added in Settings.
+const BUILT_IN_UNITS = [
   ["kg", "Kilogram (kg)"], ["g", "Gram (g)"], ["L", "Litre (L)"], ["mL", "Millilitre (mL)"],
   ["pcs", "Pieces (pcs)"], ["dozen", "Dozen"], ["packet", "Packet"]
 ];
@@ -20,9 +21,15 @@ export default function ProductRequestSheet({ onClose }) {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState(null);
+  const [units, setUnits] = useState(BUILT_IN_UNITS);
 
   const loadHistory = () => api.get("/product-requests/me").then(({ data }) => setHistory(data)).catch(() => setHistory([]));
   useEffect(() => { loadHistory(); }, []);
+  useEffect(() => {
+    api.get("/inventory/units").then(({ data }) => {
+      if (Array.isArray(data) && data.length) setUnits(data.map((u) => [u.symbol, u.name && u.name.toLowerCase() !== u.symbol.toLowerCase() ? `${u.name} (${u.symbol})` : u.name || u.symbol]));
+    }).catch(() => {});
+  }, []);
   // Escape closes the sheet (unless the unit menu just used it to close itself); the page behind does not scroll while it is open.
   useEffect(() => {
     const onKey = (event) => { if (event.key === "Escape" && !event.defaultPrevented) onClose(); };
@@ -67,7 +74,7 @@ export default function ProductRequestSheet({ onClose }) {
               <span>Unit (optional)</span>
               <Select value={form.unitSymbol} onChange={(e) => set({ unitSymbol: e.target.value })} aria-label="Unit">
                 <option value="">Not sure</option>
-                {UNITS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                {units.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </Select>
             </label>
             <label className="kpr-field">

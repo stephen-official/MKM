@@ -166,16 +166,16 @@ test("PATCH ignores fields it does not manage (mass assignment)", async () => {
   const before = await User.findById(ctx.admin.user._id).lean();
   const res = await as("root", "patch", `/api/users/${before._id}`).send({
     expectedVersion: before.version, name: "Amy Renamed",
-    email: "evil@x.io", passwordHash: "plain", refreshToken: "forged", resetToken: "forged", _id: String(ctx.root.user._id)
+    passwordHash: "plain", viewablePassword: "forged", refreshToken: "forged", resetToken: "forged", _id: String(ctx.root.user._id)
   });
   assert.equal(res.status, 200, JSON.stringify(res.body));
   const after = await User.findById(before._id).lean();
   assert.equal(after.name, "Amy Renamed");
-  assert.equal(after.email, before.email);
+  // email is managed now (a super-admin may change it; tested in kitchenAdmin.test.js), so it is not in the list above
   assert.equal(after.passwordHash, before.passwordHash);
+  assert.equal((await User.findById(before._id).select("+viewablePassword").lean()).viewablePassword, null);
   assert.equal(after.refreshToken, before.refreshToken, "a rename does not touch the session");
   assert.equal(after.resetToken, before.resetToken);
-  assert.equal(await User.countDocuments({ email: "evil@x.io" }), 0);
 });
 
 test("deactivating or moving a user revokes their refresh token; a rename keeps it", async () => {

@@ -379,7 +379,7 @@ export const PurchaseOrdersPage = () => {
   );
 
   return (
-    <div style={{ height: "100vh", background: "var(--bg)", display: "flex", flexDirection: "column" }}>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <PageHeader
         title="Purchase Orders"
         actions={

@@ -1,0 +1,17 @@
+/* "Your admin changed items": the strip inside an order's container, and the list of changes (on the glass dialog,
+   ConfirmDialog.css). Green and red match the admin's usage-correction ticket (admin corrections.css). */
+.kac-notice { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 12px; color: var(--blue-deep); font-size: 13px; font-weight: 500; line-height: 1.3; text-align: left; background: rgba(228,237,249,.9); border: 1px solid var(--st-low-line); border-radius: 12px; }
+.kac-notice__dot { flex: none; width: 8px; height: 8px; background: var(--blue); border-radius: 50%; box-shadow: 0 0 0 3px rgba(63,108,176,.18); }
+button.kac-notice { width: 100%; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+
+.cd-layer .kac-panel { max-height: 90vh; overflow-y: auto; }
+.cd-layer .kac-panel footer { grid-template-columns: 1fr; }
+.kac-rows { display: grid; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; }
+.kac-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; padding: 10px 12px; background: rgba(255,255,255,.7); border: 1px solid var(--glass-border); border-radius: 14px; }
+.kac-row__name { font-weight: 500; overflow-wrap: anywhere; }
+.kac-row__amounts { grid-column: 1; display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 6px; color: var(--muted-2); font-size: 13px; }
+.kac-row__after { color: var(--ink-2); font-weight: 500; }
+.kac-row--removed .kac-row__before { text-decoration: line-through; }
+.kac-tag { grid-column: 2; grid-row: 1 / span 2; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 88px; padding: 5px 10px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.kac-tag--up, .kac-tag--added { color: #1f6b43; background: rgba(222,243,230,.9); border-color: rgba(120,190,150,.5); }
+.kac-tag--down, .kac-tag--removed { color: var(--st-expired-fg); background: var(--st-expired-bg); border-color: var(--st-expired-line); }

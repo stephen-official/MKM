@@ -5,6 +5,7 @@ import { App } from "./App.jsx";
 import { ToastProvider } from "./toast.jsx";
 import "./theme.css";
 import "./styles.css";
+import "./glass.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>

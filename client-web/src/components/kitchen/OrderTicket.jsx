@@ -29,11 +29,11 @@ function TicketQty({ row, onChange }) {
 /**
  * Receipt-style list of what the cook has added, with no prices: one row per item with its own stepper, so the whole
  * request or usage entry is visible at once. Folds away on a phone; wide screens show it beside the list.
- * rows: [{ id, name, amount, unit, locked?, needsQty? }] in the order they were added; needsQty marks an item added from Home
- * that still has no amount. meta: [{ label, value }] shown under the title.
+ * rows: [{ id, name, amount, unit, locked?, needsQty?, noIncrease? }] in the order they were added; needsQty marks an item added from Home
+ * that still has no amount; noIncrease (a correction line for a product kitchens may no longer use) may only go down. meta: [{ label, value }] shown under the title.
  */
 export default function OrderTicket({ title = "Order ticket", badge = "", rows = [], meta = [], emptyText = "Tap “Add” on an item below and it will be listed here.", open = true, onToggle, onChange, onClear, clearLabel = "Remove all items",
-  onSubmit, submitLabel = "Done", submittingLabel = "Saving…", submitting = false, submitDisabled = false, note = "" }) {
+  onSubmit, submitLabel = "Done", submittingLabel = "Saving…", submitting = false, submitDisabled = false, allowEmpty = false, note = "" }) {
   const count = rows.length;
   const heading = <span><p>{badge && <span className="kt-ticket__badge">{badge}</span>}{title}</p><h2 id="kt-ticket-title">{count === 0 ? "Nothing added yet" : `${count} ${count === 1 ? "item" : "items"}`}</h2></span>;
   return <section className="kg-glass kt-ticket" id="kitchen-ticket" aria-labelledby="kt-ticket-title">
@@ -51,12 +51,12 @@ export default function OrderTicket({ title = "Order ticket", badge = "", rows =
             <div className="kt-ticket__stepper">
               <button type="button" disabled={row.locked} onClick={() => onChange(row.id, Math.max(0, row.amount - 1))} aria-label={row.amount <= 1 ? `Remove ${row.name}` : `Less ${row.name}`}>{row.amount <= 1 ? <X size={15} /> : <Minus size={15} />}</button>
               <TicketQty row={row} onChange={onChange} />
-              <button type="button" disabled={row.locked} onClick={() => onChange(row.id, row.amount + 1)} aria-label={`More ${row.name}`}><Plus size={15} /></button>
+              <button type="button" disabled={row.locked || row.noIncrease} onClick={() => onChange(row.id, row.amount + 1)} aria-label={`More ${row.name}`}><Plus size={15} /></button>
             </div>
           </li>)}
         </ul>}
       {note && <p className="kt-ticket__note" role="status">{note}</p>}
-      {onSubmit && <button type="button" className="kg-btn kt-ticket__submit" disabled={count === 0 || submitting || submitDisabled} onClick={onSubmit}>{submitting ? submittingLabel : submitLabel}</button>}
+      {onSubmit && <button type="button" className="kg-btn kt-ticket__submit" disabled={(count === 0 && !allowEmpty) || submitting || submitDisabled} onClick={onSubmit}>{submitting ? submittingLabel : submitLabel}</button>}
       {onClear && rows.some((row) => !row.locked) && <button type="button" className="kt-ticket__clear" onClick={onClear}>{clearLabel}</button>}
     </div>}
   </section>;

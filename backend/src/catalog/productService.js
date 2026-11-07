@@ -1,10 +1,11 @@
 import mongoose from "mongoose";
 import { GodownStock } from "../models/FlowModels.js";
-import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
+import { StockGroup, StockItem, Unit, nextProductNo } from "../models/InventoryModels.js";
 import { isKitchenRole } from "../utils/roles.js";
 import { MAX_PACK_NAME_LENGTH, canonicalPackName } from "./packTypes.js";
 import { isAvailable, isValidPrice, missingFields } from "./completeness.js";
-import { UNIT_PRESETS, isPresetSymbol } from "./units.js";
+import { UNIT_PRESETS, isOfferedSymbol, isPresetSymbol } from "./units.js";
+import { ALLERGENS, PRODUCT_FORMS, PRODUCT_KINDS, STORAGE_OPTIONS, VEG_MARKS, foodSafetyMissing } from "./foodSafety.js";
 
 export class CatalogError extends Error {
   constructor(status, code, message, extra = {}) {
@@ -23,13 +24,14 @@ export const sendCatalogError = (res, error) => {
   return res.status(500).json({ message: error.message });
 };
 
-/** Creates any missing preset unit (by exact symbol) and returns the preset units in list order. */
+/** Creates any missing built-in unit (by exact symbol) and returns the units products may use: built-in ones in list order, then those added in Settings A–Z. */
 export const ensurePresetUnits = async () => {
   await Promise.all(UNIT_PRESETS.map(({ symbol, name }) =>
     Unit.updateOne({ symbol }, { $setOnInsert: { symbol, name, subUnits: [] } }, { upsert: true })));
-  const units = await Unit.find({ symbol: { $in: UNIT_PRESETS.map((u) => u.symbol) } }).lean();
+  const units = await Unit.find({ $or: [{ symbol: { $in: UNIT_PRESETS.map((u) => u.symbol) } }, { offered: true }] }).lean();
   const bySymbol = new Map(units.map((unit) => [unit.symbol, unit]));
-  return UNIT_PRESETS.map((preset) => bySymbol.get(preset.symbol)).filter(Boolean);
+  const added = units.filter((unit) => !isPresetSymbol(unit.symbol)).sort((a, b) => a.name.localeCompare(b.name));
+  return [...UNIT_PRESETS.map((preset) => bySymbol.get(preset.symbol)).filter(Boolean), ...added];
 };
 
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -40,7 +42,7 @@ const samePrice = (a, b) => (a ?? null) === (b ?? null) || (isValidPrice(a) && i
  * Turns a request body into the fields to save. `canPrice` is true only for a super-admin: anyone else may not
  * change a price, and a pack whose size they change loses its price until a super-admin sets it again.
  */
-export const buildProductUpdate = async (body, { canPrice, existing = null, userId = null, allowBlankPrice = false }) => {
+export const buildProductUpdate = async (body, { canPrice, existing = null, userId = null, allowBlankPrice = false, requirePhoto = false }) => {
   const errors = {};
   const update = {};
 
@@ -59,7 +61,7 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
 
   const unitId = body.unitId ?? existing?.unitId;
   const unit = unitId && mongoose.isValidObjectId(unitId) ? await Unit.findById(unitId).lean() : null;
-  if (!unit || !isPresetSymbol(unit.symbol)) errors.unitId = "Choose a unit from the preset list.";
+  if (!unit || !isOfferedSymbol(unit.symbol)) errors.unitId = "Choose a unit from the list.";
   else update.unitId = unit._id;
 
   const itemType = body.itemType ?? existing?.itemType ?? "stock";
@@ -83,18 +85,48 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
   update.productCode = code || undefined;
 
   if (body.imageUrl !== undefined) update.imageUrl = String(body.imageUrl || "");
+  // The form must carry a photo (kitchen staff pick by picture). Spreadsheet imports may leave it blank; those are flagged.
+  if (requirePhoto && !String(body.imageUrl ?? existing?.imageUrl ?? "").trim()) errors.imageUrl = "Add a photo. Kitchen staff pick products by their picture.";
+  // --- food safety (FSSAI) ---
+  // A new product must say whether it is food. An older product keeps whatever it had until someone edits it.
+  const kind = body.kind ?? existing?.kind ?? null;
+  if (kind === null && !existing) errors.kind = "Say whether this is food or not.";
+  else if (kind !== null && !PRODUCT_KINDS.includes(kind)) errors.kind = "Choose food or non-food.";
+  else update.kind = kind;
+  if (kind === "food") {
+    const form = body.form ?? existing?.form ?? null;
+    if (form !== null && !PRODUCT_FORMS.includes(form)) errors.form = "Choose packaged or loose.";
+    else update.form = form;
+    const vegMark = body.vegMark ?? existing?.vegMark ?? null;
+    if (!VEG_MARKS.includes(vegMark)) errors.vegMark = "Choose veg, non-veg or egg.";
+    else update.vegMark = vegMark;
+    const storage = body.storage ?? existing?.storage ?? null;
+    if (!STORAGE_OPTIONS.includes(storage)) errors.storage = "Say where it is kept.";
+    else update.storage = storage;
+    const allergens = body.allergens ?? existing?.allergens ?? [];
+    if (!Array.isArray(allergens) || allergens.some((code) => !ALLERGENS.includes(code))) errors.allergens = "Pick allergens from the list.";
+    else update.allergens = [...new Set(allergens)];
+  } else if (kind === "non_food") {
+    Object.assign(update, { form: null, vegMark: null, storage: null, allergens: [] });
+  }
 
   // --- price per unit ---
   const priceInput = body.pricePerUnit === undefined ? existing?.pricePerUnit ?? null : toNumber(body.pricePerUnit);
   if (canPrice) {
-    if (!isValidPrice(priceInput) && !allowBlankPrice) errors.pricePerUnit = "Enter a price per unit greater than zero.";
+    if (priceInput !== null && !Number.isFinite(priceInput)) errors.pricePerUnit = "Enter the price as a number.";
+    else if (!isValidPrice(priceInput) && !allowBlankPrice) errors.pricePerUnit = "Enter a price per unit greater than zero.";
     else update.pricePerUnit = priceInput;
   } else if (!samePrice(priceInput, existing?.pricePerUnit ?? null)) {
     throw new CatalogError(403, "PRICE_SUPER_ADMIN_ONLY", "Only a super-admin can set or change prices.");
   }
 
+  // --- expiry ---
+  // Follows the food answers: packaged food asks the kitchen for an expiry date on receipt; loose/fresh food and non-food do not.
+  // A product that has no kind yet (saved before the food facts) keeps whatever it had, or what the body says.
+  if (update.kind === "food") update.expiryRequired = update.form !== "loose";
+  else if (update.kind === "non_food") update.expiryRequired = false;
+  else update.expiryRequired = Boolean(body.expiryRequired ?? existing?.expiryRequired ?? true);
   // --- packs ---
-  update.expiryRequired = Boolean(body.expiryRequired ?? existing?.expiryRequired ?? true);
 
   const soldInPacks = Boolean(body.soldInPacks ?? existing?.soldInPacks ?? false);
   update.soldInPacks = soldInPacks;
@@ -115,7 +147,8 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
     if (!Number.isFinite(size) || size <= 0) problems.size = "Enter how much one pack holds.";
     let price = input.price === undefined ? before?.price ?? null : toNumber(input.price);
     if (canPrice) {
-      if (!isValidPrice(price) && !allowBlankPrice) problems.price = "Enter the pack price.";
+      if (price !== null && !Number.isFinite(price)) problems.price = "Enter the pack price as a number.";
+      else if (!isValidPrice(price) && !allowBlankPrice) problems.price = "Enter the pack price.";
     } else {
       if (!samePrice(price, before?.price ?? null)) throw new CatalogError(403, "PRICE_SUPER_ADMIN_ONLY", "Only a super-admin can set or change prices.");
       if (before && size !== before.size) price = null; // a resized pack must be re-priced by a super-admin
@@ -135,6 +168,15 @@ export const buildProductUpdate = async (body, { canPrice, existing = null, user
 };
 
 /** godownId count per stockItemId for kitchens holding more than zero of it. */
+/** Gives a Product ID to every product still without one (older products, bulk inserts), oldest first. Safe to run often. */
+export const assignMissingProductNos = async () => {
+  const missing = await StockItem.find({ productNo: { $not: { $type: "string" } } }).sort({ createdAt: 1, _id: 1 }).select("_id").lean();
+  for (const { _id } of missing) {
+    await StockItem.updateOne({ _id, productNo: { $not: { $type: "string" } } }, { $set: { productNo: await nextProductNo() } });
+  }
+  return missing.length;
+};
+
 export const kitchensHolding = async (stockItemIds) => {
   const match = { qtyBaseUnit: { $gt: 0 }, ...(stockItemIds ? { stockItemId: { $in: stockItemIds } } : {}) };
   const rows = await GodownStock.aggregate([{ $match: match }, { $group: { _id: "$stockItemId", kitchens: { $addToSet: "$godownId" } } }]);
@@ -151,13 +193,21 @@ export const serializeProduct = (doc, holding = new Map()) => {
     imageUrl: doc.imageUrl || "",
     brand: doc.brand || "",
     productCode: doc.productCode || "",
+    productNo: doc.productNo || "",
     itemType: doc.itemType || "stock",
     defaultThreshold: doc.defaultThreshold || 0,
     group: group ? { _id: group._id, name: group.name } : null,
-    unit: unit ? { _id: unit._id, symbol: unit.symbol, name: unit.name, preset: isPresetSymbol(unit.symbol) } : null,
+    unit: unit ? { _id: unit._id, symbol: unit.symbol, name: unit.name, preset: isOfferedSymbol(unit.symbol) } : null,
     pricePerUnit: doc.pricePerUnit ?? null,
     priceUpdatedAt: doc.priceUpdatedAt || null,
     expiryRequired: doc.expiryRequired !== false,
+    kind: doc.kind || null,
+    form: doc.form || null,
+    vegMark: doc.vegMark || null,
+    allergens: doc.allergens || [],
+    storage: doc.storage || null,
+    // True while the food-safety facts are not filled in (an older product, or a food product missing its mark or storage).
+    fssaiMissing: !doc.archived && foodSafetyMissing(doc).length > 0,
     soldInPacks: Boolean(doc.soldInPacks),
     packs: (doc.packs || []).map((pack) => ({ _id: pack._id, name: pack.name, size: pack.size, price: pack.price ?? null })),
     archived: Boolean(doc.archived),

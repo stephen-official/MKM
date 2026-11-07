@@ -19,7 +19,12 @@ describe("featureNav", () => {
     expect(sections.at(-2).title).toBe("Insights");
     expect(sections.at(-2).items.map((i) => i.path)).toEqual(["/executive-report"]);
     expect(sections.at(-1).title).toBe("Manage");
-    expect(sections.at(-1).items.map((i) => i.path)).toEqual(["/administration"]);
+    expect(sections.at(-1).items.map((i) => i.path)).toEqual(["/administration", "/settings"]);
+  });
+  it("Settings is for super-admins only", () => {
+    expect(isPathAllowed("/settings", { flags: all, role: "super_admin" })).toBe(true);
+    expect(isPathAllowed("/settings", { flags: all, role: "admin" })).toBe(false);
+    expect(buildSections({ flags: all, role: "admin" }).flatMap((s) => s.items).some((i) => i.path === "/settings")).toBe(false);
   });
   it("empty sections are dropped", () => {
     const flags = { ...all, reports: false, consumption: false, requests: false, "product-ledger": false, "transfer-stock": false };

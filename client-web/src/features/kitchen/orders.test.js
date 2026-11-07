@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canEditShare, canJoin, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, myOrders, kitchenEventText, kitchenHistory, requestedAmountText, withOrderProducts } from "./orders.js";
+import { adminChanges, canEditShare, canJoin, closesInText, deliveryDateText, draftCounts, hasArriving, kitchenStage, lineState, myShare, needsQuantity, orderSourceLabel, orderTimeline, otherOpenOrders, myOrders, kitchenEventText, kitchenHistory, requestedAmountText, withOrderProducts } from "./orders.js";
 
 const me = "kitchenA";
 const now = new Date("2026-10-18T04:30:00.000Z"); // 10:00 in India
@@ -170,4 +170,25 @@ test("the kitchen's history reads from the kitchen's side, newest first", () => 
   const history = kitchenHistory({ events: [ev("raised", { at: at(-2) }), ev("approved", { at: at(-1) })] });
   assert.deepEqual(history.map((entry) => entry.action), ["approved", "raised"]);
   assert.deepEqual(kitchenHistory({}), []);
+});
+
+const kgUnit = { symbol: "kg" };
+const changeLine = (id, name, qtyBaseUnit) => ({ stockItemId: { _id: id, name, unitId: kgUnit }, qtyBaseUnit });
+
+test("adminChanges lists what went up, down, was added or removed, and leaves out the rest", () => {
+  const share = {
+    adminChange: { before: [changeLine("r", "Rice", 10), changeLine("d", "Dal", 4), changeLine("s", "Salt", 1), changeLine("o", "Oats", 2)] },
+    items: [changeLine("r", "Rice", 8), changeLine("d", "Dal", 6), changeLine("s", "Salt", 1), changeLine("u", "Sugar", 3)],
+  };
+  assert.deepEqual(adminChanges(share), [
+    { id: "r", name: "Rice", unit: "kg", before: 10, after: 8, kind: "down" },
+    { id: "d", name: "Dal", unit: "kg", before: 4, after: 6, kind: "up" },
+    { id: "o", name: "Oats", unit: "kg", before: 2, after: null, kind: "removed" },
+    { id: "u", name: "Sugar", unit: "kg", before: null, after: 3, kind: "added" },
+  ]);
+});
+
+test("adminChanges is empty when there is no change to show", () => {
+  assert.deepEqual(adminChanges({ adminChange: null, items: [changeLine("r", "Rice", 1)] }), []);
+  assert.deepEqual(adminChanges(null), []);
 });

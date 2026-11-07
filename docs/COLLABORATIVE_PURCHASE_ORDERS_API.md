@@ -249,6 +249,24 @@ A closed order is never reopened; a kitchen that still needs items starts a new 
 
 Closing the order immediately prevents kitchens from adding, editing, or removing contributions. Once `closesAt` passes, the order is closed automatically (with `statusChangedBy: null`) the next time any order is read or changed.
 
+### Change a kitchen's items (super-admin only)
+
+`PUT /:id/kitchens/:godownId/items` with `{ "items": [{ "stockItemId": "...", "qtyBaseUnit": 8 }] }` (the same line shape as a contribution, packs allowed) replaces that kitchen's items while the order is `open` or `closed`, i.e. until it is approved (otherwise 409 `ORDER_CLOSED`). An approved share gives 409 `SHARE_APPROVED`; approved lines must come back unchanged (409 `LINE_APPROVED`). Products new to the kitchen's list follow the kitchen availability rules (409 `PRODUCT_UNAVAILABLE`). A kitchen not on the order gives 404; admins and kitchens get 403.
+
+The kitchen is told: its contribution carries `adminChange: { before: [{ stockItemId: { name, unitId: { symbol } }, qtyBaseUnit, packId, packName, packQuantity }], changedAt, changedBy }`, where `before` is what it had asked for before the first change it has not seen yet (several changes show as one). `adminChange` is `null` when there is nothing to show, including when the super-admin changes the items back. Other kitchens never see it.
+
+`POST /:id/contributions/me/change-seen` (kitchen) clears it for that kitchen ("OK"). A kitchen editing its own items clears it too.
+
+### Change the closing time (super-admin only)
+
+`PATCH /:id/closing-time`
+
+```json
+{ "closesAt": "2026-11-09T18:00:00+05:30" }
+```
+
+Moves an `open` order's closing time later or earlier. The new time must be in the future (400 `INVALID_INPUT`; to close now, use `PATCH /:id/status`) and at least 2 days before `neededBy` (400 `TOO_CLOSE_TO_NEEDED_BY`, so an order needed within 2 days cannot be kept open longer). A closed, approved, ordered or cancelled order, or one whose window has just run out, gives 409 `ORDER_CLOSED`. Admins and kitchens get 403. Returns the order, like the other admin actions.
+
 ## Delivery problems (admin only)
 
 Base path: `/api/delivery-tickets`. Part of the `purchase-orders` feature.
@@ -272,4 +290,4 @@ Errors use the shared `{ code, message }` shape: `INVALID_INPUT` (400), `NOT_FOU
 
 ## Errors
 
-Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `LINE_REJECTED` (409), `SHARE_REJECTED` (409), `NO_ITEMS_TO_APPROVE` (409), `REASON_REQUIRED` (400), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `SUPPLIER_REQUIRED` (400), `ALREADY_SETTLED` (409), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).
+Errors are `{ "code": "...", "message": "..." }`. Codes: `INVALID_INPUT` (400), `FORBIDDEN` (403), `NOT_FOUND` (404), `ORDER_CLOSED` (409, the order no longer accepts additions or changes), `TOO_CLOSE_TO_NEEDED_BY` (400, a closing time less than 2 days before needed-by), `ALREADY_JOINED` (409), `LINE_APPROVED` (409), `SHARE_APPROVED` (409), `LINE_REJECTED` (409), `SHARE_REJECTED` (409), `NO_ITEMS_TO_APPROVE` (409), `REASON_REQUIRED` (400), `VERSION_CONFLICT` (409), `NOT_ORDERED` (409), `ALREADY_DISPATCHED` (409), `NOT_DISPATCHED` (409), `ALREADY_DELIVERED` (409), `MISSING_ITEM_DETAILS` (400), `PHOTO_REQUIRED` (400), `PHOTO_TOO_LARGE` (400), `EXPIRY_REQUIRED` (400), `EXPIRED_GOODS` (400), `SUPPLIER_REQUIRED` (400), `ALREADY_SETTLED` (409), `NOT_APPROVED` (409, supplier or invoice details on an order that is not yet approved), `CONFLICT` (409, other conflicts such as a disallowed status change), `PRODUCT_UNAVAILABLE` (409).

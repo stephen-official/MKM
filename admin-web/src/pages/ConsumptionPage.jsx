@@ -309,7 +309,7 @@ export const ConsumptionPage = () => {
         </>}
       </PageHeader>
 
-      {view === "corrections" ? <CorrectionsPanel onCount={setOpenCorrections} /> : (
+      {view === "corrections" ? <CorrectionsPanel onCount={setOpenCorrections} onApplied={() => load()} /> : (
       <SplitView
         rail={
           <RailList

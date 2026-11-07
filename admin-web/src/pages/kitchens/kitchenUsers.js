@@ -1,0 +1,70 @@
+// Easy-to-say passwords for kitchen staff: a kitchen word, a dash and four digits, e.g. "Mango-4821" (8+ characters).
+const WORDS = ["Rice", "Dal", "Mango", "Tomato", "Onion", "Ginger", "Lemon", "Curry", "Chilli", "Jaggery", "Ragi", "Jowar", "Banana", "Coconut", "Tamarind", "Pepper"];
+
+/** `random` returns a number in [0, 1); crypto-backed in the browser so suggestions are not guessable. */
+const cryptoRandom = () => {
+  const values = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(values);
+  return values[0] / 2 ** 32;
+};
+
+export const suggestPassword = (random = cryptoRandom) => {
+  const word = WORDS[Math.floor(random() * WORDS.length)];
+  const digits = String(Math.floor(random() * 10_000)).padStart(4, "0");
+  return `${word}-${digits}`;
+};
+
+/** "+919876543210" → "+91 98765 43210"; other countries are shown as stored. */
+export const formatPhone = (phone) => {
+  const match = /^\+91(\d{5})(\d{5})$/.exec(String(phone || ""));
+  return match ? `+91 ${match[1]} ${match[2]}` : String(phone || "");
+};
+
+// The WhatsApp box takes digits only: a 10-digit Indian mobile number (the server stores it as +91…).
+/** Whatever was typed or pasted, as at most 10 digits; a pasted 91 or 0 in front of a mobile number is dropped. */
+export const phoneInput = (text) => {
+  const digits = String(text || "").replace(/\D/g, "");
+  if (/^91\d{10}$/.test(digits) || /^0\d{10}$/.test(digits)) return digits.slice(-10);
+  return digits.slice(0, 10);
+};
+/** A stored "+919876543210" as the 10 digits the box shows. */
+export const phoneDigits = (stored) => String(stored || "").replace(/^\+91/, "").replace(/\D/g, "").slice(-10);
+/** True for a full Indian mobile number: 10 digits starting 6–9. */
+export const isMobile = (digits) => /^[6-9]\d{9}$/.test(digits);
+
+/** What a partly filled new user still lacks, in plain words; empty when complete (passwords need 8+ characters). */
+export const draftProblems = (u) => [
+  !u.name.trim() && "a name",
+  !u.email.trim() && "a Login ID",
+  u.password.length < 8 && "a password of 8 or more letters",
+  !isMobile(u.phone) && "a 10-digit WhatsApp number"
+].filter(Boolean);
+
+// --- WhatsApp: opens the admin's WhatsApp with a ready message (wa.me link; nothing is sent by the app itself) ---
+// The kitchen app's address, put in the message. Change it here if the kitchen app moves.
+export const KITCHEN_APP_URL = "https://mkm-user.vercel.app";
+
+/** The sign-in message for one kitchen user. Without a viewable password it says to ask the admin. */
+export const loginMessage = ({ name, kitchen, email, password }) => [
+  `Hello ${name}, here are your sign-in details for the MKM kitchen app (${kitchen}).`,
+  `App: ${KITCHEN_APP_URL}`,
+  `Login ID: ${email}`,
+  password ? `Password: ${password}` : "Password: please ask your admin.",
+  "Please keep them to yourself."
+].join("\n");
+
+/** wa.me link for a stored number (+919876543210) with the message filled in. */
+export const whatsappLink = (phone, text) => `https://wa.me/${String(phone || "").replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
+
+/** "Not recorded yet", "Today, 09:40", "Yesterday, 18:10" or "30 Oct 2026" — in business time (Asia/Kolkata).
+ * Sign-ins are recorded from 2026-11-02 on, so no time means none since then, not that they never signed in. */
+export const lastSeen = (iso, now = new Date()) => {
+  if (!iso) return "Not recorded yet";
+  const tz = "Asia/Kolkata";
+  const day = (d) => new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  const when = new Date(iso);
+  const time = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }).format(when);
+  if (day(when) === day(now)) return `Today, ${time}`;
+  if (day(when) === day(new Date(now.getTime() - 86_400_000))) return `Yesterday, ${time}`;
+  return new Intl.DateTimeFormat("en-GB", { timeZone: tz, day: "numeric", month: "short", year: "numeric" }).format(when);
+};

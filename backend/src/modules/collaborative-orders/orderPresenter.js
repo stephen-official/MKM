@@ -9,7 +9,7 @@ const hideOtherKitchenDetails = (value, viewer) => ({
   ...value,
   contributions: (value.contributions || []).map((contribution) => (idOf(contribution.godownId) === String(viewer.godownId)
     ? contribution
-    : { ...contribution, note: undefined, rejectionReason: undefined, items: contribution.items.map((item) => ({ stockItemId: item.stockItemId })) })),
+    : { ...contribution, note: undefined, rejectionReason: undefined, adminChange: undefined, items: contribution.items.map((item) => ({ stockItemId: item.stockItemId })) })),
   combinedItems: value.combinedItems.map((line) => ({ stockItemId: line.stockItemId })),
 });
 

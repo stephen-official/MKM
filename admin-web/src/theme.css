@@ -1,117 +1,130 @@
-/* Design tokens for the Montessori Kitchen apps.
-   "Pine & Saffron": deep pine chrome, a teal primary, mint highlights and a
-   saffron accent over cool, green-tinted neutrals. Two layers on purpose: the
-   raw palette first, then semantic tokens that components reference, so a
+/* Design tokens for the admin console.
+   Since 2026-11-01 the admin mirrors the kitchen app's glass look: Inter, a pale
+   blue wash, frosted white surfaces, a soft blue accent and quiet status tints.
+   The raw kitchen tokens below are copied from client-web/src/index.css — keep
+   them in step. The semantic aliases that components reference follow; a
    re-theme means editing the aliases rather than hunting hex codes. */
 
 :root {
-  /* ---- palette ------------------------------------------------------- */
+  /* ---- kitchen glass palette (copied from client-web/src/index.css) ---- */
+  --font-kitchen: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --canvas-2: #f1f4f8;
+  --wash-circle: rgba(186, 208, 240, 0.55);
+  --ink-2: #1c2a43;
+  --muted-2: #55647d;
+  --blue: #3f6cb0;
+  --blue-deep: #234a7e;
+  --blue-soft: #e4edf9;
+  --st-expired-fg: #9b3f36; --st-expired-bg: #fcefed; --st-expired-line: rgba(214,160,152,.5);
+  --st-soon-fg: #8a6420; --st-soon-bg: #fdf5e6; --st-soon-line: rgba(220,190,130,.5);
+  --st-low-fg: #3b5f94; --st-low-bg: #e9f0f9; --st-low-line: rgba(160,184,218,.5);
+  --st-routine-fg: #55647d; --st-routine-bg: #f0f3f7; --st-routine-line: rgba(180,194,214,.45);
+  --st-ok-fg: #2f6b47; --st-ok-bg: #eaf5ee; --st-ok-line: rgba(150,200,170,.5);
+  --alert-dot: #d0675d;
+  --btn-glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.62));
+  --btn-glass-primary-bg: linear-gradient(160deg, rgba(246, 249, 254, 0.95), rgba(214, 228, 247, 0.92));
+  --btn-glass-primary-line: rgba(120, 152, 198, 0.55);
+  --btn-glass-line: rgba(140, 160, 190, 0.5);
+  --nav-glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.38));
+  --nav-glass-blur: blur(34px) saturate(180%);
+  --tint-rose: linear-gradient(160deg, rgba(252, 239, 237, 0.92), rgba(255, 255, 255, 0.62));
+  --tint-warm: linear-gradient(160deg, rgba(253, 245, 230, 0.92), rgba(255, 255, 255, 0.62));
+  --tint-cool: linear-gradient(160deg, rgba(233, 240, 249, 0.92), rgba(255, 255, 255, 0.62));
+  --tint-green: linear-gradient(160deg, rgba(234, 245, 238, 0.92), rgba(255, 255, 255, 0.62));
+  --glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.58));
+  --glass-border: rgba(255, 255, 255, 0.98);
+  --glass-outline: rgba(170, 186, 210, 0.42);
+  --glass-shadow: 0 22px 44px rgba(30, 52, 92, 0.08);
+  --glass-blur: blur(26px) saturate(160%);
+  --radius-glass: 26px;
+  --radius-row: 18px;
+  --ease-glass: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-glass: 0.35s;
+  --page-gutter: 16px;
+  --page-top-space: 20px;
+  --page-bottom-space: 112px;
+
+  /* ---- palette kept for the few places that name a raw colour ---------- */
   --white: #ffffff;
-
   --sage-50: #f3f6f4;
-  --sage-100: #eaf0ed;
-  --sage-200: #dde5e0;
-  --sage-300: #c5d1ca;
   --sage-400: #8fa198;
-  --sage-500: #5d7068;
-  --sage-600: #3f544c;
-  --sage-700: #2b3d36;
-  --sage-800: #16302a;
-  --sage-900: #10211c;
-
-  --teal-50: #e3f4f1;
-  --teal-100: #d0ece7;
-  --teal-400: #14a093;
   --teal-600: #0f766e;
-  --teal-700: #0b5f58;
-
   --pine-900: #0c2622;
+  --green-700: #26763f;
+  --red-700: #9e2c20;
+  --sage-700: #2b3d36;
   --pine-800: #12332e;
   --pine-700: #1a423b;
   --mint-300: #7fe3d0;
-
   --saffron-100: #fdf1d6;
-  --saffron-500: #d99a1e;
-  --saffron-700: #94620a;
-
-  --green-50: #eef7f0;
-  --green-100: #d9eede;
-  --green-200: #b7dec2;
-  --green-600: #2f8f4e;
-  --green-700: #26763f;
-  --green-800: #1d5c31;
-
-  --red-50: #fdf1ef;
-  --red-100: #fbe4e1;
-  --red-500: #d14343;
-  --red-600: #c0392b;
-  --red-700: #9e2c20;
-
-  --sky-50: #e4f2f7;
-  --sky-600: #2a7f9e;
-
-  /* ---- semantic ------------------------------------------------------ */
-  --bg: var(--sage-50);
-  --bg-subtle: var(--sage-100);
-  --surface: var(--white);
-  --border: var(--sage-200);
-  --border-strong: var(--sage-300);
-
-  --ink: var(--sage-900);
-  --ink-strong: var(--sage-800);
-  --ink-soft: var(--sage-700);
-  --ink-dim: var(--sage-600);
-  --muted: var(--sage-500);
-  --muted-soft: var(--sage-400);
-  --on-dark: var(--white);
-
-  --primary: var(--teal-600);
-  --primary-hover: var(--teal-700);
-  --primary-light: var(--teal-400);
-  --primary-bg: var(--teal-50);
-
-  --success: var(--green-600);
-  --success-strong: var(--green-700);
-  --success-deep: var(--green-800);
-  --success-bg: var(--green-50);
-  --success-bg-strong: var(--green-100);
-  --success-border: var(--green-200);
-
-  --danger: var(--red-600);
-  --danger-light: var(--red-500);
-  --danger-strong: var(--red-700);
-  --danger-bg: var(--red-50);
-  --danger-bg-strong: var(--red-100);
-
-  --warn: var(--saffron-500);
-  --warn-ink: var(--saffron-700);
-  --warn-bg: var(--saffron-100);
-
-  --info: var(--sky-600);
-  --info-bg: var(--sky-50);
-
-  /* The rail: pine board, pale-mint type. */
-  --chrome: var(--pine-900);
-  --chrome-raised: var(--pine-800);
-  --chrome-hover: var(--pine-700);
   --chrome-ink: #e8f3ef;
   --chrome-muted: #a5bdb5;
-  --chrome-faint: #7d968d;
-  --chrome-line: rgba(232, 243, 239, 0.09);
-  --chrome-accent: var(--mint-300);
+
+  /* ---- semantic ------------------------------------------------------ */
+  --bg: var(--canvas-2);
+  --bg-subtle: #eaf0f8;
+  --surface: var(--white);
+  --border: #d9e2ee;
+  --border-strong: #bccadb;
+
+  --ink: var(--ink-2);
+  --ink-strong: #15203a;
+  --ink-soft: #2e3d59;
+  --ink-dim: #41506b;
+  --muted: var(--muted-2);
+  --muted-soft: #8a98b0;
+  --on-dark: var(--white);
+
+  --primary: var(--blue);
+  --primary-hover: var(--blue-deep);
+  --primary-light: #5b86c6;
+  --primary-bg: var(--blue-soft);
+
+  --success: #2f8f4e;
+  --success-strong: var(--st-ok-fg);
+  --success-deep: #1d5c31;
+  --success-bg: var(--st-ok-bg);
+  --success-bg-strong: #d9eede;
+  --success-border: var(--st-ok-line);
+
+  --danger: #c0392b;
+  --danger-light: #d14343;
+  --danger-strong: var(--st-expired-fg);
+  --danger-bg: var(--st-expired-bg);
+  --danger-bg-strong: var(--st-expired-line);
+
+  --warn: var(--st-soon-line);
+  --warn-ink: var(--st-soon-fg);
+  --warn-bg: var(--st-soon-bg);
+
+  --info: var(--st-low-fg);
+  --info-bg: var(--st-low-bg);
 
   /* ---- shape --------------------------------------------------------- */
-  --radius-sm: 8px;
-  --radius: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 10px;
+  --radius: 12px;
+  --radius-lg: var(--radius-row);
   --radius-pill: 999px;
 
-  --shadow-card: 0 1px 2px rgba(16, 33, 28, 0.05);
-  --shadow-raised: 0 10px 28px -14px rgba(16, 33, 28, 0.34);
+  --shadow-card: inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.25), 0 0 0 1px var(--glass-outline), var(--glass-shadow);
+  --shadow-raised: 0 18px 44px rgba(30, 52, 92, 0.18);
 
-  --font-sans: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    sans-serif;
+  --font-sans: var(--font-kitchen);
 
-  --rail-collapsed-width: 72px;
-  --topbar-height: 68px;
+  /* The wash every screen sits on, painted on :root so it also covers overscroll. */
+  color: var(--ink);
+  background-color: var(--canvas-2);
+  background-image:
+    radial-gradient(circle at 12% -6%, var(--wash-circle), rgba(186, 208, 240, 0) 34%),
+    radial-gradient(circle at 96% 28%, rgba(204, 220, 244, 0.6), rgba(204, 220, 244, 0) 30%),
+    radial-gradient(circle at 42% 112%, rgba(222, 230, 242, 0.8), rgba(222, 230, 242, 0) 32%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+@media (min-width: 700px) {
+  :root { --page-gutter: 24px; --page-top-space: 28px; }
+}
+@media (min-width: 1024px) {
+  :root { --page-gutter: 28px; --page-top-space: 32px; --page-bottom-space: 72px; }
 }

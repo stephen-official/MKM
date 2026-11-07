@@ -6,12 +6,15 @@ export const ITEM_TYPES = [
   { value: "daily_use", label: "Daily use" }
 ];
 
+/** Built-in pack names, always offered first. Anything else typed in becomes a custom pack type. */
 export const PACK_TYPES = [
   { name: "Box/Carton", image: "/pack-types/box-carton.avif" },
   { name: "Bag", image: "/pack-types/bag.avif" },
   { name: "Can", image: "/pack-types/can.avif" },
-  { name: "Tub", image: "/pack-types/tub.avif" }
+  { name: "Tub", image: "/pack-types/tub.avif" },
+  { name: "Packet", image: "" }
 ];
+export const isPresetPackName = (name) => PACK_TYPES.some((type) => type.name.toLowerCase() === String(name || "").trim().toLowerCase());
 
 /** Custom pack types always start with a capital letter ("sack" -> "Sack"); the server applies the same rule. */
 export const capitalizeFirst = (text) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -22,7 +25,9 @@ export const MISSING_LABELS = {
   price: "price per unit",
   packs: "a pack",
   packDetails: "pack name and size",
-  packPrice: "pack price"
+  packPrice: "pack price",
+  vegMark: "veg or non-veg mark",
+  storage: "where it is stored"
 };
 
 const money = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -43,7 +48,10 @@ const asText = (value) => (value === null || value === undefined ? "" : String(v
 
 export const emptyProductForm = () => ({
   name: "", imageUrl: "", itemType: "stock", stockGroupId: "", unitId: "", brand: "", productCode: "",
-  pricePerUnit: "", defaultThreshold: "0", expiryRequired: true, soldInPacks: false, packs: []
+  pricePerUnit: "", defaultThreshold: "0", expiryRequired: true,
+  // Food safety (FSSAI): kind must be chosen; the rest applies to food only.
+  kind: "", form: "", vegMark: "", allergens: [], storage: "",
+  soldInPacks: false, packs: []
 });
 
 /** Form state from a product the API returned (or a kitchen's product request when approving one). */
@@ -60,9 +68,17 @@ export const formFromProduct = (product, { units = [] } = {}) => ({
   pricePerUnit: asText(product.pricePerUnit),
   defaultThreshold: asText(product.defaultThreshold ?? 0),
   expiryRequired: product.expiryRequired !== false,
+  kind: product.kind || "",
+  form: product.form || "",
+  vegMark: product.vegMark || "",
+  allergens: Array.isArray(product.allergens) ? product.allergens : [],
+  storage: product.storage || "",
   soldInPacks: Boolean(product.soldInPacks),
   packs: (product.packs || []).map((pack) => ({ key: String(pack._id), _id: pack._id, name: pack.name, size: asText(pack.size), price: asText(pack.price) }))
 });
+
+/** True when any field behind the "More details" fold has something in it, so the fold opens on edit. */
+export const hasMoreDetails = (form) => Boolean(form.brand || form.productCode || form.itemType === "daily_use" || Number(form.defaultThreshold) > 0);
 
 const positive = (text) => {
   const value = Number(text);
@@ -72,14 +88,21 @@ const positive = (text) => {
 /** Field errors keyed like the server's (`packList[i].name` etc). `canPrice` = the user is a super-admin. */
 export const validateProductForm = (form, { canPrice }) => {
   const errors = {};
+  if (!String(form.imageUrl || "").trim()) errors.imageUrl = "Add a photo. Kitchen staff pick products by their picture.";
   if (!form.name.trim()) errors.name = "Enter a product name.";
   if (!form.stockGroupId) errors.stockGroupId = "Choose a product group.";
   if (!form.unitId) errors.unitId = "Choose a unit.";
   const threshold = Number(form.defaultThreshold);
   if (String(form.defaultThreshold).trim() === "" || !Number.isFinite(threshold) || threshold < 0) errors.defaultThreshold = "Enter zero or more.";
   if (canPrice && !positive(form.pricePerUnit)) errors.pricePerUnit = "Enter a price per unit greater than zero.";
+  if (!form.kind) errors.kind = "Say whether this is food or not.";
+  if (form.kind === "food") {
+    if (!form.vegMark) errors.vegMark = "Choose veg, non-veg or egg.";
+    if (!form.storage) errors.storage = "Say where it is kept.";
+    if (form.allergens.length === 0) errors.allergens = "Tick the allergens, or None, or Not sure.";
+  }
   if (form.soldInPacks) {
-    if (form.packs.length === 0) errors.packs = "Add at least one pack, or untick “Ordered in bulk”.";
+    if (form.packs.length === 0) errors.packs = "Add at least one pack, or answer No.";
     const seen = new Set();
     const packList = form.packs.map((pack) => {
       const problems = {};
@@ -107,12 +130,14 @@ export const payloadFromForm = (form, { canPrice }) => ({
   productCode: form.productCode.trim(),
   defaultThreshold: Number(form.defaultThreshold),
   ...(canPrice ? { pricePerUnit: Number(form.pricePerUnit) } : {}),
-  expiryRequired: form.expiryRequired,
+  // No expiry here: the server sets it from the food answers (packaged food asks the kitchen for a date; the rest do not).
+  kind: form.kind,
+  ...(form.kind === "food" ? { form: form.form || null, vegMark: form.vegMark, allergens: form.allergens, storage: form.storage } : {}),
   soldInPacks: form.soldInPacks,
   packs: form.soldInPacks
     ? form.packs.map((pack) => ({
       ...(pack._id ? { _id: pack._id } : {}),
-      name: pack.name.trim(),
+      name: capitalizeFirst(pack.name.trim()),
       size: Number(pack.size),
       ...(canPrice ? { price: Number(pack.price) } : {})
     }))

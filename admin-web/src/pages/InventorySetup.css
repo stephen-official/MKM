@@ -1,0 +1,31 @@
+/* Master data › Kitchens: glass rows on the wash, like the Products page. Primitives (.kg-*, .ks-*) come from glass.css. */
+.setup-shell { display: flex; flex-direction: column; min-height: 100%; }
+.setup-page { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 8px var(--page-gutter) 28px; }
+.setup-page > * { min-width: 0; max-width: 100%; }
+.setup-page > .tabs { align-self: flex-start; }
+.setup-hint { margin: 0; padding: 0 6px; color: var(--muted-2); font-size: 13px; font-weight: 300; line-height: 1.5; }
+.setup-add { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 10px 10px 16px; }
+.setup-add__input { flex: 1 1 220px; min-width: 0; height: 42px; padding: 0 4px; color: var(--ink-2); background: transparent; border: 0; border-radius: 0; outline: 0; box-shadow: none; font: inherit; font-size: 14px; }
+.setup-add__input::placeholder { color: var(--muted-2); font-weight: 300; }
+.setup-add__dup { color: var(--st-expired-fg); font-size: 12px; }
+.setup-results { display: flex; align-items: baseline; gap: 6px; margin: 0; padding: 0 6px; color: var(--muted-2); font-size: 12px; }
+.setup-results strong { font-weight: 500; color: var(--ink-2); }
+.setup-rows { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.setup-row { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 9px 10px 9px 18px; }
+.setup-row__text { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.setup-row__text strong { color: var(--ink-2); font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.setup-row__text small { color: var(--muted-2); font-size: 12px; }
+.setup-row__input { flex: 1; min-width: 0; height: 40px; padding: 0 12px; color: var(--ink-2); background: rgba(255,255,255,.7); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; font: inherit; font-size: 14px; outline: 0; }
+.setup-row > .kg-pill { flex: none; }
+.setup-row__actions { display: flex; flex: none; align-items: center; gap: 6px; }
+.setup-row__icon { width: 40px; height: 40px; padding: 0; justify-content: center; }
+.setup-row__icon--danger:hover, .setup-row__icon--danger:focus-visible { color: var(--st-expired-fg); box-shadow: 0 0 0 1px var(--st-expired-line), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px var(--st-expired-line); }
+.setup-row__save { height: 40px; padding: 0 16px; }
+.setup-more { display: flex; justify-content: center; padding-top: 4px; }
+.setup-state { display: flex; min-height: 180px; padding: 32px 20px; align-items: center; justify-content: center; flex-direction: column; gap: 10px; color: var(--muted-2); text-align: center; border-style: solid; background: var(--glass-bg); }
+@media (min-width: 1024px) { .setup-rows { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px) {
+  .setup-row { flex-wrap: wrap; padding-left: 14px; }
+  .setup-row__text { flex-basis: 100%; }
+  .setup-row__actions { margin-left: auto; }
+}

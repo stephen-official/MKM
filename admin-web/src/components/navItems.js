@@ -1,5 +1,5 @@
 import {
-  ArrowLeftRight, BookOpen, Boxes, Package, CalendarClock, ChartColumn, ClipboardCheck, ClipboardList, Gauge, Share2, ShoppingCart, ToggleRight, Users, Utensils, Warehouse, Settings
+  ArrowLeftRight, BookOpen, Boxes, Package, CalendarClock, ChartColumn, ClipboardCheck, ClipboardList, Gauge, Share2, ShoppingCart, SlidersHorizontal, ToggleRight, Users, Utensils, Warehouse, Settings
 } from "lucide-react";
 
 export const NAV = [
@@ -21,7 +21,9 @@ export const SUPER_NAV = [
   { label: "Executive Report", path: "/executive-report", icon: Gauge, section: "Executive" },
   { label: "Feature Visibility", path: "/feature-visibility", icon: ToggleRight, section: "Administration" },
   { label: "Users", path: "/users", icon: Users, section: "Administration" },
-  { label: "Report Schedules", path: "/report-schedules", icon: CalendarClock, section: "Executive", hiddenFromNav: true }
+  { label: "Report Schedules", path: "/report-schedules", icon: CalendarClock, section: "Executive", hiddenFromNav: true },
+  // Units, pack names, product groups and ordering rules (Anand, 2026-11-02: its own nav entry for now).
+  { label: "Settings", path: "/settings", icon: SlidersHorizontal, section: "Manage" }
 ];
 
 /**
@@ -31,10 +33,13 @@ export const SUPER_NAV = [
  */
 export const WORKSPACE_NAV = [
   {
-    label: "Catalog", path: "/catalog", icon: Package, section: "Workspace",
+    label: "Master data", path: "/catalog", icon: Package, section: "Workspace",
     tabs: [
-      { label: "Products", slug: "products", route: "/products", feature: "products" },
-      { label: "Categories & locations", slug: "setup", route: "/inventory-info", feature: "inventory" }
+      // Super-admins see how many products wait on them for a price (only they may set one).
+      { label: "Products", slug: "products", route: "/products", feature: "products", countFor: "super_admin", pendingCount: { path: "/products", count: (data) => data?.counts?.needsPrice || 0 } },
+      { label: "Kitchens", slug: "kitchens", route: "/inventory-info", feature: "inventory" },
+      // Kitchens' "add this product" requests, promoted from a tab inside Products (Anand, 2026-11-01). The count of pending ones sits on the tab.
+      { label: "Kitchen requests", slug: "requests", route: "/products/requests", feature: "products", pendingCount: "/product-requests" }
     ]
   },
   {
@@ -77,5 +82,6 @@ export const SUPER_WORKSPACE_NAV = [
       { label: "Feature visibility", slug: "features", route: "/feature-visibility" },
       { label: "Report schedules", slug: "schedules", route: "/report-schedules" }
     ]
-  }
+  },
+  { label: "Settings", path: "/settings", icon: SlidersHorizontal, section: "Manage" }
 ];

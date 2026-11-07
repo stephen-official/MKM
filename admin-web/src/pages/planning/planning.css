@@ -1,0 +1,124 @@
+/* Purchasing › Planning: order cards. Head and body follow the Kitchens cards (kitchens.css .kp-card). */
+.pl-cards { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+@media (min-width: 1024px) { .pl-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+.pl-card { overflow: hidden; }
+.pl-card--open { grid-column: 1 / -1; }
+
+.pl-card__head { display: grid; gap: 6px; width: 100%; padding: 16px 18px 12px; color: var(--ink-2); background: none; border: 0; box-shadow: none; font: inherit; text-align: left; cursor: pointer; transform: none; }
+.pl-card__head:hover, .pl-card__head:focus-visible { background: rgba(255,255,255,.35); box-shadow: none; transform: none; outline: none; }
+.pl-card__head:focus-visible { box-shadow: inset 0 0 0 2px var(--blue); }
+.pl-card__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pl-card__title { font-size: 17px; font-weight: 500; }
+.pl-card__who { color: var(--muted-2); font-size: 13px; }
+.pl-card__foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; color: var(--ink-2); font-size: 13px; }
+.pl-card__chevron { flex: none; color: var(--muted-2); transition: transform .2s ease; }
+.pl-card--open .pl-card__chevron { transform: rotate(180deg); }
+.pl-card__body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 0 18px 18px; border-top: 1px solid rgba(170,186,210,.3); }
+
+/* Status tracker: five dots joined by a line; done and current dots blue, the current one ringed. */
+.pl-steps { display: grid; gap: 6px; margin: 8px 0 4px; }
+.pl-steps__track { display: flex; align-items: center; margin: 0; padding: 0; list-style: none; max-width: 260px; }
+.pl-steps__track li { display: flex; flex: 1; align-items: center; }
+.pl-steps__track li:last-child { flex: none; }
+.pl-steps__track li:not(:last-child)::after { content: ""; flex: 1; height: 2px; margin: 0 2px; background: rgba(170,186,210,.55); border-radius: 2px; }
+.pl-steps__track li.is-done::after { background: var(--blue); }
+.pl-steps__dot { flex: none; width: 10px; height: 10px; background: #fff; border: 2px solid rgba(170,186,210,.8); border-radius: 50%; }
+.is-done .pl-steps__dot { background: var(--blue); border-color: var(--blue); }
+.is-current .pl-steps__dot { width: 14px; height: 14px; background: var(--blue); border-color: #fff; box-shadow: 0 0 0 2px var(--blue); }
+.pl-steps__caption { font-size: 13px; font-weight: 500; }
+.pl-steps__caption--0 { color: var(--blue-deep); }
+.pl-steps__caption--1 { color: var(--st-soon-fg); }
+
+.pl-shares { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+@media (min-width: 700px) { .pl-shares { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); } }
+.pl-share { display: grid; align-content: start; gap: 8px; padding: 12px 14px; }
+.pl-share__name { font-weight: 500; }
+.pl-share__note { margin: 0; color: var(--muted-2); font-size: 12px; font-style: italic; }
+.pl-lines { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; font-size: 14px; }
+.pl-lines li { display: flex; justify-content: space-between; gap: 12px; }
+.pl-lines__qty { color: var(--muted-2); text-align: right; }
+.pl-total { gap: 8px; padding: 12px 14px; }
+.pl-total li + li { padding-top: 8px; border-top: 1px solid rgba(170,186,210,.25); }
+.pl-total__qty { display: inline-flex; align-items: baseline; gap: 6px; text-align: right; }
+.pl-total__qty strong { font-weight: 500; }
+.pl-total__qty small { color: var(--muted-2); font-size: 12px; }
+
+.kg-chip.pl-close { height: 38px; color: var(--st-expired-fg); }
+.pl-error { margin: 0; color: var(--st-expired-fg); font-size: 13px; }
+
+@media (prefers-reduced-motion: reduce) { .pl-card__chevron { transition: none; } }
+@media (max-width: 700px) {
+  .pl-card__head { padding: 14px 14px 10px; }
+  .pl-card__body { padding: 0 14px 16px; }
+}
+
+/* A kitchen's tile: name with the super-admin's pencil; the edit form in place of the list. */
+.pl-share__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; }
+.pl-share__changed { color: var(--blue-deep); font-size: 12px; }
+/* Super-admin popup: change one kitchen's items (KitchenItemsEditor). A big popup of fixed height: the item list
+   scrolls inside it and Cancel / Save stay at the bottom. */
+.modal:has(> .pl-editor) { display: flex; flex-direction: column; max-width: 880px; height: min(85svh, 820px); overflow: hidden; }
+.pl-editor { display: flex; flex: 1; flex-direction: column; gap: 14px; min-height: 0; }
+.pl-editor__order { margin: -6px 0 0; color: var(--muted-2); font-size: 13px; }
+.pl-editor__rows { display: grid; flex: 1 1 auto; align-content: start; gap: 8px; min-height: 120px; margin: 0; padding: 2px; overflow-y: auto; overscroll-behavior: contain; list-style: none; }
+.pl-editor__row { display: grid; gap: 6px; padding: 10px 12px; }
+.pl-editor__main { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.pl-editor__name { flex: 1 1 140px; min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+.pl-editor__controls { display: inline-flex; align-items: center; gap: 6px; }
+.pl-editor__amount { display: inline-flex; align-items: center; gap: 4px; color: var(--muted-2); font-size: 13px; }
+.pl-editor__amount input { width: 64px; height: 38px; padding: 0 8px; color: var(--ink-2); background: rgba(255,255,255,.8); border: 1px solid var(--glass-border); border-radius: 12px; font: inherit; font-size: 15px; font-weight: 500; text-align: center; }
+.pl-editor__amount span { min-width: 22px; }
+.kg-chip.pl-editor__bin { margin-left: 6px; }
+.pl-editor__locked { display: inline-flex; align-items: center; gap: 5px; color: var(--muted-2); font-size: 13px; }
+.pl-editor__row.is-removed .pl-editor__name, .pl-editor__was { color: var(--muted-2); text-decoration: line-through; }
+.kg-chip.pl-editor__undo { height: 34px; }
+.pl-editor__change { display: flex; align-items: center; gap: 8px; color: var(--muted-2); font-size: 12px; }
+.pl-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.pl-tag--up, .pl-tag--added { color: var(--st-ok-fg); background: var(--st-ok-bg); border-color: var(--st-ok-line); }
+.pl-tag--down, .pl-tag--removed { color: var(--st-expired-fg); background: var(--st-expired-bg); border-color: var(--st-expired-line); }
+.pl-editor__add { display: grid; flex: none; gap: 6px; }
+.pl-editor__search { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 14px; color: var(--muted-2); background: rgba(255,255,255,.8); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
+.pl-editor__search:focus-within { box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff, 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55); }
+.pl-editor__search input { flex: 1; min-width: 0; height: 100%; padding: 0; color: var(--ink-2); background: transparent; border: 0; box-shadow: none; outline: 0; font: inherit; font-size: 15px; -webkit-appearance: none; appearance: none; border-radius: 0; }
+/* The pill around it shows focus; the shared input focus ring would draw a second one inside. */
+.pl-editor__search input:focus, .pl-editor__search input:focus-visible { box-shadow: none; outline: 0; }
+.pl-editor__results { display: grid; gap: 4px; max-height: 200px; margin: 0; padding: 4px; overflow-y: auto; list-style: none; background: rgba(255,255,255,.6); border: 1px solid var(--glass-border); border-radius: 16px; }
+.pl-editor__result { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 48px; padding: 6px 12px; color: var(--ink-2); background: none; border: 0; border-radius: 12px; box-shadow: none; font: inherit; text-align: left; cursor: pointer; transform: none; }
+.pl-editor__result:hover, .pl-editor__result:focus-visible { background: var(--tint-cool); outline: none; box-shadow: none; transform: none; }
+.pl-editor__result > span:first-child { display: grid; min-width: 0; }
+.pl-editor__result strong { font-weight: 500; }
+.pl-editor__result small { color: var(--muted-2); font-size: 12px; }
+.pl-editor__result-add { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--blue-deep); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.pl-editor__none { padding: 12px; color: var(--muted-2); font-size: 13px; }
+.pl-editor > .kp-hint, .pl-editor > .pl-error, .pl-editor__actions { flex: none; }
+.pl-editor__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+@media (max-width: 480px) { .pl-editor__actions > * { flex: 1; } }
+
+/* New order popup: three tap steps (kitchen, needed in, items); the items step takes the rest of the height. */
+.pl-step { display: grid; flex: none; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.pl-step legend, .pl-step__legend { margin: 0 0 8px; padding: 0; color: var(--muted-2); font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
+.pl-step--items { display: flex; flex: 1 1 auto; flex-direction: column; gap: 10px; min-height: 0; }
+.pl-step--items .pl-step__legend { margin: 0; }
+.pl-step__note { margin: 0; color: var(--muted-2); font-size: 13px; }
+.pl-step__note strong { color: var(--ink-2); font-weight: 500; }
+.pl-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.kg-chip.pl-choice { min-height: 42px; padding: 0 16px; text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 500; }
+.kg-chip.pl-choice.is-picked { color: #fff; background: var(--blue); box-shadow: 0 0 0 1px var(--blue-deep), 0 6px 16px rgba(63,108,176,.25); }
+.kg-chip.pl-choice--urgent { color: var(--st-expired-fg); }
+.kg-chip.pl-choice--urgent.is-picked { color: #fff; background: var(--st-expired-fg); box-shadow: 0 0 0 1px var(--st-expired-fg), 0 6px 16px rgba(155,63,54,.25); }
+
+/* Ordering window: one line at the top of an opened card, with Change time (super-admins) and Close now. */
+.pl-window { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-top: 14px; padding: 12px 14px; }
+.pl-window__text { display: grid; gap: 2px; min-width: 0; }
+.pl-window__label { color: var(--muted-2); font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
+.pl-window__text strong { font-weight: 500; }
+.pl-window__text small { color: var(--blue-deep); font-size: 13px; }
+.pl-window__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.kg-chip.pl-window__change { height: 38px; color: var(--blue-deep); }
+
+/* Change closing time popup: the steps reuse .pl-step / .pl-choice; it needs less height than the item popups. */
+.modal:has(> .pl-closing-form) { height: auto; max-height: 90svh; overflow-y: auto; }
+.kg-chip.pl-choice:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+.pl-closing-preview { padding: 12px 14px; color: var(--muted-2); font-size: 14px; }
+.pl-closing-preview.is-ready { color: var(--ink-2); background: var(--tint-cool); }
+.pl-closing-preview strong { font-weight: 600; color: var(--blue-deep); }

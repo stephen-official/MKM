@@ -11,6 +11,9 @@ import { createResetToken, hashResetToken } from "../utils/tokens.js";
 import { mailer } from "../utils/mailer.js";
 import { clampPage } from "../utils/pagination.js";
 import { disconnectUser } from "../realtime.js";
+import { isValidPassword } from "./authRoutes.js";
+import { normalizePhone } from "../utils/phone.js";
+import { openPassword, passwordViewEnabled, sealPassword } from "../utils/passwordVault.js";
 
 export const userRoutes = express.Router();
 const superAdminOnly = authorize(["super_admin"]);
@@ -18,7 +21,8 @@ userRoutes.use(superAdminOnly);
 
 const INVITE_TTL_MS = 24 * 3_600_000;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const SAFE_FIELDS = "name email role godownId active version createdAt updatedAt";
+// +viewablePassword only to say whether one is stored (passwordViewable); the sealed copy itself never leaves here.
+const SAFE_FIELDS = "name email phone role godownId active lastLoginAt version createdAt updatedAt +viewablePassword";
 
 class UserAdminError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -33,8 +37,8 @@ const sendError = (res, error) => {
   return res.status(500).json({ code: "INTERNAL_ERROR", message: "Something went wrong." });
 };
 const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const safe = (u) => u && ({ _id: u._id, name: u.name, email: u.email, role: u.role, godownId: u.godownId?._id ?? u.godownId ?? null, kitchenName: u.godownId?.name ?? null, active: u.active, version: u.version ?? 0, createdAt: u.createdAt, updatedAt: u.updatedAt });
-const snapshot = (u) => u && ({ name: u.name, email: u.email, role: u.role, godownId: u.godownId ? String(u.godownId._id ?? u.godownId) : null, active: u.active });
+const safe = (u) => u && ({ _id: u._id, name: u.name, email: u.email, phone: u.phone || "", role: u.role, godownId: u.godownId?._id ?? u.godownId ?? null, kitchenName: u.godownId?.name ?? null, active: u.active, lastLoginAt: u.lastLoginAt || null, version: u.version ?? 0, passwordViewable: Boolean(u.viewablePassword), createdAt: u.createdAt, updatedAt: u.updatedAt });
+const snapshot = (u) => u && ({ name: u.name, email: u.email, phone: u.phone || "", role: u.role, godownId: u.godownId ? String(u.godownId._id ?? u.godownId) : null, active: u.active });
 
 const actorOf = async (req) => {
   const me = await User.findById(req.user.sub).select("email").lean();
@@ -120,9 +124,14 @@ userRoutes.post("/", async (req, res) => {
     if (!ALL_ROLES.includes(role)) fail(400, "INVALID_INPUT", "Choose a valid role.");
     if (isSuperAdmin(role) && req.body?.confirmSuperAdmin !== true) fail(400, "CONFIRMATION_REQUIRED", "Confirm that this account should be a super-admin.");
     const godownId = await validateKitchen(role, req.body?.godownId);
+    // A password given here is set by the super-admin and no invite email goes out (kitchen staff often have no inbox).
+    const password = req.body?.password;
+    if (password !== undefined && !isValidPassword(password)) fail(400, "INVALID_PASSWORD", "The password needs at least 8 characters.");
+    const phone = normalizePhone(req.body?.phone);
+    if (phone === null) fail(400, "INVALID_PHONE", "Enter a WhatsApp number, e.g. 98765 43210 (or +country code and number).");
     if (await User.exists({ email })) fail(409, "EMAIL_EXISTS", "That email is already in use.");
 
-    const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
+    const passwordHash = await bcrypt.hash(password ?? crypto.randomBytes(32).toString("hex"), 10);
     const actor = await actorOf(req);
     let user;
     let token;
@@ -130,20 +139,22 @@ userRoutes.post("/", async (req, res) => {
     // Everything is built inside the callback so a retried attempt starts from a fresh, new document.
     await session.withTransaction(async () => {
       await assertActorIsActiveSuperAdmin(session, req.user.sub);
-      user = new User({ name, email, role, godownId, active: true, passwordHash });
-      token = stageToken(user, INVITE_TTL_MS);
+      user = new User({ name, email, phone, role, godownId, active: true, passwordHash, viewablePassword: password !== undefined && role === ROLES.USER ? sealPassword(password) : null });
+      token = password === undefined ? stageToken(user, INVITE_TTL_MS) : null;
       await user.save({ session });
       await UserAdminAudit.create([{ ...actor, targetUserId: user._id, action: "create", before: null, after: snapshot(user) }], { session });
     });
-    let inviteSent = true;
-    try {
-      await mailer.sendInviteEmail({ email, name, token });
-    } catch (error) {
-      inviteSent = false;
-      console.error(`[users] invite email to ${email} failed: ${error.message}`);
+    let inviteSent = false;
+    if (token) {
+      try {
+        await mailer.sendInviteEmail({ email, name, token });
+        inviteSent = true;
+      } catch (error) {
+        console.error(`[users] invite email to ${email} failed: ${error.message}`);
+      }
     }
     const created = await User.findById(user._id).select(SAFE_FIELDS).populate("godownId", "name").lean();
-    return res.status(201).json({ user: safe(created), inviteSent });
+    return res.status(201).json({ user: safe(created), inviteSent, passwordSet: password !== undefined });
   } catch (error) {
     return sendError(res, error);
   } finally {
@@ -168,12 +179,23 @@ userRoutes.patch("/:id", async (req, res) => {
       }
       const before = snapshot(user);
       const self = String(user._id) === String(req.user.sub);
-      const { name, role, godownId, active } = body;
+      const { name, email, phone, role, godownId, active } = body;
 
       if (name !== undefined) {
         const clean = String(name).trim();
         if (!clean || clean.length > 100) fail(400, "INVALID_INPUT", "Name is required (100 characters max).");
         user.name = clean;
+      }
+      if (email !== undefined) {
+        const clean = String(email).toLowerCase().trim();
+        if (!EMAIL.test(clean)) fail(400, "INVALID_INPUT", "A valid email is required.");
+        if (clean !== user.email && await User.exists({ email: clean, _id: { $ne: user._id } }).session(session)) fail(409, "EMAIL_EXISTS", "That email is already in use.");
+        user.email = clean;
+      }
+      if (phone !== undefined) {
+        const clean = normalizePhone(phone);
+        if (clean === null) fail(400, "INVALID_PHONE", "Enter a WhatsApp number, e.g. 98765 43210 (or +country code and number).");
+        user.phone = clean;
       }
       const nextRole = role ?? user.role;
       if (role !== undefined) {
@@ -195,7 +217,7 @@ userRoutes.patch("/:id", async (req, res) => {
       const roleChanged = nextRole !== user.role;
       const kitchenChanged = godownId !== undefined && String(godownId || "") !== String(user.godownId || "");
       user.role = nextRole;
-      if (nextRole !== ROLES.USER) user.godownId = null;
+      if (nextRole !== ROLES.USER) { user.godownId = null; user.viewablePassword = null; } // viewable passwords are for kitchen accounts only
       else if (roleChanged || kitchenChanged) user.godownId = await validateKitchen(nextRole, godownId ?? user.godownId);
       if (active !== undefined) user.active = active;
       if (accessChanged) user.refreshToken = null;
@@ -214,6 +236,48 @@ userRoutes.patch("/:id", async (req, res) => {
     return sendError(res, error);
   } finally {
     await session.endSession();
+  }
+});
+
+// The super-admin sets a password. For a kitchen account it stays viewable to super-admins; the user's phone is signed out.
+userRoutes.post("/:id/password", async (req, res) => {
+  try {
+    await assertActorIsActiveSuperAdmin(null, req.user.sub);
+    if (!mongoose.isValidObjectId(req.params.id)) fail(404, "USER_NOT_FOUND", "No such user.");
+    const password = req.body?.password;
+    if (!isValidPassword(password)) fail(400, "INVALID_PASSWORD", "The password needs at least 8 characters.");
+    const user = await User.findById(req.params.id);
+    if (!user) fail(404, "USER_NOT_FOUND", "No such user.");
+    user.passwordHash = await bcrypt.hash(password, 10);
+    user.viewablePassword = user.role === ROLES.USER ? sealPassword(password) : null;
+    user.refreshToken = null;
+    user.resetToken = null;
+    user.resetTokenExpiry = null;
+    await user.save();
+    await UserAdminAudit.create({ ...(await actorOf(req)), targetUserId: user._id, action: "set-password", before: null, after: null });
+    disconnectUser(user._id);
+    return res.json({ viewable: Boolean(user.viewablePassword) });
+  } catch (error) {
+    return sendError(res, error);
+  }
+});
+
+// Shows a kitchen password a super-admin set. Every look is written to the user audit.
+userRoutes.get("/:id/password", async (req, res) => {
+  try {
+    await assertActorIsActiveSuperAdmin(null, req.user.sub);
+    if (!mongoose.isValidObjectId(req.params.id)) fail(404, "USER_NOT_FOUND", "No such user.");
+    const user = await User.findById(req.params.id).select("role +viewablePassword").lean();
+    if (!user) fail(404, "USER_NOT_FOUND", "No such user.");
+    if (user.role !== ROLES.USER) fail(403, "NOT_VIEWABLE", "Only kitchen account passwords can be viewed.");
+    if (!passwordViewEnabled()) fail(503, "PASSWORD_VIEW_OFF", "Viewing passwords is not switched on for this server (PASSWORD_VIEW_KEY).");
+    if (!user.viewablePassword) fail(404, "PASSWORD_NOT_VIEWABLE", "This password was chosen by the user, so it cannot be shown. Set a new one to see it.");
+    const password = openPassword(user.viewablePassword);
+    if (password === null) fail(409, "PASSWORD_NOT_VIEWABLE", "This password cannot be shown any more. Set a new one to see it.");
+    await UserAdminAudit.create({ ...(await actorOf(req)), targetUserId: user._id, action: "view-password", before: null, after: null });
+    return res.json({ password });
+  } catch (error) {
+    return sendError(res, error);
   }
 });
 

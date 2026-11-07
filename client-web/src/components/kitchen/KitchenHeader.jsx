@@ -6,19 +6,21 @@ import "./kitchen-ui.css";
  *
  * @param {object} props
  * @param {string} props.kitchenName
+ * @param {string} [props.kitchenLogo] the kitchen's logo (set by the super-admin in Master data › Kitchens); the school mark when empty
  * @param {() => void} [props.onLogout]
  * @param {string} [props.className=""]
  */
 export default function KitchenHeader({
   kitchenName,
+  kitchenLogo,
   onLogout,
   className = "",
 }) {
   return (
     <header className={`kitchen-header ${className}`.trim()}>
       <div className="kitchen-header__brand" aria-label="Current kitchen">
-        <span className="kitchen-header__mark" aria-hidden="true">
-          <School size={22} strokeWidth={2.25} />
+        <span className={`kitchen-header__mark${kitchenLogo ? " kitchen-header__mark--logo" : ""}`} aria-hidden="true">
+          {kitchenLogo ? <img src={kitchenLogo} alt="" /> : <School size={22} strokeWidth={2.25} />}
         </span>
         <div className="kitchen-header__identity">
           <p className="kitchen-header__organization">

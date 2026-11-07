@@ -7,6 +7,8 @@ import { GodownStock } from "../models/FlowModels.js";
 import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
 import { ProductRequest } from "../models/ProductRequestModel.js";
 import { missingFields } from "../catalog/completeness.js";
+import { assignMissingProductNos } from "../catalog/productService.js";
+import { productPdfRow } from "../catalog/productPdf.js";
 import { presetFor } from "../catalog/units.js";
 import { applyCatalogMigration, planCatalogMigration } from "../jobs/migrate-product-catalog.js";
 
@@ -29,7 +31,7 @@ beforeEach(async () => {
 });
 
 const as = (who, method, url) => request(app)[method](url).set("Authorization", `Bearer ${ctx[who].token}`);
-const base = (extra = {}) => ({ name: "Rice", stockGroupId: ctx.group._id, unitId: ctx.kg._id, itemType: "stock", defaultThreshold: 5, ...extra });
+const base = (extra = {}) => ({ name: "Rice", stockGroupId: ctx.group._id, unitId: ctx.kg._id, itemType: "stock", defaultThreshold: 5, kind: "food", vegMark: "veg", storage: "room", imageUrl: "https://img.test/rice.jpg", ...extra });
 
 test("preset aliases map common spellings and nothing vague", () => {
   assert.equal(presetFor({ symbol: "Kgs" }).symbol, "kg");
@@ -69,15 +71,27 @@ test("an admin creates a product without a price; it stays hidden from kitchens 
   assert.deepEqual((await as("cook", "get", "/api/inventory/stock-items")).body.map((p) => p.name), ["Rice"]);
 });
 
-test("expiry is required on every product unless an admin turns it off", async () => {
-  const created = await as("admin", "post", "/api/products").send(base());
-  assert.equal(created.status, 201);
-  assert.equal(created.body.expiryRequired, true);
-  const off = await as("admin", "put", `/api/products/${created.body._id}`).send({ expiryRequired: false });
-  assert.equal(off.status, 200);
-  assert.equal(off.body.expiryRequired, false);
-  const untouched = await as("admin", "put", `/api/products/${created.body._id}`).send({ brand: "Daawat" });
-  assert.equal(untouched.body.expiryRequired, false, "an edit that does not mention expiry keeps the setting");
+test("expiry follows the food answers: packaged food asks for it; loose food and non-food do not", async () => {
+  const packaged = (await as("admin", "post", "/api/products").send(base({ form: "packaged" }))).body;
+  assert.equal(packaged.expiryRequired, true);
+  assert.equal((await as("admin", "post", "/api/products").send(base({ name: "Onion", form: "loose" }))).body.expiryRequired, false);
+  assert.equal((await as("admin", "post", "/api/products").send(base({ name: "Atta" }))).body.expiryRequired, true, "food with no answer on how it arrives counts as packaged");
+  assert.equal((await as("admin", "post", "/api/products").send(base({ name: "Soap", kind: "non_food" }))).body.expiryRequired, false);
+  // The form's old tick box is ignored once the kind is known.
+  assert.equal((await as("admin", "put", `/api/products/${packaged._id}`).send({ expiryRequired: false })).body.expiryRequired, true);
+  assert.equal((await as("admin", "put", `/api/products/${packaged._id}`).send({ form: "loose" })).body.expiryRequired, false);
+});
+
+test("a photo is required on the form; products without one are flagged and counted", async () => {
+  const none = await as("admin", "post", "/api/products").send(base({ imageUrl: "" }));
+  assert.equal(none.status, 400);
+  assert.match(none.body.errors.imageUrl, /Add a photo/);
+  const old = await StockItem.create({ name: "Old Dal", stockGroupId: ctx.group._id, unitId: ctx.kg._id, pricePerUnit: 50, kind: "food", vegMark: "veg", storage: "room" });
+  const listed = await as("root", "get", "/api/products?status=nophoto");
+  assert.deepEqual(listed.body.items.map((p) => [p.name, p.available]), [["Old Dal", true]]);
+  assert.equal(listed.body.counts.noPhoto, 1);
+  assert.match((await as("admin", "put", `/api/products/${old._id}`).send({ brand: "Tata" })).body.errors.imageUrl, /Add a photo/);
+  assert.equal((await as("admin", "put", `/api/products/${old._id}`).send({ imageUrl: "https://img.test/dal.jpg" })).status, 200);
 });
 
 test("only a super-admin may set or change a price", async () => {
@@ -140,7 +154,7 @@ test("the list filters by status and search and always returns the counts", asyn
   await as("admin", "post", "/api/products").send(base({ name: "Dal", brand: "Tata" }));
   const res = await as("admin", "get", "/api/products?status=incomplete");
   assert.deepEqual(res.body.items.map((p) => p.name), ["Dal"]);
-  assert.deepEqual(res.body.counts, { all: 2, available: 1, incomplete: 1, archived: 0 });
+  assert.deepEqual(res.body.counts, { all: 2, available: 1, incomplete: 1, archived: 0, needsPrice: 1, fssai: 0, noPhoto: 0 });
   assert.deepEqual((await as("admin", "get", "/api/products?q=tata")).body.items.map((p) => p.name), ["Dal"]);
   assert.equal((await as("cook", "get", "/api/products")).status, 403);
 });
@@ -164,6 +178,30 @@ test("old inventory routes no longer write products or units, and a group in use
   assert.equal((await as("admin", "post", "/api/inventory/units").send({ symbol: "tray" })).body.code, "UNITS_ARE_PRESETS");
   await as("admin", "post", "/api/products").send(base());
   assert.equal((await as("admin", "delete", `/api/inventory/stock-groups/${ctx.group._id}`)).body.code, "GROUP_IN_USE");
+});
+
+test("every product gets a permanent Product ID: new ones on save, older ones once, oldest first", async () => {
+  const created = (await as("admin", "post", "/api/products").send(base())).body;
+  assert.equal(created.productNo, "P-0001");
+  await StockItem.collection.insertMany([
+    { name: "Older", stockGroupId: ctx.group._id, unitId: ctx.kg._id, createdAt: new Date("2025-01-01") },
+    { name: "Newer", stockGroupId: ctx.group._id, unitId: ctx.kg._id, createdAt: new Date("2025-02-01") }
+  ]);
+  assert.equal(await assignMissingProductNos(), 2);
+  assert.equal(await assignMissingProductNos(), 0);
+  const byName = Object.fromEntries((await StockItem.find().lean()).map((p) => [p.name, p.productNo]));
+  assert.deepEqual(byName, { Rice: "P-0001", Older: "P-0002", Newer: "P-0003" });
+  await as("admin", "put", `/api/products/${created._id}`).send({ ...base(), productNo: "P-9999" });
+  assert.equal((await StockItem.findById(created._id).lean()).productNo, "P-0001");
+});
+
+test("admins see how many products each group holds (archived too); kitchens do not get the count", async () => {
+  await as("admin", "post", "/api/products").send(base());
+  await StockItem.create({ ...base({ name: "Old rice" }), archived: true });
+  const listed = (await as("admin", "get", "/api/inventory/stock-groups")).body;
+  assert.deepEqual(listed.map((g) => [g.name, g.productCount]), [["Grains", 2], ["Other", 0]]);
+  const kitchenView = (await as("cook", "get", "/api/inventory/stock-groups")).body;
+  assert.equal(kitchenView[0].productCount, undefined);
 });
 
 test("a kitchen requests a product; an admin approves it by creating the product, once", async () => {
@@ -208,4 +246,182 @@ test("the migration merges look-alike units into presets and reports what is sti
   assert.equal(await Unit.exists({ _id: oldKg._id }), null);
   const onion = await StockItem.findOne({ name: "Onion" }).lean();
   assert.equal(String(onion.unitId), String(ctx.kg._id));
+});
+
+test("the export can be imported again: every row updates its product instead of failing on the id", async () => {
+  const rice = (await as("root", "post", "/api/products").send(base({ pricePerUnit: 60 }))).body;
+  const exported = await as("root", "get", "/api/products/export/excel").buffer(true).parse((res, done) => { const chunks = []; res.on("data", (c) => chunks.push(c)); res.on("end", () => done(null, Buffer.concat(chunks))); });
+  assert.equal(exported.status, 200);
+  const imported = await as("root", "post", "/api/products/import").attach("file", exported.body, "products-export.xlsx");
+  assert.equal(imported.status, 200, JSON.stringify(imported.body));
+  assert.deepEqual(imported.body.results.map((r) => [r.action, r.name]), [["updated", "Rice"]]);
+  assert.equal(imported.body.failed, 0);
+  assert.equal((await as("root", "get", `/api/products/${rice._id}`)).body.pricePerUnit, 60);
+});
+
+test("food safety: a new product must say whether it is food; food needs a veg mark and storage; non-food clears them; old products are flagged, not hidden", async () => {
+  const noKind = await as("root", "post", "/api/products").send({ ...base({ pricePerUnit: 60 }), kind: undefined });
+  assert.equal(noKind.status, 400);
+  assert.equal(noKind.body.errors.kind, "Say whether this is food or not.");
+  const bare = await as("root", "post", "/api/products").send({ ...base({ pricePerUnit: 60 }), vegMark: undefined, storage: undefined });
+  assert.equal(bare.status, 400);
+  assert.deepEqual(Object.keys(bare.body.errors).sort(), ["storage", "vegMark"]);
+  assert.equal((await as("root", "post", "/api/products").send(base({ pricePerUnit: 60, allergens: ["milk", "nuts"] }))).body.errors.allergens, "Pick allergens from the list.");
+
+  const food = (await as("root", "post", "/api/products").send(base({ pricePerUnit: 60, form: "packaged", allergens: ["gluten", "milk", "milk"], storage: "fridge" }))).body;
+  assert.deepEqual([food.kind, food.form, food.vegMark, food.allergens, food.storage, food.fssaiMissing, food.available], ["food", "packaged", "veg", ["gluten", "milk"], "fridge", false, true]);
+
+  const soap = (await as("root", "post", "/api/products").send(base({ name: "Soap", pricePerUnit: 20, kind: "non_food", form: "packaged", allergens: ["milk"] }))).body;
+  assert.deepEqual([soap.kind, soap.form, soap.vegMark, soap.allergens, soap.storage, soap.fssaiMissing, soap.available], ["non_food", null, null, [], null, false, true]);
+
+  // A product from before these facts existed: still available to kitchens, but counted under "fssai" until someone edits it.
+  const old = await StockItem.create({ name: "Old Dal", stockGroupId: ctx.group._id, unitId: ctx.kg._id, pricePerUnit: 50, imageUrl: "https://img.test/dal.jpg" });
+  const listed = await as("root", "get", "/api/products?status=fssai");
+  assert.deepEqual(listed.body.items.map((p) => [p.name, p.available, p.fssaiMissing]), [["Old Dal", true, true]]);
+  assert.equal(listed.body.counts.fssai, 1);
+  // Editing it must now say the kind; a food kind without its facts is refused, and once given the product is complete.
+  assert.equal((await as("root", "put", `/api/products/${old._id}`).send({ kind: "food" })).body.errors.vegMark, "Choose veg, non-veg or egg.");
+  const fixed = await as("root", "put", `/api/products/${old._id}`).send({ kind: "food", vegMark: "veg", storage: "room" });
+  assert.equal(fixed.status, 200, JSON.stringify(fixed.body));
+  assert.equal(fixed.body.fssaiMissing, false);
+  assert.equal((await as("root", "put", `/api/products/${old._id}`).send({ name: "Old Dal 2" })).body.kind, "food");
+});
+
+test("the Other group is always there, listed last, and can be neither renamed nor deleted", async () => {
+  await StockGroup.create({ name: "Zebra" });
+  const listed = await as("admin", "get", "/api/inventory/stock-groups");
+  assert.deepEqual(listed.body.map((g) => g.name), ["Grains", "Zebra", "Other"]);
+  const other = listed.body.find((g) => g.name === "Other");
+  assert.equal((await as("admin", "put", `/api/inventory/stock-groups/${other._id}`).send({ name: "Misc" })).body.code, "GROUP_BUILT_IN");
+  assert.equal((await as("admin", "delete", `/api/inventory/stock-groups/${other._id}`)).body.code, "GROUP_BUILT_IN");
+  assert.equal((await as("admin", "put", `/api/inventory/stock-groups/${ctx.group._id}`).send({ name: "other" })).body.code, "GROUP_BUILT_IN");
+  assert.equal((await as("admin", "get", "/api/inventory/stock-groups")).body.length, 3);
+});
+
+const fetchBook = async (path, who = "root") => {
+  const ExcelJS = (await import("exceljs")).default;
+  const res = await as(who, "get", path).buffer(true).parse((r, done) => { const c = []; r.on("data", (x) => c.push(x)); r.on("end", () => done(null, Buffer.concat(c))); });
+  assert.equal(res.status, 200);
+  const book = new ExcelJS.Workbook();
+  await book.xlsx.load(res.body);
+  const sheet = book.getWorksheet("Products");
+  const headers = sheet.getRow(1).values.slice(1);
+  const addRow = (values) => sheet.addRow(headers.map((h) => values[h] ?? ""));
+  const upload = async (uploader = who) => as(uploader, "post", "/api/products/import").attach("file", Buffer.from(await book.xlsx.writeBuffer()), "p.xlsx");
+  return { book, sheet, headers, addRow, upload };
+};
+const food = { "Product group *": "Grains", "Unit *": "kg", "Food or non-food *": "Food", "Veg / Non-veg / Egg": "Veg", Storage: "Room temperature", "No allergens": "Yes" };
+
+test("an import row names what is wrong, and a pack price that is not a number is refused, not saved", async () => {
+  const { addRow, upload } = await fetchBook("/api/products/import-template");
+  addRow({ "Name *": "Tomato", ...food, "Ordered in packs": "Yes", "Pack name": "Box/Carton", "Pack size": "?" });
+  addRow({ "Name *": "Masala", ...food, "Unit *": "tray" });
+  const res = await upload();
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.deepEqual(res.body.results.map((r) => r.message), ["Pack 1: Enter how much one pack holds.", "Choose a unit from the list."]);
+});
+
+test("the template carries a note per column and dropdowns fed by the current groups and pack names", async () => {
+  await as("root", "post", "/api/products").send(base({ pricePerUnit: 60, soldInPacks: true, packs: [{ name: "Sack", size: 25, price: 1400 }] }));
+  const { book, sheet, headers } = await fetchBook("/api/products/import-template");
+  assert.equal(headers[0], "Product ID");
+  assert.ok(!headers.includes("Product Code"));
+  assert.ok(!headers.some((h) => /price/i.test(h)), "no prices in the file");
+  assert.deepEqual(headers.filter((h) => /^Pack /.test(h)), ["Pack name", "Pack size"]);
+  assert.deepEqual(sheet.getRow(1).getCell(1).alignment, { horizontal: "center", vertical: "middle", wrapText: true });
+  const notes = sheet.getRow(2).values.slice(1);
+  assert.equal(notes.length, headers.length);
+  assert.ok(notes.every((note) => note.split(/\s+/).length <= 12), "every note is short");
+  const lists = book.getWorksheet("Lists");
+  const column = (name) => lists.getColumn(lists.getRow(1).values.indexOf(name)).values.slice(2);
+  assert.deepEqual(column("groups"), ["Grains", "Other"]);
+  assert.ok(column("packs").includes("Sack") && column("packs").includes("Bag"));
+  assert.deepEqual(column("units"), ["kg", "g", "L", "mL", "pcs", "dozen", "packet"]);
+  assert.equal(sheet.dataValidations.find("C3")?.type, "list");
+  assert.equal(sheet.dataValidations.find("C1999")?.formulae[0], "Lists!$A$2:$A$3");
+});
+
+test("bulk add: plain words, allergen columns and packs are read; a typed new group is created; Product ID updates; old layouts are refused", async () => {
+  const { addRow, upload } = await fetchBook("/api/products/import-template");
+  addRow({ "Name *": "Paneer", ...food, "Product group *": "Dairy", "Unit *": "Kgs", "Packaged or loose": "Loose or fresh", "No allergens": "", Milk: "Yes", Storage: "Fridge", Type: "Daily use" });
+  addRow({ "Name *": "Phenyl", "Product group *": "Cleaning", "Unit *": "L", "Food or non-food *": "Non-food", "Ordered in packs": "Yes", "Pack name": "Can", "Pack size": 5 });
+  addRow({ "Name *": "Broken", "Product group *": "Typo group", "Unit *": "kg" });
+  const res = await upload();
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.deepEqual(res.body.results.map((r) => r.action), ["created", "created", "error"]);
+  const paneer = await StockItem.findOne({ name: "Paneer" }).populate("stockGroupId unitId").lean();
+  assert.deepEqual([paneer.stockGroupId.name, paneer.unitId.symbol, paneer.form, paneer.storage, paneer.itemType, paneer.allergens], ["Dairy", "kg", "loose", "fridge", "daily_use", ["milk"]]);
+  assert.match(paneer.productNo, /^P-\d{4}$/);
+  assert.equal(await StockGroup.exists({ name: "Typo group" }), null, "a group no row ended up in is removed again");
+
+  // Export, change a cell, upload: the row with that Product ID is updated; prices and a second pack (not in the file) stay.
+  await StockItem.updateOne({ name: "Phenyl" }, { $set: { pricePerUnit: 90, packs: [{ name: "Can", size: 5, price: 450 }, { name: "Drum", size: 50, price: 4000 }] } });
+  const round = await fetchBook("/api/products/export/excel", "root");
+  const phenylRow = round.sheet.getRows(3, round.sheet.rowCount).find((r) => r.getCell(2).value === "Phenyl");
+  phenylRow.getCell(round.headers.indexOf("Brand") + 1).value = "Clean Co";
+  const again = await round.upload("root");
+  assert.equal(again.body.failed, 0, JSON.stringify(again.body));
+  const phenyl = await StockItem.findOne({ name: "Phenyl" }).lean();
+  assert.equal(phenyl.brand, "Clean Co");
+  assert.equal(phenyl.pricePerUnit, 90);
+  assert.deepEqual(phenyl.packs.map((p) => [p.name, p.size, p.price]), [["Can", 5, 450], ["Drum", 50, 4000]]);
+  assert.equal(await StockItem.countDocuments(), 2);
+
+  const old = new ((await import("exceljs")).default.Workbook)();
+  old.addWorksheet("Products").addRow(["Product ID", "Name", "Product Group"]);
+  const refused = await as("root", "post", "/api/products/import").attach("file", Buffer.from(await old.xlsx.writeBuffer()), "old.xlsx");
+  assert.equal(refused.body.code, "INVALID_IMPORT");
+});
+
+test("the PDF export lists every product with plain words and a note per column", async () => {
+  const rice = (await as("root", "post", "/api/products").send(base({ pricePerUnit: 60, allergens: ["gluten"], soldInPacks: true, packs: [{ name: "Bag", size: 25, price: 1400 }] }))).body;
+  assert.deepEqual(productPdfRow(rice), ["P-0001", "Rice", "kg", "Food, Veg, Room temperature", "Gluten", "5 kg", "Bag of 25 kg", "Available"]);
+  const res = await as("admin", "get", "/api/products/export/pdf").buffer(true).parse((r, done) => { const c = []; r.on("data", (x) => c.push(x)); r.on("end", () => done(null, Buffer.concat(c))); });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers["content-type"], "application/pdf");
+  assert.match(res.headers["content-disposition"], /filename="Products_\d{2}-[A-Z][a-z]{2}-\d{4}_MKM\.pdf"/);
+  assert.equal(res.body.subarray(0, 4).toString(), "%PDF");
+});
+
+test("Settings › Units: a super-admin adds a unit; duplicates, look-alikes, built-in and in-use units are refused; kitchens and the Excel list see it", async () => {
+  assert.equal((await as("admin", "post", "/api/products/units").send({ symbol: "bunch", name: "Bunch" })).status, 403);
+  const bunch = await as("root", "post", "/api/products/units").send({ symbol: "bunch", name: "Bunch" });
+  assert.equal(bunch.status, 201, JSON.stringify(bunch.body));
+  assert.equal((await as("root", "post", "/api/products/units").send({ symbol: "Bunch", name: "Bunches" })).body.code, "UNIT_EXISTS");
+  assert.equal((await as("root", "post", "/api/products/units").send({ symbol: "kgs", name: "Kilos" })).body.code, "UNIT_EXISTS");
+  assert.equal((await as("root", "post", "/api/products/units").send({ symbol: "two words", name: "X" })).body.code, "UNIT_SYMBOL");
+
+  const coriander = await as("root", "post", "/api/products").send(base({ name: "Coriander", unitId: bunch.body._id, pricePerUnit: 10 }));
+  assert.equal(coriander.status, 201, JSON.stringify(coriander.body));
+  assert.equal(coriander.body.available, true);
+  const kitchenUnits = (await as("cook", "get", "/api/inventory/units")).body.map((u) => u.symbol);
+  assert.ok(kitchenUnits.includes("bunch") && kitchenUnits.includes("kg"));
+
+  const listed = (await as("admin", "get", "/api/products/units")).body;
+  assert.deepEqual(listed.slice(-1).map((u) => [u.symbol, u.builtIn, u.productCount]), [["bunch", false, 1]]);
+  const { book } = await fetchBook("/api/products/import-template");
+  const lists = book.getWorksheet("Lists");
+  assert.ok(lists.getColumn(lists.getRow(1).values.indexOf("units")).values.includes("bunch"));
+
+  assert.equal((await as("root", "delete", `/api/products/units/${bunch.body._id}`)).body.code, "UNIT_IN_USE");
+  assert.equal((await as("root", "delete", `/api/products/units/${ctx.kg._id}`)).body.code, "UNIT_BUILT_IN");
+  await StockItem.deleteOne({ _id: coriander.body._id });
+  assert.equal((await as("root", "delete", `/api/products/units/${bunch.body._id}`)).status, 200);
+  assert.ok(!(await as("cook", "get", "/api/inventory/units")).body.some((u) => u.symbol === "bunch"));
+});
+
+test("Settings › Pack names: a super-admin adds one before any product uses it; it shows in the Excel dropdown and leaves the list when deleted", async () => {
+  assert.equal((await as("admin", "post", "/api/products/pack-names").send({ name: "Sack" })).status, 403);
+  assert.equal((await as("root", "post", "/api/products/pack-names").send({ name: "sack" })).status, 201);
+  assert.equal((await as("root", "post", "/api/products/pack-names").send({ name: "SACK" })).body.code, "PACK_NAME_EXISTS");
+  assert.equal((await as("root", "post", "/api/products/pack-names").send({ name: "bag" })).body.code, "PACK_NAME_EXISTS");
+  await as("root", "post", "/api/products").send(base({ pricePerUnit: 60, soldInPacks: true, packs: [{ name: "Crate", size: 20, price: 1000 }] }));
+  const listed = (await as("admin", "get", "/api/products/pack-names")).body.filter((row) => !row.builtIn);
+  assert.deepEqual(listed.map((row) => [row.name, row.productCount]), [["Crate", 1], ["Sack", 0]]);
+  const { book } = await fetchBook("/api/products/import-template");
+  const lists = book.getWorksheet("Lists");
+  const packs = lists.getColumn(lists.getRow(1).values.indexOf("packs")).values;
+  assert.ok(packs.includes("Sack") && packs.includes("Crate"));
+  await as("root", "post", "/api/products/pack-types/remove").send({ name: "Sack" });
+  assert.ok(!(await as("admin", "get", "/api/products/pack-names")).body.some((row) => row.name === "Sack"));
 });

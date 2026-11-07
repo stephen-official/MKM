@@ -1,6 +1,6 @@
 // Pack types a product can be ordered in. The presets are fixed; anything else is a custom type that an admin
 // may add by typing it on a pack and retire again with the products page. The admin app mirrors this list.
-export const PRESET_PACK_TYPES = Object.freeze(["Box/Carton", "Bag", "Can", "Tub"]);
+export const PRESET_PACK_TYPES = Object.freeze(["Box/Carton", "Bag", "Can", "Tub", "Packet"]);
 export const MAX_PACK_NAME_LENGTH = 40;
 
 const sameName = (a, b) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
