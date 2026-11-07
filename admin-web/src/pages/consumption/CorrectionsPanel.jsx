@@ -5,7 +5,7 @@ import { useToast } from "../../useToast.js";
 import { formatDateTime } from "../../businessTime.js";
 import { Button, EmptyState, ErrorState, Field, LoadingState, Modal } from "../../components/ui/index.jsx";
 import { useConfirm } from "../../components/ui/useConfirm.jsx";
-import { errMsg } from "../indent/helpers.js";
+import { errMsg } from "../shared/format.js";
 import { correctionChanges, describeCorrection, longDay } from "./correctionSummary.js";
 import "./corrections.css";
 

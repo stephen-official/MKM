@@ -7,7 +7,7 @@ import {
   Banner, Button, DataTable, DetailPanel, EmptyState, ErrorState, Field, LoadingState, Meta, PageHeader,
   RailItem, RailList, SplitView, StatusBadge, DateField } from "../components/ui/index.jsx";
 import { useConfirm } from "../components/ui/useConfirm.jsx";
-import { errMsg, fmtDate, fmtDateTime, fmtTime, formatQty, inDateRange, rangeLabel } from "./indent/helpers.js";
+import { errMsg, fmtDate, fmtDateTime, fmtTime, formatQty, inDateRange, rangeLabel } from "./shared/format.js";
 
 const PAGE = 100;
 const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 };
