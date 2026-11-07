@@ -82,6 +82,9 @@
 .kb-stepper button:focus-visible { outline: none; background: var(--blue-soft); }
 .kb-stepper button:first-child:not(:disabled) { color: var(--st-expired-fg); }
 .kb-stepper button:disabled { color: rgba(85,100,125,.4); cursor: default; }
+/* The tick is green, with a light green hover. */
+.kb-stepper--open button:last-child:not(:disabled) { color: var(--ok); }
+.kb-stepper--open button:last-child:hover:not(:disabled), .kb-stepper--open button:last-child:focus-visible { background: var(--ok-soft); }
 .kb-stepper input { width: 52px; border: 0; outline: 0; text-align: right; background: transparent; font: inherit; font-size: 15px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .kb-stepper input:disabled { color: var(--muted-2); cursor: not-allowed; }
 .kb-stepper input::placeholder { color: var(--muted-2); font-weight: 300; }

@@ -33,6 +33,9 @@
   --st-low-fg: #3b5f94; --st-low-bg: #e9f0f9; --st-low-line: rgba(160,184,218,.5);
   --st-routine-fg: #55647d; --st-routine-bg: #f0f3f7; --st-routine-line: rgba(180,194,214,.45);
   --alert-dot: #d0675d;
+  /* Green for approve/confirm actions (ticks, Accept, Confirm received). */
+  --ok: #2f7d47; --ok-deep: #1d5c31; --ok-soft: #e3f3e8; --ok-line: rgba(110, 176, 132, 0.55);
+  --btn-glass-ok-bg: linear-gradient(160deg, rgba(244, 251, 246, 0.95), rgba(208, 236, 217, 0.92));
   --btn-glass-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.62));
   --btn-glass-primary-bg: linear-gradient(160deg, rgba(246, 249, 254, 0.95), rgba(214, 228, 247, 0.92));
   --btn-glass-primary-line: rgba(120, 152, 198, 0.55);
