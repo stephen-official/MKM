@@ -11,7 +11,7 @@ import { nextTrackingId } from "../stock/trackingId.js";
 import { readOrderingSettings } from "../ordering/settings.js";
 import { closesAtFor, neededByFor } from "../ordering/window.js";
 import { orderEvent } from "../ordering/orderEvents.js";
-import { supplierSnapshotFor } from "./collaborativePurchaseOrderRoutes.js";
+import { supplierSnapshotFor } from "../modules/collaborative-orders/orderReceivingRules.js";
 
 // Admin view of delivery problems kitchens raised while receiving shared orders (raised through
 // POST /api/procurement/collaborative-purchase-orders/:id/receive with a `problem` on the item).

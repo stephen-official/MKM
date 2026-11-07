@@ -5,25 +5,19 @@ import multer from "multer";
 import { authorize } from "../middleware/auth.js";
 import { bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
-import { StockItem } from "../models/InventoryModels.js";
-import { GodownStock } from "../models/FlowModels.js";
 import { Supplier } from "../models/SupplierModel.js";
-import { DeliveryTicket, TICKET_REASONS } from "../models/DeliveryTicketModel.js";
-import { createStockBatch } from "../stock/batchService.js";
-import { nextTrackingId } from "../stock/trackingId.js";
 import { isAudioType, isPhotoType, storePhoto, storeVoiceNote } from "../stock/photoStorage.js";
-import { businessDateOf, isIsoDate, startOfBusinessDay } from "../executive/params.js";
-import { eventItems, orderEvent } from "../ordering/orderEvents.js";
+import { businessDateOf, isIsoDate } from "../executive/params.js";
+import { orderEvent } from "../ordering/orderEvents.js";
 import { fail, sendError as sendHttpError } from "../shared/httpErrors.js";
 import { presentOrder } from "../modules/collaborative-orders/orderPresenter.js";
 import { getOrderDetails, getOrderPage, ORDER_STATUSES } from "../modules/collaborative-orders/orderReadService.js";
-import { liveLines } from "../modules/collaborative-orders/orderContributionRules.js";
 import { createCollaborativeOrder, editOwnContribution, joinCollaborativeOrder, leaveCollaborativeOrder } from "../modules/collaborative-orders/orderContributionService.js";
 import {
   adjustCollaborativeOrderQuantity, approveCollaborativeOrder, rejectCollaborativeOrderItems, replaceKitchenItems,
 } from "../modules/collaborative-orders/orderReviewService.js";
-import { isReceived, isSent } from "../modules/collaborative-orders/orderDeliveryRules.js";
 import { dispatchCollaborativeOrder } from "../modules/collaborative-orders/orderDispatchService.js";
+import { receiveCollaborativeOrder } from "../modules/collaborative-orders/orderReceivingService.js";
 
 export const collaborativePurchaseOrderRoutes = express.Router();
 const everyone = authorize(["admin", "user"]);
@@ -253,71 +247,6 @@ collaborativePurchaseOrderRoutes.post("/:id/photos", kitchenOnly, readPhoto, asy
   } catch (error) { return sendError(res, error); }
 });
 
-const STORAGE = new Set(["room", "fridge", "freezer"]);
-const PHOTO_URL = /^(https?:\/\/|\/uploads\/)\S{1,500}$/;
-
-/** A YYYY-MM-DD from the receive form as the start of that business day, or null when blank. */
-const receiptDate = (value, label) => {
-  if (value === undefined || value === null || value === "") return null;
-  if (!isIsoDate(String(value))) throw fail(400, `${label} must be a date like 2026-12-31`);
-  return startOfBusinessDay(String(value));
-};
-
-/**
- * Validates one product's receiving details against the product's rules. `today` is the business date.
- * Photos of the goods and the label are always required; expiry is required unless the product says otherwise.
- */
-export const receiptDetails = (input, product, today, { labelRequired = true, expiryRequired = product?.expiryRequired !== false } = {}) => {
-  const name = product?.name || "This item";
-  const photos = { goods: String(input?.photos?.goods || "").trim(), label: String(input?.photos?.label || "").trim() };
-  if (!PHOTO_URL.test(photos.goods)) throw fail(400, `${name}: take a photo of the goods`, "PHOTO_REQUIRED");
-  if (labelRequired && !PHOTO_URL.test(photos.label)) throw fail(400, `${name}: take a photo of the brand label`, "PHOTO_REQUIRED");
-  if (!labelRequired && photos.label && !PHOTO_URL.test(photos.label)) throw fail(400, `${name}: the label photo is not valid`, "PHOTO_REQUIRED");
-  const expiryDate = receiptDate(input?.expiryDate, `${name}: expiry date`);
-  if (!expiryDate && expiryRequired) throw fail(400, `${name}: enter the expiry date`, "EXPIRY_REQUIRED");
-  if (expiryDate && String(input.expiryDate) < today) {
-    throw fail(400, `${name}: the expiry date has already passed. Do not accept it; call the central store.`, "EXPIRED_GOODS");
-  }
-  const mfgDate = receiptDate(input?.mfgDate, `${name}: manufacture date`);
-  if (mfgDate && String(input.mfgDate) > today) throw fail(400, `${name}: the manufacture date cannot be in the future`);
-  const storage = input?.storage === undefined || input?.storage === null || input?.storage === "" ? null : String(input.storage);
-  if (storage !== null && !STORAGE.has(storage)) throw fail(400, `${name}: storage must be room, fridge or freezer`);
-  return {
-    photos, expiryDate, mfgDate, storage,
-    lotNumber: text(input?.lotNumber, 60, `${name}: batch number`),
-    notes: text(input?.notes, 500, `${name}: notes`),
-  };
-};
-
-/**
- * A problem the kitchen reports on one line instead of receiving it: reason, usable quantity that arrived, note,
- * optional voice note. Short must be less than ordered, excess more; the usable part still needs a goods photo,
- * and an expiry only when something usable arrived.
- */
-/** The supplier a product on this order came from: its own override, else the order's supplier (populated). */
-export const supplierSnapshotFor = (order, stockItemId) => {
-  const override = (order.supplierByProduct || []).find((entry) => String(entry.stockItemId) === String(stockItemId))?.supplierId;
-  const supplier = override && typeof override === "object" ? override : order.supplierId;
-  return { supplierName: supplier?.name || "", supplierFssaiLicence: supplier?.fssaiLicence || "" };
-};
-
-export const problemDetails = (input, line, product, today) => {
-  const name = product?.name || "This item";
-  const problem = input?.problem || {};
-  const reason = String(problem.reason || "");
-  if (!TICKET_REASONS.includes(reason)) throw fail(400, `${name}: choose what went wrong (short, excess, damaged, wrong item or expired)`);
-  const ordered = Number(line.qtyBaseUnit);
-  const received = problem.receivedQtyBaseUnit === undefined || problem.receivedQtyBaseUnit === "" ? 0 : Number(problem.receivedQtyBaseUnit);
-  if (!Number.isFinite(received) || received < 0) throw fail(400, `${name}: enter how much usable stock arrived`);
-  if (reason === "wrong_item" && received !== 0) throw fail(400, `${name}: a wrong item cannot be added as ${name}; enter 0 usable`);
-  if (reason === "short" && received >= ordered) throw fail(400, `${name}: a short delivery means less than ${ordered} arrived`);
-  if (reason === "excess" && received <= ordered) throw fail(400, `${name}: an excess delivery means more than ${ordered} arrived`);
-  const voiceNoteUrl = String(problem.voiceNoteUrl || "").trim();
-  if (voiceNoteUrl && !PHOTO_URL.test(voiceNoteUrl)) throw fail(400, `${name}: the voice note is not valid`);
-  const details = receiptDetails(input, product, today, { labelRequired: false, expiryRequired: received > 0 && product?.expiryRequired !== false });
-  return { reason, receivedQtyBaseUnit: received, note: text(problem.note, 500, `${name}: note`), voiceNoteUrl, details };
-};
-
 /**
  * Kitchen: "All received". Adds every line that is on the way to the kitchen's stock and marks it received,
  * in one transaction; lines dispatched later are received later. The body carries receiving details per product
@@ -326,85 +255,13 @@ export const problemDetails = (input, line, product, today) => {
  * and a copy of the order's supplier. A kitchen with a problem raises a concern instead.
  */
 collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, async (req, res) => {
-  const session = await mongoose.startSession();
   try {
-    if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
-    const detailKey = (stockItemId, packId) => `${String(stockItemId)}:${packId ? String(packId) : "base"}`;
-    const details = new Map((Array.isArray(req.body?.items) ? req.body.items : [])
-      .filter((entry) => mongoose.isValidObjectId(entry?.stockItemId))
-      .map((entry) => [detailKey(entry.stockItemId, entry.packId), entry]));
-    await session.withTransaction(async () => {
-      const order = await CollaborativePurchaseOrder.findById(req.params.id)
-        .populate("supplierId", "name fssaiLicence").populate("supplierByProduct.supplierId", "name fssaiLicence").session(session);
-      if (!order) throw fail(404, "Collaborative purchase order not found");
-      const share = order.contributions.find((entry) => String(entry.godownId) === String(req.user.godownId));
-      if (!share) throw fail(404, "Your kitchen is not on this order");
-      if (share.deliveredAt) throw fail(409, "Your kitchen has already received these items", "ALREADY_DELIVERED");
-      // Lines with an open problem wait for the admin; they are neither on the way nor received.
-      const arriving = order.status === "ordered" ? share.items.filter((line) => isSent(line, share) && !isReceived(line, share) && !line.ticketId) : [];
-      if (arriving.length === 0) throw fail(409, "Nothing is on the way to your kitchen right now", "NOT_DISPATCHED");
-      const lineCountByProduct = arriving.reduce((counts, line) => {
-        const key = String(line.stockItemId);
-        counts.set(key, (counts.get(key) || 0) + 1);
-        return counts;
-      }, new Map());
-      const receivedAt = new Date();
-      const today = businessDateOf(receivedAt);
-      const receivedLines = [];
-      const problems = [];
-      for (const line of arriving) {
-        const supplier = supplierSnapshotFor(order, line.stockItemId);
-        const product = await StockItem.findById(line.stockItemId).select("name pricePerUnit expiryRequired").session(session);
-        const productId = String(line.stockItemId);
-        // Older clients sent details by product only. That remains unambiguous for a single line; when the
-        // same product appears in multiple pack lines, each line must identify its pack so quantities cannot
-        // be copied onto multiple delivery-problem tickets.
-        const input = details.get(detailKey(productId, line.packId))
-          || (lineCountByProduct.get(productId) === 1 ? details.get(detailKey(productId, null)) : null);
-        if (!input) throw fail(400, `${product?.name || "An item"} is missing its receiving details`, "MISSING_ITEM_DETAILS");
-        if (input.problem) {
-          const problem = problemDetails(input, line, product, today);
-          const [ticket] = await DeliveryTicket.create([{
-            orderId: order._id, orderNo: order.orderNo, godownId: share.godownId, stockItemId: line.stockItemId, packId: line.packId || null,
-            orderedQtyBaseUnit: line.qtyBaseUnit, raisedBy: req.user.sub, raisedAt: receivedAt, ...problem,
-          }], { session });
-          line.ticketId = ticket._id;
-          problems.push({ line, reason: problem.reason });
-          continue;
-        }
-        const checked = receiptDetails(input, product, today);
-        await GodownStock.findOneAndUpdate(
-          { godownId: share.godownId, stockItemId: line.stockItemId },
-          { $inc: { qtyBaseUnit: line.qtyBaseUnit }, $setOnInsert: { thresholdBaseUnit: 0 } },
-          { upsert: true, new: true, session },
-        );
-        const trackingId = await nextTrackingId({ session, now: receivedAt });
-        await createStockBatch({
-          godownId: share.godownId, stockItemId: line.stockItemId, quantity: line.qtyBaseUnit,
-          unitPrice: product?.pricePerUnit, sourceType: "collaborative_order", sourceId: order._id,
-          receivedAt, condition: "good", expectedQtyBaseUnit: line.qtyBaseUnit, createdBy: req.user.sub, session,
-          trackingId, ...checked, ...supplier,
-        });
-        Object.assign(line, { deliveredAt: receivedAt, deliveredBy: req.user.sub, trackingId, receivedQtyBaseUnit: line.qtyBaseUnit });
-        receivedLines.push(line);
-      }
-      if (liveLines(share).every((line) => isReceived(line, share))) Object.assign(share, { deliveredAt: receivedAt, deliveredBy: req.user.sub });
-      if (receivedLines.length) order.events.push(orderEvent(req.user, "received", { godownId: share.godownId, items: eventItems(receivedLines) }));
-      if (problems.length) {
-        order.events.push(orderEvent(req.user, "problem_raised", {
-          godownId: share.godownId, items: eventItems(problems.map((entry) => entry.line)),
-          note: [...new Set(problems.map((entry) => entry.reason.replace("_", " ")))].join(", "),
-        }));
-      }
-      await order.save({ session });
-    });
+    await receiveCollaborativeOrder({ orderId: req.params.id, input: req.body, actor: req.user });
     notifyKitchens("orders");
     notifyKitchen(req.user.godownId, "stock");
     return res.json(presentOrder(await getOrderDetails(req.params.id), req.user));
   } catch (error) {
     return sendError(res, error);
-  } finally {
-    await session.endSession();
   }
 });
 
