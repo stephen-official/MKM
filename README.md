@@ -33,14 +33,14 @@ scripts/dev.sh down   # stops everything
 
 | Service | URL |
 | --- | --- |
-| Admin app | `http://localhost:5173` (`admin@example.com` / `Admin@123`) |
-| Kitchen app | `http://localhost:5174` (`user@example.com` / `User@123`) |
+| Admin app | `http://localhost:5173` (`admin.dev@kms.local` or `superadmin.dev@kms.local` / `KMS2026`) |
+| Kitchen app | `http://localhost:5174` (`main-godown.dev@kms.local` / `KMS2026`) |
 | API | `http://localhost:5055/api` |
 | MongoDB | `127.0.0.1:27018`, database `mkm_dev` |
 
 Local state lives in `~/mkm-local`, outside the repository. The first `up` creates `~/mkm-local/backend.env` with local-only settings and fresh secrets; add Cloudinary or email credentials there if you need uploads or emails. Values in that file override `backend/.env`, so the script never connects to a remote database. Logs are in `~/mkm-local/logs`.
 
-`seed` creates the small sample catalog above. For the full dataset (every kitchen, catalog, stock and history), ask a maintainer for `live-catalog.json`, save it as `~/mkm-local/live-catalog.json`, and run `seed` again. That path uses `seed-dev.js`, which **drops the local database** first; kitchen logins then follow the kitchen name, such as `monte@example.com` / `User@123`.
+`seed` creates the small sample catalog above. For the full dataset (every kitchen, catalog, stock and history), ask a maintainer for `live-catalog.json`, save it as `~/mkm-local/live-catalog.json`, and run `seed` again. That path uses `seed-dev.js`, which **drops the local database** first; kitchen logins then follow the kitchen name, such as `monte.dev@kms.local`, and every test account uses the password `KMS2026`.
 
 The steps below set up the same pieces by hand.
 
@@ -72,7 +72,7 @@ The API health check is `http://localhost:5000/api/health`.
 
 `npm run seed` creates a small sample catalog and predictable development accounts. Use it only with a disposable local database; inspect `backend/src/jobs/seed.js` first. Never run it against production. It does not create a super-admin; use `create-super-admin` (below).
 
-For a fuller local dataset, `node backend/src/jobs/seed-dev.js` loads the catalog from `~/mkm-local/live-catalog.json` (create it with `node backend/src/jobs/export-live-catalog.js`), then generates users, stock and transactions with dev credentials, including a super-admin (`superadmin@example.com`). It refuses any `MONGODB_URI` that is not `localhost`/`127.0.0.1` and **drops that whole database** before seeding, so point it at a disposable local database only.
+For a fuller local dataset, `node backend/src/jobs/seed-dev.js` loads the catalog from `~/mkm-local/live-catalog.json` (create it with `node backend/src/jobs/export-live-catalog.js`), then generates users, stock and transactions with dev credentials, including a super-admin (`superadmin.dev@kms.local`). It refuses any `MONGODB_URI` that is not `localhost`/`127.0.0.1` and **drops that whole database** before seeding, so point it at a disposable local database only.
 
 ## Environment variables
 
@@ -86,8 +86,6 @@ For a fuller local dataset, `node backend/src/jobs/seed-dev.js` loads the catalo
 | `JWT_REFRESH_SECRET` | Yes | A different long random refresh-token secret. |
 | `JWT_EXPIRES_IN` | No | Access-token lifetime, such as `1d`. |
 | `JWT_REFRESH_EXPIRES_IN` | No | Refresh-token lifetime, such as `7d`. |
-| `ADMIN_REGISTRATION_LIMIT` | No | Legacy administrator count cap; not a security boundary. |
-| `USER_REGISTRATION_LIMIT` | No | Kitchen-user count cap. |
 | `CORS_ORIGIN` | Yes | Comma-separated browser origins allowed to call the API. |
 | `FRONTEND_URL` | Yes | Admin console URL used in password-reset and invitation links (default `http://localhost:5173`). Kitchen users must instead use the token from the email in the kitchen app; see below. |
 | `CLOUDINARY_CLOUD_NAME` | For uploads | Cloudinary cloud name. |
@@ -110,7 +108,7 @@ Production credentials are never committed. The only committed credentials are t
     SUPER_ADMIN_EMAIL=you@example.com SUPER_ADMIN_NAME="Your Name" SUPER_ADMIN_PASSWORD='a long password' \
       npm --prefix backend run create-super-admin
 
-Flags: `--promote` turns an existing account with that email into a super-admin and keeps its existing password (re-run with `--reset-password` afterwards to set the new password); `--reset-password` replaces the password of an existing super-admin. Local dev seed (`seed-dev.js`, local databases only) creates `superadmin@example.com` / `Super@123`; never use it against a shared or production database.
+Flags: `--promote` turns an existing account with that email into a super-admin and keeps its existing password (re-run with `--reset-password` afterwards to set the new password); `--reset-password` replaces the password of an existing super-admin. Local dev seed (`seed-dev.js`, local databases only) creates `superadmin.dev@kms.local` / `KMS2026`; never use it against a shared or production database.
 
 ### Invitation emails
 Invitation and password-reset emails link to `FRONTEND_URL`, which points at the admin console. Admins and super-admins can use the link directly. Kitchen users cannot use that link: they should open the kitchen app, choose "Forgot password?", request a reset for their email, then paste the token from the email into the reset-token screen and choose a password.

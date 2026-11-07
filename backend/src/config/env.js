@@ -38,8 +38,6 @@ export const env = {
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || "refresh_secret",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "1d",
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
-  adminRegistrationLimit: toNumber(process.env.ADMIN_REGISTRATION_LIMIT, 5),
-  userRegistrationLimit: toNumber(process.env.USER_REGISTRATION_LIMIT, 100),
   corsOrigins: (process.env.CORS_ORIGIN || "").split(",").filter(Boolean),
   
   emailUser: process.env.EMAIL_USER,

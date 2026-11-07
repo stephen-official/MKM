@@ -1,6 +1,6 @@
 export const ROLES = Object.freeze({ SUPER_ADMIN: "super_admin", ADMIN: "admin", USER: "user" });
 export const ALL_ROLES = Object.freeze([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.USER]);
-/** Roles that can never be self-registered. */
+/** Admin-tier roles: created only by a super-admin (Users page) or the create-super-admin script. */
 export const PRIVILEGED_ROLES = Object.freeze([ROLES.SUPER_ADMIN, ROLES.ADMIN]);
 
 export const isSuperAdmin = (role) => role === ROLES.SUPER_ADMIN;

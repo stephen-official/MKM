@@ -19,6 +19,7 @@ import mongoose from "mongoose";
 import multer from "multer";
 import { storePhoto } from "../stock/photoStorage.js";
 import { notifyKitchens } from "../realtime.js";
+import { escapeRegex } from "../utils/escapeRegex.js";
 
 export const inventoryRoutes = express.Router();
 
@@ -152,54 +153,31 @@ inventoryRoutes.get("/:type/export/excel", adminOnly, async (req, res) => {
 
 // --- Generic CRUD Operations ---
 
-// GET List
-inventoryRoutes.get("/:type", async (req, res) => {
-  try {
-    const Model = modelMap[req.params.type];
-    if (!Model) return res.status(404).json({ message: "Invalid type" });
+// GET List (every listable type is readable by admins and kitchen users)
+inventoryRoutes.get("/:type", adminOrUser, async (req, res) => {
+  const { type } = req.params;
+  const Model = modelMap[type];
+  if (!Model) return res.status(404).json({ message: "Invalid type" });
 
-    // 🔥 IMPORTANT LOGIC
-  const type = req.params.type;
+  const q = req.query.q?.toString().trim();
+  let query = Model.find(q ? { name: { $regex: escapeRegex(q), $options: "i" } } : {});
+  if (type === "stock-items") query = query.populate("stockGroupId unitId");
+  if (type === "units") query = query.populate("stockGroupId");
 
-// Allow users to view stock-items and godowns
-const middleware =
-  ["stock-items", "godowns", "stock-groups", "units"].includes(type)
-    ? adminOrUser
-    : adminOnly;
-
-    middleware(req, res, async () => {
-      const q = req.query.q?.toString().trim();
-      const filter = q ? { name: { $regex: q, $options: "i" } } : {};
-
-      let query = Model.find(filter);
-
-      if (req.params.type === "stock-items")
-        query = query.populate("stockGroupId unitId");
-
-      if (req.params.type === "units")
-        query = query.populate("stockGroupId");
-
-      if (req.params.type === "stock-groups") await ensureOtherGroup();
-      let rows = await query.lean();
-      if (req.params.type === "stock-groups") rows = sortGroups(rows);
-      // Admins see how many products (archived ones too) each group holds: the product form offers delete only on an empty group.
-      if (req.params.type === "stock-groups" && !isKitchenRole(req.user.role)) {
-        const counts = new Map((await StockItem.aggregate([{ $group: { _id: "$stockGroupId", n: { $sum: 1 } } }])).map((c) => [String(c._id), c.n]));
-        rows = rows.map((row) => ({ ...row, productCount: counts.get(String(row._id)) || 0 }));
-      }
-      if (req.params.type === "stock-items") {
-        // Admin pages use this list to name past records, so they get every product (with `archived`);
-        // kitchens only ever see products that are complete and not archived.
-        if (isKitchenRole(req.user.role)) rows = rows.filter((row) => isAvailable(row, row.unitId));
-      }
-      // Kitchens get only the units products may use (built-in and added in Settings), not old leftover ones.
-      if (req.params.type === "units" && isKitchenRole(req.user.role)) rows = rows.filter((row) => isOfferedSymbol(row.symbol));
-      return res.json(rows);
-    });
-
-  } catch (error) {
-    return res.status(500).json({ message: error.message });
+  if (type === "stock-groups") await ensureOtherGroup();
+  let rows = await query.lean();
+  if (type === "stock-groups") rows = sortGroups(rows);
+  // Admins see how many products (archived ones too) each group holds: the product form offers delete only on an empty group.
+  if (type === "stock-groups" && !isKitchenRole(req.user.role)) {
+    const counts = new Map((await StockItem.aggregate([{ $group: { _id: "$stockGroupId", n: { $sum: 1 } } }])).map((c) => [String(c._id), c.n]));
+    rows = rows.map((row) => ({ ...row, productCount: counts.get(String(row._id)) || 0 }));
   }
+  // Admin pages use this list to name past records, so they get every product (with `archived`);
+  // kitchens only ever see products that are complete and not archived.
+  if (type === "stock-items" && isKitchenRole(req.user.role)) rows = rows.filter((row) => isAvailable(row, row.unitId));
+  // Kitchens get only the units products may use (built-in and added in Settings), not old leftover ones.
+  if (type === "units" && isKitchenRole(req.user.role)) rows = rows.filter((row) => isOfferedSymbol(row.symbol));
+  return res.json(rows);
 });
 
 // CREATE

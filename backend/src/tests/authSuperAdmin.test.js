@@ -3,23 +3,13 @@ import { after, before, beforeEach, test } from "node:test";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { startDb, clearDb, stopDb } from "./helpers/db.js";
-import { createGodown, createUser } from "./helpers/auth.js";
+import { createUser } from "./helpers/auth.js";
 import { User } from "../models/User.js";
 
 let app;
 before(async () => { await startDb(); ({ app } = await import("../app.js")); });
 beforeEach(clearDb);
 after(stopDb);
-
-const register = (body) => request(app).post("/api/auth/register").send({ name: "N", email: "n@x.io", password: "Passw0rd!", ...body });
-
-test("public registration rejects privileged roles", async () => {
-  const godown = await createGodown("K");
-  assert.equal((await register({ role: "super_admin", godownId: godown._id })).status, 403);
-  assert.equal((await register({ role: "admin", godownId: godown._id })).status, 403);
-  assert.equal((await register({ role: "manager", godownId: godown._id })).status, 400);
-  assert.equal(await User.countDocuments({}), 0);
-});
 
 test("super_admin can log in, refresh and keeps its role in new tokens", async () => {
   const { user, password } = await createUser({ role: "super_admin", email: "boss@x.io" });

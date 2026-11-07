@@ -41,6 +41,7 @@ const revive = (doc) => {
 
 const daysAgo = (n) => new Date(Date.now() - n * 86400000);
 const dateStr = (n) => daysAgo(n).toISOString().slice(0, 10);
+const DEV_PASSWORD = "KMS2026";
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 const run = async () => {
@@ -62,14 +63,16 @@ const run = async () => {
   const price = (it) => 20 + ((String(it._id).charCodeAt(23) * 7) % 180);
   const pick = (arr, n, offset = 0) => Array.from({ length: n }, (_, k) => arr[(offset + k * 3) % arr.length]);
 
-  const hash = (p) => bcrypt.hash(p, 10);
-  const admin = await User.create({ name: "Dev Admin", email: "admin@example.com", passwordHash: await hash("Admin@123"), role: "admin" });
-  await User.create({ name: "Dev Super Admin", email: "superadmin@example.com", passwordHash: await hash("Super@123"), role: "super_admin" });
+  // Every local test account shares one password. It is written straight to the database, so the app's
+  // 8-character minimum (checked only when a password is set through the API) does not apply here.
+  const devPasswordHash = await bcrypt.hash(DEV_PASSWORD, 10);
+  const admin = await User.create({ name: "Dev Admin", email: "admin.dev@kms.local", passwordHash: devPasswordHash, role: "admin" });
+  await User.create({ name: "Dev Super Admin", email: "superadmin.dev@kms.local", passwordHash: devPasswordHash, role: "super_admin" });
   const userFor = {};
   for (const gd of godowns) {
     userFor[gd._id] = await User.create({
-      name: `${gd.name} User`, email: `${slug(gd.name)}@example.com`,
-      passwordHash: await hash("User@123"), role: "user", godownId: gd._id
+      name: `${gd.name} User`, email: `${slug(gd.name)}.dev@kms.local`,
+      passwordHash: devPasswordHash, role: "user", godownId: gd._id
     });
   }
 
@@ -122,7 +125,7 @@ const run = async () => {
   await Notification.create({ type: "low_stock", severity: "warning", payload: { godownId: g0._id, godownName: g0.name, stockItemId: low._id, itemName: low.name, qtyBaseUnit: 3, threshold: 30 } });
   await Notification.create({ type: "low_stock", severity: "critical", payload: { godownId: g1._id, godownName: g1.name, stockItemId: low._id, itemName: low.name, qtyBaseUnit: 1, threshold: 30 } });
 
-  console.log(`Dev seed complete: ${godowns.length} godowns, ${items.length} items, ${stockRows.length} stock rows. Super admin: superadmin@example.com / Super@123`);
+  console.log(`Dev seed complete: ${godowns.length} godowns, ${items.length} items, ${stockRows.length} stock rows. Logins: admin.dev@kms.local, superadmin.dev@kms.local, <kitchen>.dev@kms.local — password ${DEV_PASSWORD}`);
   process.exit(0);
 };
 

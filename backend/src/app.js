@@ -1,4 +1,6 @@
 import express from "express";
+// Patches Express 4 routers so a rejected async handler reaches the error handler instead of crashing the process.
+import "express-async-errors";
 import cors from "cors";
 import fs from "fs";
 import morgan from "morgan";
@@ -118,8 +120,8 @@ const authLimiter = rateLimit({
     limit: 100,
     standardHeaders: true,
     legacyHeaders: false,
-    // Correctly identifies the user's IP behind the Render proxy
-    keyGenerator: (req) => req.headers['x-forwarded-for'] || req.ip 
+    // Keyed on req.ip, which "trust proxy" resolves to the address the Render proxy saw. The raw
+    // X-Forwarded-For header must not be the key: its leading entries are whatever the client sent.
 });
 
 
@@ -156,10 +158,15 @@ app.use("/api/auth", authLimiter, authRoutes);
 for (const [mountPath, router] of PROTECTED_MOUNTS) app.use(mountPath, authenticate, featureGate, kitchenPriceFilter, router);
 
 
-// --- 6. ERROR HANDLING (OPTIONAL BUT RECOMMENDED) ---
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ message: "Internal Server Error", error: err.message });
-});
+// --- 6. ERROR HANDLING ---
+// Client errors raised by middleware (malformed JSON, oversized body) keep their 4xx status and message;
+// anything else is logged and answered with a generic 500 so internal details never reach the client.
+export const errorHandler = (err, _req, res, next) => {
+    if (res.headersSent) return next(err);
+    const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
+    if (status === 500) console.error(err.stack || err);
+    return res.status(status).json({ message: status === 500 ? "Internal Server Error" : err.message });
+};
+app.use(errorHandler);
 
 export { app };

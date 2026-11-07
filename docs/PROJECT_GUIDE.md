@@ -56,7 +56,8 @@ Rules:
 - `authorize(["admin"])` automatically also admits `super_admin`. `authorize(["super_admin"])` admits only super-admins.
 - Auth uses a JWT access token plus a refresh token (`backend/src/utils/tokens.js`, `routes/authRoutes.js`). `middleware/auth.js#authenticate` reloads the user from the DB **on every request**, so role, kitchen and active-status changes apply on the user's next call.
 - Admin-web stores `accessToken` and `userRole` in localStorage. Client-web stores `token` and `refreshToken`. Both axios clients (`*/src/api.js`) refresh automatically on a 401.
-- Public `POST /api/auth/register` rejects `admin` and `super_admin` (403). Super-admins are created only with `npm --prefix backend run create-super-admin` (see README).
+- There is no public sign-up: kitchen and admin accounts are created by a super-admin on the Users page, and super-admins only with `npm --prefix backend run create-super-admin` (see README).
+- Route handlers may be `async` without their own try/catch: `express-async-errors` (imported first in `app.js`) forwards a rejection to the error handler, which answers a generic 500 (4xx errors from middleware keep their message). `server.js` also logs any other unhandled rejection instead of exiting.
 - Kitchen users reset passwords inside the kitchen app by pasting the emailed token. The emailed link (`FRONTEND_URL`) points at the admin console.
 
 ---
@@ -80,7 +81,7 @@ realtime.js      io proxy so routes can emit without importing server.js
 ```
 
 ### Route mounts (`app.js`)
-`/api/auth` is public and rate-limited. Every other mount goes through `authenticate → featureGate → router`:
+`/api/auth` is public and rate-limited (100 requests per 10 minutes per `req.ip`, which `trust proxy 1` resolves to the address Render's proxy saw; never key on the raw `X-Forwarded-For` header). Every other mount goes through `authenticate → featureGate → router`:
 
 | Mount | Router | Covers |
 |---|---|---|
@@ -232,7 +233,7 @@ New endpoints return `{ code: "SCREAMING_SNAKE_CASE", message, ...details }`. Ol
 | `npm run check` | Test + lint + build. **Run this before every commit** |
 | `npm --prefix backend run test:perf` | Executive report latency check on a production-sized fixture |
 
-Local data: `npm run seed` (small), or `node backend/src/jobs/seed-dev.js`, which gives a fuller dataset and a dev super-admin `superadmin@example.com` / `Super@123`. **It drops the whole database and refuses any non-localhost URI.**
+Local data: `npm run seed` (small), or `node backend/src/jobs/seed-dev.js`, which gives a fuller dataset and dev accounts `admin.dev@kms.local`, `superadmin.dev@kms.local` and `<kitchen>.dev@kms.local`, all with password `KMS2026`. **It drops the whole database and refuses any non-localhost URI.**
 
 ### Testing conventions
 - Backend: `node:test` + `node:assert/strict`, files at `backend/src/tests/*.test.js`. Helpers live in `tests/helpers/`, which the test glob doesn't match. `helpers/db.js` starts an in-memory **replica set**, so transactions work. HTTP tests use `supertest` against `app`.

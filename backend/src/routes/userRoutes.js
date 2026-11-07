@@ -14,6 +14,7 @@ import { disconnectUser } from "../realtime.js";
 import { isValidPassword } from "./authRoutes.js";
 import { normalizePhone } from "../utils/phone.js";
 import { openPassword, passwordViewEnabled, sealPassword } from "../utils/passwordVault.js";
+import { escapeRegex } from "../utils/escapeRegex.js";
 
 export const userRoutes = express.Router();
 const superAdminOnly = authorize(["super_admin"]);
@@ -36,7 +37,6 @@ const sendError = (res, error) => {
   console.error("[users]", error);
   return res.status(500).json({ code: "INTERNAL_ERROR", message: "Something went wrong." });
 };
-const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const safe = (u) => u && ({ _id: u._id, name: u.name, email: u.email, phone: u.phone || "", role: u.role, godownId: u.godownId?._id ?? u.godownId ?? null, kitchenName: u.godownId?.name ?? null, active: u.active, lastLoginAt: u.lastLoginAt || null, version: u.version ?? 0, passwordViewable: Boolean(u.viewablePassword), createdAt: u.createdAt, updatedAt: u.updatedAt });
 const snapshot = (u) => u && ({ name: u.name, email: u.email, phone: u.phone || "", role: u.role, godownId: u.godownId ? String(u.godownId._id ?? u.godownId) : null, active: u.active });
 

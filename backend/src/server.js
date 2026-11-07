@@ -8,6 +8,12 @@ import { User } from "./models/User.js";
 import { verifyAccessToken } from "./utils/tokens.js";
 import { revalidateSockets, roomsFor, setIo } from "./realtime.js";
 
+// Last resort: log a stray rejection instead of letting Node exit and take every kitchen offline.
+// Route handlers are covered by express-async-errors in app.js; this catches timers, sockets and jobs.
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason instanceof Error ? reason.stack : reason);
+});
+
 const defaultOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",

@@ -6,6 +6,7 @@ import { MAX_PACK_NAME_LENGTH, canonicalPackName } from "./packTypes.js";
 import { isAvailable, isValidPrice, missingFields } from "./completeness.js";
 import { UNIT_PRESETS, isOfferedSymbol, isPresetSymbol } from "./units.js";
 import { ALLERGENS, PRODUCT_FORMS, PRODUCT_KINDS, STORAGE_OPTIONS, VEG_MARKS, foodSafetyMissing } from "./foodSafety.js";
+import { escapeRegex } from "../utils/escapeRegex.js";
 
 export class CatalogError extends Error {
   constructor(status, code, message, extra = {}) {
@@ -34,7 +35,6 @@ export const ensurePresetUnits = async () => {
   return [...UNIT_PRESETS.map((preset) => bySymbol.get(preset.symbol)).filter(Boolean), ...added];
 };
 
-const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const toNumber = (value) => (value === "" || value === null || value === undefined ? null : Number(value));
 const samePrice = (a, b) => (a ?? null) === (b ?? null) || (isValidPrice(a) && isValidPrice(b) && Math.abs(a - b) < 1e-9);
 

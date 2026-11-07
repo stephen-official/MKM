@@ -3,6 +3,10 @@ import { connectDB } from "../config/db.js";
 import { Godown, StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
 import { User } from "../models/User.js";
 
+// Local test accounts only, all with one password. It is written straight to the database, so the app's
+// 8-character minimum (checked only when a password is set through the API) does not apply here.
+const DEV_PASSWORD = "KMS2026";
+
 const run = async () => {
   await connectDB();
   // Change this line in your run.js file
@@ -24,13 +28,13 @@ const g = await Godown.findOneAndUpdate(
   );
   await StockItem.findOneAndUpdate({ name: "Rice" }, { name: "Rice", stockGroupId: sg._id, unitId: unit._id }, { upsert: true });
   await User.findOneAndUpdate(
-    { email: "admin@example.com" },
-    { name: "Admin", email: "admin@example.com", passwordHash: await bcrypt.hash("Admin@123", 10), role: "admin" },
+    { email: "admin.dev@kms.local" },
+    { name: "Admin", email: "admin.dev@kms.local", passwordHash: await bcrypt.hash(DEV_PASSWORD, 10), role: "admin" },
     { upsert: true }
   );
   await User.findOneAndUpdate(
-    { email: "user@example.com" },
-    { name: "User", email: "user@example.com", passwordHash: await bcrypt.hash("User@123", 10), role: "user", godownId: g._id },
+    { email: "main-godown.dev@kms.local" },
+    { name: "Main Godown User", email: "main-godown.dev@kms.local", passwordHash: await bcrypt.hash(DEV_PASSWORD, 10), role: "user", godownId: g._id },
     { upsert: true }
   );
   process.exit(0);

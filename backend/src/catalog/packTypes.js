@@ -1,3 +1,4 @@
+import { escapeRegex } from "../utils/escapeRegex.js";
 // Pack types a product can be ordered in. The presets are fixed; anything else is a custom type that an admin
 // may add by typing it on a pack and retire again with the products page. The admin app mirrors this list.
 export const PRESET_PACK_TYPES = Object.freeze(["Box/Carton", "Bag", "Can", "Tub", "Packet"]);
@@ -15,7 +16,6 @@ export const canonicalPackName = (name) => {
   return PRESET_PACK_TYPES.find((preset) => sameName(preset, trimmed)) || capitalizeFirst(trimmed);
 };
 
-const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export const packNameMatch = (name) => ({ $regex: `^${escapeRegex(String(name).trim())}$`, $options: "i" });
 
 /**
