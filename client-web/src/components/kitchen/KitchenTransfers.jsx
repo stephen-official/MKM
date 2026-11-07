@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Inbox } from "lucide-react";
+import { ArrowRight, Check, Inbox, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
@@ -21,7 +21,7 @@ export function TransferCard({ transfer, onRespond }) {
     <ul>{(transfer.items || []).map((item, index) => <li key={item.stockItemId?._id || index}><span>{item.stockItemId?.name || "Unknown item"}</span><strong>{item.qtyBaseUnit} {item.stockItemId?.unitId?.symbol || item.unit || "units"}</strong></li>)}</ul>
     {transfer.isIncoming && status === "pending" && onRespond && <footer className="kl-card__foot">
       <button type="button" className="kg-btn kg-btn--ok" onClick={() => onRespond(transfer, "accept")}><Check size={16} aria-hidden="true" /> Accept transfer</button>
-      <button type="button" className="kg-chip kl-reject" onClick={() => onRespond(transfer, "reject")}>Reject</button>
+      <button type="button" className="kg-btn kg-btn--no" onClick={() => onRespond(transfer, "reject")}><X size={16} aria-hidden="true" /> Reject</button>
     </footer>}
   </article>;
 }

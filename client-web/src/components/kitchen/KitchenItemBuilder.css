@@ -80,7 +80,8 @@
 .kb-stepper button { display: grid; width: 36px; height: 36px; padding: 0; place-items: center; color: var(--blue-deep); background: transparent; border: 0; }
 .kb-stepper button:hover:not(:disabled) { background: var(--blue-soft); }
 .kb-stepper button:focus-visible { outline: none; background: var(--blue-soft); }
-.kb-stepper button:first-child:not(:disabled) { color: var(--st-expired-fg); }
+.kb-stepper button:first-child:not(:disabled) { color: var(--no); }
+.kb-stepper button:first-child:hover:not(:disabled), .kb-stepper button:first-child:focus-visible { background: var(--no-soft); }
 .kb-stepper button:disabled { color: rgba(85,100,125,.4); cursor: default; }
 /* The tick is green, with a light green hover. */
 .kb-stepper--open button:last-child:not(:disabled) { color: var(--ok); }

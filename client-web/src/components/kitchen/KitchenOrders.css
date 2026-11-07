@@ -145,7 +145,8 @@
 .ko-stepper button { display: grid; width: 36px; height: 36px; padding: 0; place-items: center; color: var(--blue-deep); background: transparent; border: 0; }
 .ko-stepper button:hover:not(:disabled) { background: var(--blue-soft); }
 .ko-stepper button:focus-visible { outline: none; background: var(--blue-soft); }
-.ko-stepper button:first-child:not(:disabled) { color: var(--st-expired-fg); }
+.ko-stepper button:first-child:not(:disabled) { color: var(--no); }
+.ko-stepper button:first-child:hover:not(:disabled), .ko-stepper button:first-child:focus-visible { background: var(--no-soft); }
 .ko-stepper button:disabled { color: rgba(85,100,125,.4); cursor: default; }
 /* The tick is green, with a light green hover. */
 .ko-stepper--open button:last-child:not(:disabled) { color: var(--ok); }

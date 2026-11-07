@@ -115,7 +115,9 @@
 .kus-stepper { display: flex; align-items: center; overflow: hidden; background: rgba(255,255,255,.6); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; }
 .kus-stepper button { display: grid; place-items: center; width: 36px; height: 36px; border: 0; color: var(--blue-deep); background: transparent; }
 .kus-stepper button:hover:not(:disabled) { background: var(--blue-soft); }
-.kus-stepper button:first-child:not(:disabled) { color: var(--st-expired-fg); }
+.kus-stepper button:first-child:not(:disabled) { color: var(--no-deep); }
+/* The cross is dark red; it lightens with a light red background on hover or tap. */
+.kus-stepper button:first-child:hover:not(:disabled), .kus-stepper button:first-child:active:not(:disabled), .kus-stepper button:first-child:focus-visible { color: var(--no); background: var(--no-soft); }
 .kus-stepper button:disabled { color: rgba(85,100,125,.4); }
 /* The tick is dark green; it lightens on hover and the confirmed row turns light green. */
 .kus-stepper--open button:last-child:not(:disabled) { color: var(--ok-deep); }
