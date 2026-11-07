@@ -17,11 +17,13 @@ import { eventItems, orderEvent } from "../ordering/orderEvents.js";
 import { fail, sendError as sendHttpError } from "../shared/httpErrors.js";
 import { presentOrder } from "../modules/collaborative-orders/orderPresenter.js";
 import { getOrderDetails, getOrderPage, ORDER_STATUSES } from "../modules/collaborative-orders/orderReadService.js";
-import { isRejected, liveLines, productOf } from "../modules/collaborative-orders/orderContributionRules.js";
+import { liveLines } from "../modules/collaborative-orders/orderContributionRules.js";
 import { createCollaborativeOrder, editOwnContribution, joinCollaborativeOrder, leaveCollaborativeOrder } from "../modules/collaborative-orders/orderContributionService.js";
 import {
   adjustCollaborativeOrderQuantity, approveCollaborativeOrder, rejectCollaborativeOrderItems, replaceKitchenItems,
 } from "../modules/collaborative-orders/orderReviewService.js";
+import { isReceived, isSent } from "../modules/collaborative-orders/orderDeliveryRules.js";
+import { dispatchCollaborativeOrder } from "../modules/collaborative-orders/orderDispatchService.js";
 
 export const collaborativePurchaseOrderRoutes = express.Router();
 const everyone = authorize(["admin", "user"]);
@@ -59,9 +61,6 @@ const text = (value, max, label) => {
   return result;
 };
 
-/** The lines of a share named by [{ stockItemId, packId? }] (no packId matches every pack of that product). */
-const pickLines = (share, picks) => share.items.filter((line) => picks.some((pick) => String(pick?.stockItemId) === productOf(line)
-  && (!pick.packId || String(pick.packId) === String(line.packId))));
 /** The reason the kitchen will see for a rejection or cancellation; required. */
 const requiredReason = (value) => {
   const reason = text(value, 500, "Reason");
@@ -190,41 +189,13 @@ collaborativePurchaseOrderRoutes.post("/:id/adjust", adminOnly, async (req, res)
   } catch (error) { return sendError(res, error); }
 });
 
-// A rejected line is never sent or received, even when its share carries a dispatch or receipt time.
-const isSent = (line, share) => !isRejected(line) && Boolean(line.dispatchedAt || share.dispatchedAt);
-const isReceived = (line, share) => !isRejected(line) && Boolean(line.deliveredAt || share.deliveredAt);
-
 /**
  * Admin, once the order is placed: {} sends every kitchen's remaining lines; { godownId } sends that kitchen's
  * remaining lines; { godownId, items: [{ stockItemId, packId? }] } sends just those lines (others can follow later).
  */
 collaborativePurchaseOrderRoutes.post("/:id/dispatch", adminOnly, async (req, res) => {
   try {
-    const { godownId, items } = req.body || {};
-    if (godownId !== undefined && !mongoose.isValidObjectId(godownId)) throw fail(400, "Choose a kitchen on this order");
-    if (items !== undefined && (!godownId || !Array.isArray(items) || items.length === 0)) throw fail(400, "Choose the kitchen and the items to dispatch");
-    const order = await CollaborativePurchaseOrder.findById(req.params.id);
-    if (!order) throw fail(404, "Collaborative purchase order not found");
-    if (order.status !== "ordered") throw fail(409, "Mark the order as ordered before dispatching it", "NOT_ORDERED");
-
-    const shares = godownId ? order.contributions.filter((entry) => String(entry.godownId) === String(godownId)) : order.contributions;
-    if (shares.length === 0) throw fail(404, "That kitchen is not on this order");
-    const stamp = { dispatchedAt: new Date(), dispatchedBy: req.user.sub };
-    let sent = 0;
-    for (const share of shares) {
-      let lines = share.items;
-      if (items) {
-        lines = pickLines(share, items);
-        if (lines.length === 0) throw fail(404, "Those items are not in this kitchen's share");
-      }
-      const sending = lines.filter((candidate) => !isRejected(candidate) && !isSent(candidate, share));
-      for (const line of sending) { Object.assign(line, stamp); sent += 1; }
-      if (sending.length) order.events.push(orderEvent(req.user, "dispatched", { godownId: share.godownId, items: eventItems(sending) }));
-      const live = liveLines(share);
-      if (!share.dispatchedAt && live.length > 0 && live.every((line) => isSent(line, share))) Object.assign(share, stamp);
-    }
-    if (sent === 0) throw fail(409, "These items have already been dispatched", "ALREADY_DISPATCHED");
-    await order.save();
+    const order = await dispatchCollaborativeOrder({ orderId: req.params.id, input: req.body, actor: req.user });
     notifyKitchens("orders");
     return res.json(presentOrder(await getOrderDetails(order._id), req.user));
   } catch (error) { return sendError(res, error); }
