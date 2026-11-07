@@ -5,6 +5,7 @@ import { fail } from "../../shared/httpErrors.js";
 export const lineKey = (line) => `${String(line.stockItemId?._id || line.stockItemId)}:${String(line.packId || "base")}`;
 export const productOf = (line) => String(line.stockItemId?._id || line.stockItemId);
 export const isRejected = (line) => Boolean(line?.rejectedAt);
+/** A share's lines that are still wanted: rejected lines are never bought, sent or received. */
 export const liveLines = (share) => share.items.filter((line) => !isRejected(line));
 
 export const normalizeCollaborativeItems = (items) => {
@@ -28,9 +29,14 @@ export const normalizeCollaborativeItems = (items) => {
 
 const sameAmount = (a, b) => Number(a.qtyBaseUnit) === Number(b.qtyBaseUnit)
   && Number(a.packQuantity || 0) === Number(b.packQuantity || 0);
+// What an approved line carries over when the kitchen sends its list again: the approval and any change the admin made.
 const DECISION_FIELDS = ["approvedAt", "approvedBy", "adjustedAt", "adjustedBy", "requestedQtyBaseUnit", "requestedPackQuantity"];
 
-/** Keeps final admin decisions when a kitchen replaces the editable part of its contribution. */
+/**
+ * A kitchen's new item list, keeping the lines the admin has decided on. Approved lines must come back unchanged
+ * (their approval is carried over) and no other line may name an approved product (LINE_APPROVED). Rejected lines
+ * stay on record whether or not they are sent back; asking for a rejected product again fails with LINE_REJECTED.
+ */
 export const keepApprovedLines = (currentItems, nextItems) => {
   const rejected = currentItems.filter(isRejected);
   const rejectedByKey = new Map(rejected.map((line) => [lineKey(line), line]));
@@ -55,3 +61,7 @@ export const keepApprovedLines = (currentItems, nextItems) => {
   if (wanted.some((line) => approvedProducts.has(productOf(line)) && !line.approvedAt)) throw locked();
   return [...wanted, ...rejected.map((line) => (line.toObject ? line.toObject() : line))];
 };
+
+/** The lines of a share named by [{ stockItemId, packId? }] (no packId matches every pack of that product). */
+export const pickLines = (share, picks) => share.items.filter((line) => picks.some((pick) => String(pick?.stockItemId) === productOf(line)
+  && (!pick.packId || String(pick.packId) === String(line.packId))));

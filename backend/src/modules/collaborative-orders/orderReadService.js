@@ -1,12 +1,14 @@
+import { ORDER_STATUSES } from "../../models/CollaborativePurchaseOrderModel.js";
 import { fail } from "../../shared/httpErrors.js";
 import { listOrders, requireOrderById } from "./orderRepository.js";
 
-export const ORDER_STATUSES = new Set(["open", "closed", "approved", "ordered", "cancelled"]);
+const KNOWN_STATUSES = new Set(ORDER_STATUSES);
+export const isOrderStatus = (status) => KNOWN_STATUSES.has(status);
 
 /** Normalizes public list parameters in one place so routes do not own query policy. */
 export const normalizeOrderListParams = ({ status, page, limit } = {}) => {
   const normalizedStatus = status ? String(status) : null;
-  if (normalizedStatus && !ORDER_STATUSES.has(normalizedStatus)) throw fail(400, "Invalid status filter");
+  if (normalizedStatus && !isOrderStatus(normalizedStatus)) throw fail(400, "Invalid status filter");
   return {
     filter: normalizedStatus ? { status: normalizedStatus } : {},
     page: Math.max(1, Number.parseInt(page, 10) || 1),

@@ -1,8 +1,8 @@
 import { visibleEvents } from "../../ordering/orderEvents.js";
 import { isKitchenRole } from "../../utils/roles.js";
+import { isRejected } from "./orderContributionRules.js";
 
 const idOf = (ref) => String(ref?._id || ref);
-const isRejected = (line) => Boolean(line?.rejectedAt);
 
 /** A kitchen sees which products other kitchens asked for, but not quantities, packs or notes. */
 const hideOtherKitchenDetails = (value, viewer) => ({

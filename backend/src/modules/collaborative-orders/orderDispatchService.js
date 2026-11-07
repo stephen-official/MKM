@@ -2,11 +2,8 @@ import mongoose from "mongoose";
 import { CollaborativePurchaseOrder } from "../../models/CollaborativePurchaseOrderModel.js";
 import { eventItems, orderEvent } from "../../ordering/orderEvents.js";
 import { fail } from "../../shared/httpErrors.js";
-import { isRejected, liveLines, productOf } from "./orderContributionRules.js";
+import { isRejected, liveLines, pickLines } from "./orderContributionRules.js";
 import { isSent } from "./orderDeliveryRules.js";
-
-const pickLines = (share, picks) => share.items.filter((line) => picks.some((pick) => String(pick?.stockItemId) === productOf(line)
-  && (!pick.packId || String(pick.packId) === String(line.packId))));
 
 export const dispatchCollaborativeOrder = async ({ orderId, input, actor }) => {
   const { godownId, items } = input || {};

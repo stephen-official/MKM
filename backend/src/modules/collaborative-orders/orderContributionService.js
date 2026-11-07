@@ -6,14 +6,9 @@ import { eventItems, orderEvent } from "../../ordering/orderEvents.js";
 import { readOrderingSettings } from "../../ordering/settings.js";
 import { closesAtFor, neededByFor } from "../../ordering/window.js";
 import { fail } from "../../shared/httpErrors.js";
+import { text } from "../../shared/text.js";
 import { isKitchenRole } from "../../utils/roles.js";
 import { keepApprovedLines, liveLines, normalizeCollaborativeItems } from "./orderContributionRules.js";
-
-const text = (value, max, label) => {
-  const result = String(value || "").trim();
-  if (result.length > max) throw fail(400, `${label} must be ${max} characters or fewer`);
-  return result;
-};
 
 const contributionFrom = (input, actor, godownId = actor.godownId) => {
   if (!godownId) throw fail(403, "Your account is not assigned to a kitchen");
@@ -22,6 +17,7 @@ const contributionFrom = (input, actor, godownId = actor.godownId) => {
   return { godownId, userId: actor.sub, items, note: text(input.note, 500, "Contribution note"), updatedAt: new Date() };
 };
 
+/** The kitchen an order is opened for: the cook's own, or the one an admin names when opening it on its behalf. */
 const openingKitchen = async (input, actor) => {
   if (isKitchenRole(actor.role)) return actor.godownId;
   const godownId = String(input.godownId || "");
@@ -34,6 +30,8 @@ const openingKitchen = async (input, actor) => {
 
 export const createCollaborativeOrder = async ({ input, actor }) => {
   const kitchen = isKitchenRole(actor.role);
+  // "Approve and send": the central store approves the kitchen's items as it raises the order. Other kitchens
+  // can still join until the order closes, and their items wait for review as usual.
   const approveNow = input.approve === true;
   if (approveNow && kitchen) throw fail(403, "Only the central store can approve an order");
   const { settings } = await readOrderingSettings();
@@ -81,6 +79,7 @@ export const joinCollaborativeOrder = async ({ orderId, input, actor }) => {
 export const editOwnContribution = async ({ orderId, input, actor }) => {
   if (!mongoose.isValidObjectId(orderId)) throw fail(404, "Collaborative purchase order not found");
   const contribution = contributionFrom(input, actor);
+  // Load, check and save with the version check, so an approval made meanwhile is never overwritten.
   const order = await CollaborativePurchaseOrder.findById(orderId);
   if (!order) throw fail(404, "Collaborative purchase order not found");
   if (order.status !== "open") throw fail(409, "This order is no longer accepting changes", "ORDER_CLOSED");
@@ -105,6 +104,7 @@ export const leaveCollaborativeOrder = async ({ orderId, actor }) => {
   if (mine && (mine.approvedAt || mine.items.some((line) => line.approvedAt))) {
     throw fail(409, "Your kitchen has approved items on this order, so it cannot leave", "LINE_APPROVED");
   }
+  // Matching the version read above means no approval landed in between.
   const order = await CollaborativePurchaseOrder.findOneAndUpdate(
     { _id: orderId, status: "open", __v: existing.__v, "contributions.godownId": actor.godownId },
     { $pull: { contributions: { godownId: actor.godownId } }, $push: { events: orderEvent(actor, "left", { godownId: actor.godownId, items: eventItems(mine?.items || []) }) }, $set: { updatedAt: new Date() }, $inc: { __v: 1 } },

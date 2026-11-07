@@ -1,20 +1,21 @@
 import { TICKET_REASONS } from "../../models/DeliveryTicketModel.js";
 import { isIsoDate, startOfBusinessDay } from "../../executive/params.js";
 import { fail } from "../../shared/httpErrors.js";
+import { text } from "../../shared/text.js";
 
 const STORAGE = new Set(["room", "fridge", "freezer"]);
 const FILE_URL = /^(https?:\/\/|\/uploads\/)\S{1,500}$/;
-const text = (value, max, label) => {
-  const result = String(value || "").trim();
-  if (result.length > max) throw fail(400, `${label} must be ${max} characters or fewer`);
-  return result;
-};
+/** A YYYY-MM-DD from the receive form as the start of that business day, or null when blank. */
 const receiptDate = (value, label) => {
   if (value === undefined || value === null || value === "") return null;
   if (!isIsoDate(String(value))) throw fail(400, `${label} must be a date like 2026-12-31`);
   return startOfBusinessDay(String(value));
 };
 
+/**
+ * Validates one product's receiving details against the product's rules. `today` is the business date.
+ * Photos of the goods and the label are always required; expiry is required unless the product says otherwise.
+ */
 export const receiptDetails = (input, product, today, { labelRequired = true, expiryRequired = product?.expiryRequired !== false } = {}) => {
   const name = product?.name || "This item";
   const photos = { goods: String(input?.photos?.goods || "").trim(), label: String(input?.photos?.label || "").trim() };
@@ -33,12 +34,18 @@ export const receiptDetails = (input, product, today, { labelRequired = true, ex
   return { photos, expiryDate, mfgDate, storage, lotNumber: text(input?.lotNumber, 60, `${name}: batch number`), notes: text(input?.notes, 500, `${name}: notes`) };
 };
 
+/** The supplier a product on this order came from: its own override, else the order's supplier (populated). */
 export const supplierSnapshotFor = (order, stockItemId) => {
   const override = (order.supplierByProduct || []).find((entry) => String(entry.stockItemId) === String(stockItemId))?.supplierId;
   const supplier = override && typeof override === "object" ? override : order.supplierId;
   return { supplierName: supplier?.name || "", supplierFssaiLicence: supplier?.fssaiLicence || "" };
 };
 
+/**
+ * A problem the kitchen reports on one line instead of receiving it: reason, usable quantity that arrived, note,
+ * optional voice note. Short must be less than ordered, excess more; the usable part still needs a goods photo,
+ * and an expiry only when something usable arrived.
+ */
 export const problemDetails = (input, line, product, today) => {
   const name = product?.name || "This item";
   const problem = input?.problem || {};

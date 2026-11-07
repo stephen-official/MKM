@@ -74,6 +74,8 @@ const contributionSchema = new mongoose.Schema({
   },
 }, { _id: true });
 
+export const ORDER_STATUSES = Object.freeze(["open", "closed", "approved", "ordered", "cancelled"]);
+
 // One entry in an order's history. Written in the same save as the change it records, and never edited afterwards.
 export const ORDER_EVENT_ACTIONS = Object.freeze([
   "raised", "joined", "edited", "left", "approved", "rejected", "quantity_changed",
@@ -125,7 +127,7 @@ const collaborativePurchaseOrderSchema = new mongoose.Schema({
   // Expiry the admin read off a bulk buy, one per product (YYYY-MM-DD). Kitchens see it pre-filled when
   // receiving and may correct it from the label; the date they confirm lives on their own stock batch.
   expiryByProduct: { type: [{ _id: false, stockItemId: { type: mongoose.Schema.Types.ObjectId, ref: "StockItem", required: true }, expiryDate: { type: String, match: /^\d{4}-\d{2}-\d{2}$/ } }], default: [] },
-  status: { type: String, enum: ["open", "closed", "approved", "ordered", "cancelled"], default: "open" },
+  status: { type: String, enum: ORDER_STATUSES, default: "open" },
   statusChangedAt: { type: Date, default: null },
   statusChangedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   // Why the central store cancelled the order; kitchens see it on the cancelled order.

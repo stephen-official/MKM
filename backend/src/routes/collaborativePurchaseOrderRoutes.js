@@ -10,8 +10,9 @@ import { isAudioType, isPhotoType, storePhoto, storeVoiceNote } from "../stock/p
 import { businessDateOf, isIsoDate } from "../executive/params.js";
 import { orderEvent } from "../ordering/orderEvents.js";
 import { fail, sendError as sendHttpError } from "../shared/httpErrors.js";
+import { text } from "../shared/text.js";
 import { presentOrder } from "../modules/collaborative-orders/orderPresenter.js";
-import { getOrderDetails, getOrderPage, ORDER_STATUSES } from "../modules/collaborative-orders/orderReadService.js";
+import { getOrderDetails, getOrderPage, isOrderStatus } from "../modules/collaborative-orders/orderReadService.js";
 import { createCollaborativeOrder, editOwnContribution, joinCollaborativeOrder, leaveCollaborativeOrder } from "../modules/collaborative-orders/orderContributionService.js";
 import {
   adjustCollaborativeOrderQuantity, approveCollaborativeOrder, rejectCollaborativeOrderItems, replaceKitchenItems,
@@ -23,7 +24,6 @@ export const collaborativePurchaseOrderRoutes = express.Router();
 const everyone = authorize(["admin", "user"]);
 const kitchenOnly = authorize(["user"]);
 const adminOnly = authorize(["admin"]);
-const STATUSES = ORDER_STATUSES;
 // A closed order is never reopened; a kitchen that still needs items starts a new order (or an admin does for it).
 // "approved" is reached only through POST /:id/approve, and an order must be approved before it is ordered.
 const TRANSITIONS = {
@@ -49,11 +49,6 @@ export const closeExpiredOrders = (now = new Date()) => CollaborativePurchaseOrd
     }]] },
   } }],
 );
-const text = (value, max, label) => {
-  const result = String(value || "").trim();
-  if (result.length > max) throw fail(400, `${label} must be ${max} characters or fewer`);
-  return result;
-};
 
 /** The reason the kitchen will see for a rejection or cancellation; required. */
 const requiredReason = (value) => {
@@ -361,7 +356,7 @@ collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, async (req, res
   try {
     await closeExpiredOrders();
     const next = String(req.body.status || "");
-    if (!STATUSES.has(next)) throw fail(400, "Status must be open, closed, approved, ordered or cancelled");
+    if (!isOrderStatus(next)) throw fail(400, "Status must be open, closed, approved, ordered or cancelled");
     const order = await CollaborativePurchaseOrder.findById(req.params.id);
     if (!order) throw fail(404, "Collaborative purchase order not found");
     if (next !== order.status && !TRANSITIONS[order.status].has(next)) throw fail(409, `An ${order.status} order cannot move to ${next}`);

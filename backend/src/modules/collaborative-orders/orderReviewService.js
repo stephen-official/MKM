@@ -4,7 +4,7 @@ import { CollaborativePurchaseOrder } from "../../models/CollaborativePurchaseOr
 import { eventItems, orderEvent } from "../../ordering/orderEvents.js";
 import { fail } from "../../shared/httpErrors.js";
 import {
-  isRejected, keepApprovedLines, lineKey, liveLines, normalizeCollaborativeItems, productOf,
+  isRejected, keepApprovedLines, lineKey, liveLines, normalizeCollaborativeItems, pickLines, productOf,
 } from "./orderContributionRules.js";
 
 const reviewableOrder = async (orderId, message = "This order can no longer be changed") => {
@@ -21,9 +21,6 @@ const shareOf = (order, godownId) => {
   return share;
 };
 
-const pickLines = (share, picks) => share.items.filter((line) => picks.some((pick) => String(pick?.stockItemId) === productOf(line)
-  && (!pick.packId || String(pick.packId) === String(line.packId))));
-
 const sameLines = (a, b) => a.length === b.length && a.every((line) => {
   const match = b.find((other) => lineKey(other) === lineKey(line));
   return match && Number(match.qtyBaseUnit) === Number(line.qtyBaseUnit)
@@ -38,11 +35,18 @@ const snapshotOf = (items) => items.map((line) => ({
   packQuantity: line.packQuantity ?? null,
 }));
 
+/**
+ * After an admin changed a kitchen's items (from `previous`, a snapshot taken before the change), tell the kitchen:
+ * adminChange.before keeps what it last saw until it taps OK. Both the super-admin items popup and Change & approve
+ * (POST /:id/adjust) go through here, so the kitchen gets one notice for either.
+ */
 const noteAdminChange = (share, previous, actor) => {
   const before = share.adminChange?.before?.length ? share.adminChange.before : previous;
+  // Changed back to what the kitchen last saw: nothing to tell it.
   share.adminChange = sameLines(before, share.items) ? null : { before, changedAt: new Date(), changedBy: actor.sub };
 };
 
+/** The lines that differ between two item lists, as event items: fromQtyBaseUnit null = added, qtyBaseUnit null = removed. */
 const changedEventItems = (beforeLines, afterLines) => {
   const live = (lines) => new Map(lines.filter((line) => !isRejected(line)).map((line) => [lineKey(line), line]));
   const was = live(beforeLines);
@@ -69,6 +73,7 @@ export const replaceKitchenItems = async ({ orderId, godownId, input, actor }) =
   const order = await reviewableOrder(orderId, "Items can only be changed until the order is approved");
   const share = shareOf(order, godownId);
   if (share.approvedAt) throw fail(409, "This kitchen's items have been approved and can no longer be changed", "SHARE_APPROVED");
+  // Products new to this kitchen's list must be ones a kitchen may order; lines it already had may stay.
   const had = new Set(share.items.map(productOf));
   await assertKitchenCanUse({ role: "user" }, items.map((line) => line.stockItemId).filter((id) => !had.has(String(id))));
   const next = keepApprovedLines(share.items, items);
@@ -88,6 +93,7 @@ export const approveCollaborativeOrder = async ({ orderId, input, actor }) => {
   if (items !== undefined && (!godownId || !Array.isArray(items) || items.length === 0)) throw fail(400, "Choose the kitchen and the items to approve");
   const order = await reviewableOrder(orderId, "This order can no longer be approved");
   const stamp = { approvedAt: new Date(), approvedBy: actor.sub };
+  // Rejected lines stay rejected; a share whose remaining items were rejected is not approved.
   const approved = [];
   const approveLines = (lines) => lines.filter((line) => !line.approvedAt && !isRejected(line))
     .forEach((line) => { Object.assign(line, stamp); approved.push(line); });

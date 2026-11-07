@@ -28,6 +28,7 @@ export const receiveCollaborativeOrder = async ({ orderId, input, actor }) => {
       const share = order.contributions.find((entry) => String(entry.godownId) === String(actor.godownId));
       if (!share) throw fail(404, "Your kitchen is not on this order");
       if (share.deliveredAt) throw fail(409, "Your kitchen has already received these items", "ALREADY_DELIVERED");
+      // Lines with an open problem wait for the admin; they are neither on the way nor received.
       const arriving = order.status === "ordered" ? share.items.filter((line) => isSent(line, share) && !isReceived(line, share) && !line.ticketId) : [];
       if (arriving.length === 0) throw fail(409, "Nothing is on the way to your kitchen right now", "NOT_DISPATCHED");
       const lineCountByProduct = arriving.reduce((counts, line) => {
@@ -43,6 +44,9 @@ export const receiveCollaborativeOrder = async ({ orderId, input, actor }) => {
         const supplier = supplierSnapshotFor(order, line.stockItemId);
         const product = await StockItem.findById(line.stockItemId).select("name pricePerUnit expiryRequired").session(session);
         const productId = String(line.stockItemId);
+        // Older clients sent details by product only. That remains unambiguous for a single line; when the
+        // same product appears in multiple pack lines, each line must identify its pack so quantities cannot
+        // be copied onto multiple delivery-problem tickets.
         const detail = details.get(detailKey(productId, line.packId))
           || (lineCountByProduct.get(productId) === 1 ? details.get(detailKey(productId, null)) : null);
         if (!detail) throw fail(400, `${product?.name || "An item"} is missing its receiving details`, "MISSING_ITEM_DETAILS");
