@@ -3,10 +3,9 @@ import { notifyKitchen, notifyKitchens } from "../realtime.js";
 import mongoose from "mongoose";
 import multer from "multer";
 import { authorize } from "../middleware/auth.js";
-import { packQuantityMatchesBase, packSnapshot } from "../catalog/packaging.js";
 import { assertKitchenCanUse, bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
-import { Godown, StockItem } from "../models/InventoryModels.js";
+import { StockItem } from "../models/InventoryModels.js";
 import { GodownStock } from "../models/FlowModels.js";
 import { Supplier } from "../models/SupplierModel.js";
 import { DeliveryTicket, TICKET_REASONS } from "../models/DeliveryTicketModel.js";
@@ -14,13 +13,12 @@ import { createStockBatch } from "../stock/batchService.js";
 import { nextTrackingId } from "../stock/trackingId.js";
 import { isAudioType, isPhotoType, storePhoto, storeVoiceNote } from "../stock/photoStorage.js";
 import { businessDateOf, isIsoDate, startOfBusinessDay } from "../executive/params.js";
-import { isKitchenRole } from "../utils/roles.js";
-import { closesAtFor, neededByFor } from "../ordering/window.js";
-import { readOrderingSettings } from "../ordering/settings.js";
 import { eventItems, orderEvent } from "../ordering/orderEvents.js";
 import { fail, sendError as sendHttpError } from "../shared/httpErrors.js";
 import { presentOrder } from "../modules/collaborative-orders/orderPresenter.js";
 import { getOrderDetails, getOrderPage, ORDER_STATUSES } from "../modules/collaborative-orders/orderReadService.js";
+import { isRejected, keepApprovedLines, lineKey, liveLines, normalizeCollaborativeItems, productOf } from "../modules/collaborative-orders/orderContributionRules.js";
+import { createCollaborativeOrder, editOwnContribution, joinCollaborativeOrder, leaveCollaborativeOrder } from "../modules/collaborative-orders/orderContributionService.js";
 
 export const collaborativePurchaseOrderRoutes = express.Router();
 const everyone = authorize(["admin", "user"]);
@@ -58,33 +56,6 @@ const text = (value, max, label) => {
   return result;
 };
 
-export const normalizeCollaborativeItems = (items) => {
-  if (!Array.isArray(items) || items.length === 0) return null;
-  const merged = new Map();
-  for (const input of items) {
-    const stockItemId = String(input?.stockItemId || "");
-    const qtyBaseUnit = Number(input?.qtyBaseUnit ?? input?.quantity);
-    if (!mongoose.isValidObjectId(stockItemId) || !Number.isFinite(qtyBaseUnit) || qtyBaseUnit <= 0) return null;
-    if (!packQuantityMatchesBase(input, qtyBaseUnit)) return null;
-    const snapshot = packSnapshot(input);
-    const key = `${stockItemId}:${String(snapshot.packId || "base")}`;
-    const current = merged.get(key);
-    if (current) {
-      current.qtyBaseUnit += qtyBaseUnit;
-      if (snapshot.packId) current.packQuantity += Number(snapshot.packQuantity);
-    } else merged.set(key, { stockItemId, qtyBaseUnit, ...snapshot });
-  }
-  return [...merged.values()];
-};
-
-const lineKey = (line) => `${String(line.stockItemId?._id || line.stockItemId)}:${String(line.packId || "base")}`;
-const productOf = (line) => String(line.stockItemId?._id || line.stockItemId);
-const sameAmount = (a, b) => Number(a.qtyBaseUnit) === Number(b.qtyBaseUnit) && Number(a.packQuantity || 0) === Number(b.packQuantity || 0);
-const isRejected = (line) => Boolean(line?.rejectedAt);
-// What an approved line carries over when the kitchen sends its list again: the approval and any change the admin made.
-const DECISION_FIELDS = ["approvedAt", "approvedBy", "adjustedAt", "adjustedBy", "requestedQtyBaseUnit", "requestedPackQuantity"];
-/** A share's lines that are still wanted: rejected lines are never bought, sent or received. */
-const liveLines = (share) => share.items.filter((line) => !isRejected(line));
 /** The lines of a share named by [{ stockItemId, packId? }] (no packId matches every pack of that product). */
 const pickLines = (share, picks) => share.items.filter((line) => picks.some((pick) => String(pick?.stockItemId) === productOf(line)
   && (!pick.packId || String(pick.packId) === String(line.packId))));
@@ -95,49 +66,6 @@ const requiredReason = (value) => {
   return reason;
 };
 
-/**
- * A kitchen's new item list, keeping the lines the admin has decided on. Approved lines must come back unchanged
- * (their approval is carried over) and no other line may name an approved product (LINE_APPROVED). Rejected lines
- * stay on record whether or not they are sent back; asking for a rejected product again fails with LINE_REJECTED.
- */
-export const keepApprovedLines = (currentItems, nextItems) => {
-  const rejected = currentItems.filter(isRejected);
-  const rejectedByKey = new Map(rejected.map((line) => [lineKey(line), line]));
-  const rejectedProducts = new Set(rejected.map(productOf));
-  const wanted = nextItems.filter((line) => {
-    const was = rejectedByKey.get(lineKey(line));
-    return !(was && sameAmount(was, line));
-  });
-  if (wanted.some((line) => rejectedProducts.has(productOf(line)))) {
-    throw fail(409, "Items the central store did not approve cannot be asked for again on this order", "LINE_REJECTED");
-  }
-
-  const approved = currentItems.filter((line) => line.approvedAt);
-  const approvedProducts = new Set(approved.map(productOf));
-  const byKey = new Map(wanted.map((line) => [lineKey(line), line]));
-  const locked = () => fail(409, "Approved items cannot be changed or added to", "LINE_APPROVED");
-  for (const line of approved) {
-    const next = byKey.get(lineKey(line));
-    if (!next || !sameAmount(next, line)) throw locked();
-    Object.assign(next, Object.fromEntries(DECISION_FIELDS.map((field) => [field, line[field] ?? null])));
-  }
-  if (wanted.some((line) => approvedProducts.has(productOf(line)) && !line.approvedAt)) throw locked();
-  return [...wanted, ...rejected.map((line) => (line.toObject ? line.toObject() : line))];
-};
-
-const contributionFrom = (req, godownId = req.user.godownId) => {
-  if (!godownId) throw fail(403, "Your account is not assigned to a kitchen");
-  const items = normalizeCollaborativeItems(req.body.items);
-  if (!items) throw fail(400, "Add at least one item with a valid quantity");
-  return {
-    godownId,
-    userId: req.user.sub,
-    items,
-    note: text(req.body.note, 500, "Contribution note"),
-    updatedAt: new Date(),
-  };
-};
-
 collaborativePurchaseOrderRoutes.get("/", everyone, async (req, res) => {
   try {
     await closeExpiredOrders();
@@ -146,53 +74,9 @@ collaborativePurchaseOrderRoutes.get("/", everyone, async (req, res) => {
   } catch (error) { return sendError(res, error); }
 });
 
-/** The kitchen an order is opened for: the cook's own, or the one an admin names when opening it on its behalf. */
-const openingKitchen = async (req) => {
-  if (isKitchenRole(req.user.role)) return req.user.godownId;
-  const godownId = String(req.body.godownId || "");
-  if (!mongoose.isValidObjectId(godownId) || !(await Godown.exists({ _id: godownId, active: { $ne: false } }))) {
-    throw fail(400, "Choose the kitchen this order is for");
-  }
-  await assertKitchenCanUse({ role: "user" }, bodyItemIds(req));
-  return godownId;
-};
-
 collaborativePurchaseOrderRoutes.post("/", everyone, requireAvailableProducts(bodyItemIds), async (req, res) => {
   try {
-    const kitchen = isKitchenRole(req.user.role);
-    // "Approve and send": the central store approves the kitchen's items as it raises the order. Other kitchens
-    // can still join until the order closes, and their items wait for review as usual.
-    const approveNow = req.body.approve === true;
-    if (approveNow && kitchen) throw fail(403, "Only the central store can approve an order");
-    const { settings } = await readOrderingSettings();
-    const openedAt = new Date();
-    const emergency = req.body.emergency === true;
-    const neededBy = neededByFor({ neededIn: req.body.neededIn, emergency }, settings, openedAt);
-    if (!neededBy) throw fail(400, "Choose when the items are needed");
-    const godownId = await openingKitchen(req);
-    const contribution = contributionFrom(req, godownId);
-    contribution.addedAt = contribution.updatedAt;
-    if (approveNow) {
-      const stamp = { approvedAt: openedAt, approvedBy: req.user.sub };
-      contribution.items.forEach((line) => Object.assign(line, stamp));
-      Object.assign(contribution, stamp);
-    }
-    const order = await CollaborativePurchaseOrder.create({
-      source: kitchen ? "kitchen" : "admin",
-      orderNo: `CPO-${Date.now()}-${new mongoose.Types.ObjectId().toString().slice(-5).toUpperCase()}`,
-      title: text(req.body.title, 120, "Title"),
-      note: text(req.body.orderNote, 1000, "Order note"),
-      neededBy,
-      emergency,
-      closesAt: closesAtFor(openedAt, neededBy, settings),
-      createdBy: req.user.sub,
-      createdByGodown: godownId,
-      contributions: [contribution],
-      events: [
-        orderEvent(req.user, "raised", { godownId, items: eventItems(contribution.items), toStatus: "open" }),
-        ...(approveNow ? [orderEvent(req.user, "approved", { godownId, items: eventItems(contribution.items) })] : []),
-      ],
-    });
+    const order = await createCollaborativeOrder({ input: req.body, actor: req.user });
     notifyKitchens("orders");
     return res.status(201).json(presentOrder(await getOrderDetails(order._id), req.user));
   } catch (error) { return sendError(res, error); }
@@ -209,23 +93,7 @@ collaborativePurchaseOrderRoutes.get("/:id", everyone, async (req, res) => {
 collaborativePurchaseOrderRoutes.post("/:id/contributions", kitchenOnly, requireAvailableProducts(bodyItemIds), async (req, res) => {
   try {
     await closeExpiredOrders();
-    if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
-    const contribution = contributionFrom(req);
-    contribution.addedAt = contribution.updatedAt;
-    const order = await CollaborativePurchaseOrder.findOneAndUpdate(
-      { _id: req.params.id, status: "open", "contributions.godownId": { $ne: req.user.godownId } },
-      {
-        $push: { contributions: contribution, events: orderEvent(req.user, "joined", { godownId: req.user.godownId, items: eventItems(contribution.items) }) },
-        $set: { updatedAt: new Date() }, $inc: { __v: 1 },
-      },
-      { new: true, runValidators: true },
-    );
-    if (!order) {
-      const existing = await CollaborativePurchaseOrder.findById(req.params.id).lean();
-      if (!existing) throw fail(404, "Collaborative purchase order not found");
-      if (existing.status !== "open") throw fail(409, "This order is no longer accepting additions", "ORDER_CLOSED");
-      throw fail(409, "Your kitchen has already joined this order; edit its contribution instead", "ALREADY_JOINED");
-    }
+    const order = await joinCollaborativeOrder({ orderId: req.params.id, input: req.body, actor: req.user });
     notifyKitchens("orders");
     return res.status(201).json(presentOrder(await getOrderDetails(order._id), req.user));
   } catch (error) { return sendError(res, error); }
@@ -234,20 +102,7 @@ collaborativePurchaseOrderRoutes.post("/:id/contributions", kitchenOnly, require
 collaborativePurchaseOrderRoutes.put("/:id/contributions/me", kitchenOnly, requireAvailableProducts(bodyItemIds), async (req, res) => {
   try {
     await closeExpiredOrders();
-    if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
-    const contribution = contributionFrom(req);
-    // Load, check and save with the version check, so an approval made meanwhile is never overwritten.
-    const order = await CollaborativePurchaseOrder.findById(req.params.id);
-    if (!order) throw fail(404, "Collaborative purchase order not found");
-    if (order.status !== "open") throw fail(409, "This order is no longer accepting changes", "ORDER_CLOSED");
-    const mine = order.contributions.find((entry) => String(entry.godownId) === String(req.user.godownId));
-    if (!mine) throw fail(404, "Your kitchen has not joined this order");
-    if (mine.approvedAt) throw fail(409, "Your kitchen's items have been approved and can no longer be changed", "SHARE_APPROVED");
-    if (mine.rejectedAt) throw fail(409, "The central store has closed your kitchen's items on this order", "SHARE_REJECTED");
-    mine.items = keepApprovedLines(mine.items, contribution.items);
-    Object.assign(mine, { note: contribution.note, userId: req.user.sub, updatedAt: contribution.updatedAt, adminChange: null });
-    order.events.push(orderEvent(req.user, "edited", { godownId: req.user.godownId, items: eventItems(liveLines(mine)) }));
-    await order.save();
+    const order = await editOwnContribution({ orderId: req.params.id, input: req.body, actor: req.user });
     notifyKitchens("orders");
     return res.json(presentOrder(await getOrderDetails(order._id), req.user));
   } catch (error) { return sendError(res, error); }
@@ -256,29 +111,7 @@ collaborativePurchaseOrderRoutes.put("/:id/contributions/me", kitchenOnly, requi
 collaborativePurchaseOrderRoutes.delete("/:id/contributions/me", kitchenOnly, async (req, res) => {
   try {
     await closeExpiredOrders();
-    if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Collaborative purchase order not found");
-    const existing = await CollaborativePurchaseOrder.findById(req.params.id).lean();
-    if (!existing) throw fail(404, "Collaborative purchase order not found");
-    if (existing.status !== "open") throw fail(409, "This order is no longer accepting changes", "ORDER_CLOSED");
-    if (String(existing.createdByGodown) === String(req.user.godownId)) throw fail(409, "The kitchen that opened the order must keep a contribution; edit it instead");
-    const mine = existing.contributions.find((entry) => String(entry.godownId) === String(req.user.godownId));
-    if (mine && (mine.approvedAt || mine.items.some((line) => line.approvedAt))) {
-      throw fail(409, "Your kitchen has approved items on this order, so it cannot leave", "LINE_APPROVED");
-    }
-    // Matching the version read above means no approval landed in between.
-    const order = await CollaborativePurchaseOrder.findOneAndUpdate(
-      { _id: req.params.id, status: "open", __v: existing.__v, "contributions.godownId": req.user.godownId },
-      {
-        $pull: { contributions: { godownId: req.user.godownId } },
-        $push: { events: orderEvent(req.user, "left", { godownId: req.user.godownId, items: eventItems(mine?.items || []) }) },
-        $set: { updatedAt: new Date() }, $inc: { __v: 1 },
-      },
-      { new: true },
-    );
-    if (!order && mine && (await CollaborativePurchaseOrder.exists({ _id: req.params.id, "contributions.godownId": req.user.godownId }))) {
-      throw fail(409, "This order was changed by someone else. Reload and try again.", "VERSION_CONFLICT");
-    }
-    if (!order) throw fail(404, "Your kitchen has not joined this order");
+    const order = await leaveCollaborativeOrder({ orderId: req.params.id, actor: req.user });
     notifyKitchens("orders");
     return res.json(presentOrder(await getOrderDetails(order._id), req.user));
   } catch (error) { return sendError(res, error); }
