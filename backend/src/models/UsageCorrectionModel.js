@@ -1,9 +1,12 @@
 import mongoose from "mongoose";
+import { NO_USAGE_REASONS } from "../usage/usageDays.js";
 
 /**
  * A kitchen asking an admin to change what it recorded. Nothing changes until the admin approves.
  * kind "reopen_day": a day marked "no usage" by mistake; `items` is the usage to record once the mark is removed.
  * kind "edit_usage": a usage record (`consumptionId`) with the wrong lines; `items` replaces them (empty = cancel the record).
+ *   `noUsageReason` (with `items` empty): nothing was used that day, so approval also marks the day "no usage" with this
+ *   reason and `note`. Only allowed when the record is the day's only usage entry.
  *   `before` is the record as it was when the kitchen asked, so the admin sees the difference and approval can tell
  *   whether the record changed in the meantime (`recordUpdatedAt`).
  */
@@ -36,6 +39,7 @@ const usageCorrectionSchema = new mongoose.Schema(
     before: { type: [lineSchema], default: [] },
     recordUpdatedAt: { type: Date, default: null },
     reason: { type: String, enum: REOPEN_REASONS },
+    noUsageReason: { type: String, enum: NO_USAGE_REASONS, default: null },
     note: { type: String, trim: true, default: "", maxlength: 200 },
     status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },
     decisionNote: { type: String, trim: true, default: "", maxlength: 300 },

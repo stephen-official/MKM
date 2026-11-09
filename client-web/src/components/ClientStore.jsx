@@ -735,7 +735,7 @@ setEditIndentId(indent._id);
       if (!(await confirm(CORRECTION_CONFIRM))) return false;
       const { cart: prefilled, missing } = target.kind === "edit_usage" ? cartFromRecord(target.items, items) : { cart: [], missing: [] };
       if (missing.length) toast.error(`${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} no longer in your stock list and cannot be changed here.`);
-      setCorrection({ kind: target.kind, date: target.date, consumptionId: target.consumptionId || null, reason: target.reason || "", original: target.original || null, from: activeTab });
+      setCorrection({ kind: target.kind, date: target.date, consumptionId: target.consumptionId || null, reason: target.reason || "", original: target.original || null, onlyEntry: Boolean(target.onlyEntry), from: activeTab });
       setActiveTransactionType("usage");
       setCart(prefilled);
       setSelectedDate(target.date);
@@ -749,6 +749,8 @@ setEditIndentId(indent._id);
   const editDay = (date, reason = "") => startCorrection({ kind: "reopen_day", date, reason });
   const editRecord = (entry) => startCorrection({
     kind: "edit_usage", date: entry.date, consumptionId: entry._id, items: entry.items,
+    // The day can be changed to "no usage" only when this is its one usage record (the server checks again).
+    onlyEntry: orders.filter((row) => row.date === entry.date).length <= 1,
     original: Object.fromEntries((entry.items || []).map((line) => [String(line.stockItemId?._id || line.stockItemId), Number(line.qtyBaseUnit) || 0])),
   });
   const leaveCorrection = () => {
@@ -761,12 +763,13 @@ setEditIndentId(indent._id);
     return true;
   };
   const cancelCorrection = () => leaveDraft(leaveCorrection);
-  const sendCorrection = async () => {
-    const lines = buildTransactionItems(cart, "stock");
+  // noUsage { reason, note }: nothing was used that day, so the record is cancelled and the day marked "no usage".
+  const sendCorrection = async (noUsage = null) => {
+    const lines = noUsage ? [] : buildTransactionItems(cart, "stock");
     if (correction.kind === "reopen_day" && lines.length === 0) return toast.error("Add what was used that day");
     const loadingToast = toast.loading("Sending…");
     try {
-      await api.post("/usage-corrections", { kind: correction.kind, date: correction.date, consumptionId: correction.consumptionId, items: lines });
+      await api.post("/usage-corrections", { kind: correction.kind, date: correction.date, consumptionId: correction.consumptionId, items: lines, ...(noUsage ? { noUsage } : {}) });
       toast.success("Sent to the admin. Nothing changes until they approve it.");
       leaveCorrection();
       await fetchCorrections();
@@ -937,6 +940,7 @@ setEditIndentId(indent._id);
             onEditDay={editDay}
             correction={correction}
             onCancelCorrection={cancelCorrection}
+            onCorrectionNoUsage={(reason, note) => sendCorrection({ reason, note })}
             lockedItems={correction ? lockedItems : undefined}
           />
         </>

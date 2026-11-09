@@ -166,6 +166,38 @@ test("approving an edit with no lines deletes the record and returns the stock",
   assert.equal(await stockOf(ctx.rice), 100);
 });
 
+test("edit_usage with noUsage: approval deletes the record, returns the stock and marks the day with the reason", async () => {
+  const { body: recorded } = await recordUsage(ctx.cook, today, [line(ctx.rice, 10)]);
+  assert.equal((await askEdit(ctx.cook, recorded._id, [line(ctx.rice, 10)], { noUsage: { reason: "holiday" } })).body.code, "INVALID_ITEMS");
+  assert.equal((await askEdit(ctx.cook, recorded._id, [], { noUsage: { reason: "party" } })).body.code, "INVALID_REASON");
+  assert.equal((await askEdit(ctx.cook, recorded._id, [], { noUsage: { reason: "other" } })).body.code, "NOTE_REQUIRED");
+  const { body: created } = await askEdit(ctx.cook, recorded._id, [], { noUsage: { reason: "holiday", note: " Diwali " } });
+  assert.equal(created.status, "pending", JSON.stringify(created));
+  assert.equal(created.noUsageReason, "holiday");
+  assert.equal(created.note, "Diwali");
+  const approved = await approve(ctx.admin, created._id);
+  assert.equal(approved.status, 200, JSON.stringify(approved.body));
+  assert.equal(await Consumption.countDocuments({ _id: recorded._id }), 0);
+  assert.equal(await stockOf(ctx.rice), 100);
+  const mark = await NoUsageDay.findOne({ godownId: ctx.kitchenA._id, date: today }).lean();
+  assert.equal(mark.reason, "holiday");
+  assert.equal(mark.note, "Diwali");
+});
+
+test("edit_usage with noUsage is refused when the day has other usage, at the ask or at approval", async () => {
+  const { body: first } = await recordUsage(ctx.cook, today, [line(ctx.rice, 10)]);
+  const { body: second } = await recordUsage(ctx.cook, today, [line(ctx.dal, 1)]);
+  assert.equal((await askEdit(ctx.cook, first._id, [], { noUsage: { reason: "closed" } })).body.code, "OTHER_USAGE");
+  await Consumption.deleteOne({ _id: second._id });
+  const { body: created } = await askEdit(ctx.cook, first._id, [], { noUsage: { reason: "closed" } });
+  assert.equal(created.status, "pending");
+  await recordUsage(ctx.cook, today, [line(ctx.dal, 1)]);
+  const refused = await approve(ctx.admin, created._id);
+  assert.equal(refused.body.code, "OTHER_USAGE");
+  assert.equal(await Consumption.countDocuments({ _id: first._id }), 1);
+  assert.equal(await NoUsageDay.countDocuments({ godownId: ctx.kitchenA._id, date: today }), 0);
+});
+
 test("a record the admin changed after the ask cannot be approved; the kitchen can withdraw a pending ask", async () => {
   const { body: recorded } = await recordUsage(ctx.cook, today, [line(ctx.rice, 10)]);
   const { body: created } = await askEdit(ctx.cook, recorded._id, [line(ctx.rice, 8)]);

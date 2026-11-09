@@ -52,6 +52,16 @@ export const describeCorrection = (row) => {
   const changes = correctionChanges(row);
   const before = row.before || [];
   const after = row.items || [];
+  if (after.length === 0 && row.noUsageReason) {
+    const why = { closed: "Closed", holiday: "Holiday", other: "Other" }[row.noUsageReason] || "Other";
+    return {
+      title: `No usage on ${day} · ${kitchen}`,
+      lines: [
+        `Says nothing was used that day (${why}${row.note ? `: ${row.note}` : ""}) and wants the record removed: ${brief(before.map((line) => `${nameOf(line)} ${amount(line)}`))}.`,
+        "Approving puts every quantity back into the kitchen's stock and marks the day \"no usage\".",
+      ],
+    };
+  }
   if (after.length === 0) {
     return {
       title: `Cancel usage record of ${day} · ${kitchen}`,

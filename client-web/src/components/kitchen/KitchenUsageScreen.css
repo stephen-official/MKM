@@ -46,6 +46,12 @@
 @media (max-width: 420px) { .kus-closed .kg-btn { flex: 1 1 100%; } }
 .kus-correcting { background: var(--tint-warm, var(--tint-cool)); }
 .kus-correcting .kg-chip { flex: none; }
+/* Correction ticket: "Nothing was used this day" turns the edit into a "no usage" ask. */
+.kus-ticket-none { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; padding: 0 14px; color: var(--ink-2); background: rgba(255,255,255,.55); border: 1px solid var(--glass-border); border-radius: 999px; box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; }
+.kus-ticket-none svg { flex: none; color: var(--muted-2); }
+.kus-ticket-none:hover { background: rgba(255,255,255,.85); }
+.kus-ticket-none:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.kus-ticket-none:disabled { cursor: default; opacity: .55; }
 .kus-none-ticket__label { margin: 12px 0 8px; color: var(--muted-2); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
 .kus-none-ticket__chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .kus-none-ticket__note { width: 100%; min-height: 44px; margin-top: 10px; padding: 0 14px; border: 1px solid var(--glass-border); border-radius: 999px; background: rgba(255,255,255,.6); color: var(--ink-2); box-shadow: 0 0 0 1px rgba(170,186,210,.32), inset 0 1px 0 #fff; font: inherit; font-size: 14px; outline: none; }

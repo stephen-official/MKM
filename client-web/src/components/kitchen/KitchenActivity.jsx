@@ -74,6 +74,7 @@ export default function KitchenActivity({ entries = [], corrections = [], onEdit
               </header>
               <ul>{(entry.items || []).map((item, index) => <li key={item.stockItemId?._id || index}><span>{itemName(item)}</span><strong>{Number(item.qtyBaseUnit || item.quantity || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 })} {item.stockItemId?.unitId?.symbol || item.unit || "units"}</strong></li>)}</ul>
               {correction?.status === "rejected" && correction.decisionNote && <p className="kl-card__note">Admin: {correction.decisionNote}</p>}
+              {correction?.status === "pending" && correction.noUsageReason && <p className="kl-card__note">You asked to change this day to no usage ({NO_USAGE_REASON_LABEL[correction.noUsageReason] || "Other"}{correction.note ? ` · ${correction.note}` : ""}).</p>}
               {entry.type === "consumption" && (correction?.status === "pending"
                 ? onWithdraw && <div className="kl-card__foot"><button type="button" className="kg-chip" onClick={() => onWithdraw(correction._id)}>Take back</button></div>
                 : onEditRecord && <div className="kl-card__foot"><button type="button" className="kg-chip" onClick={() => onEditRecord(entry)}><Pencil size={15} strokeWidth={1.8} aria-hidden="true" />Edit</button></div>)}
