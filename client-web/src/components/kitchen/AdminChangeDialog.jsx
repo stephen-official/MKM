@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Minus, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Minus, Plus } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { api } from "../../api";
 import { adminChanges, myShare } from "../../features/kitchen/orders";
@@ -69,7 +69,7 @@ export function AdminChangeDialog({ order, godownId, onClose }) {
           })}
         </ul>
         <footer>
-          <button type="button" className="cd-confirm" disabled={busy} onClick={ok} autoFocus>{busy ? "Saving…" : "OK"}</button>
+          <button type="button" className="cd-confirm" disabled={busy} aria-busy={busy} onClick={ok} aria-label="OK, seen" title="OK" autoFocus><Check size={24} strokeWidth={2.2} aria-hidden="true" /></button>
         </footer>
       </section>
     </div>
