@@ -19,9 +19,9 @@ export function TransferCard({ transfer, onRespond }) {
       <span className={`kg-pill kg-pill--${STATUS_TONE[status] || "routine"}`}>{status}</span>
     </header>
     <ul>{(transfer.items || []).map((item, index) => <li key={item.stockItemId?._id || index}><span>{item.stockItemId?.name || "Unknown item"}</span><strong>{item.qtyBaseUnit} {item.stockItemId?.unitId?.symbol || item.unit || "units"}</strong></li>)}</ul>
-    {transfer.isIncoming && status === "pending" && onRespond && <footer className="kl-card__foot">
-      <button type="button" className="kg-btn kg-btn--ok" onClick={() => onRespond(transfer, "accept")}><Check size={16} aria-hidden="true" /> Accept transfer</button>
-      <button type="button" className="kg-btn kg-btn--no" onClick={() => onRespond(transfer, "reject")}><X size={16} aria-hidden="true" /> Reject</button>
+    {transfer.isIncoming && status === "pending" && onRespond && <footer className="kl-card__foot kl-card__foot--respond">
+      <button type="button" className="kg-btn kg-btn--no" onClick={() => onRespond(transfer, "reject")} aria-label="Reject transfer" title="Reject"><X size={22} strokeWidth={2.2} aria-hidden="true" /></button>
+      <button type="button" className="kg-btn kg-btn--ok" onClick={() => onRespond(transfer, "accept")} aria-label="Accept transfer" title="Accept"><Check size={22} strokeWidth={2.2} aria-hidden="true" /></button>
     </footer>}
   </article>;
 }
