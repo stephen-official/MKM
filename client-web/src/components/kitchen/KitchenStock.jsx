@@ -1,12 +1,12 @@
 import { Boxes, PackagePlus, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import ProductRequestSheet from "./ProductRequestSheet";
+import StatusFilter from "./StatusFilter";
 import { expiryStatus, formatStockQuantity, getStockHealth, productPacks } from "../../features/kitchen";
 import { formatDateKey, toLocalDateKey } from "../../utils/date";
 import "./KitchenStock.css";
 
 const FILTERS = [
-  { key: "all", label: "All" },
   { key: "low", label: "Low" },
   { key: "out", label: "Out" },
 ];
@@ -37,14 +37,14 @@ export default function KitchenStock({
   loading = false,
   searchQuery = "",
   onSearchChange,
-  filter = "all",
+  filter = [], // status keys picked; none = all
   onFilterChange,
   canRequestProduct = false,
 }) {
   const [requesting, setRequesting] = useState(false);
   const today = toLocalDateKey();
   const counts = useMemo(() => {
-    const result = { all: items.length, low: 0, out: 0 };
+    const result = { low: 0, out: 0 };
     items.forEach((item) => {
       const { key } = getStockHealth(item);
       if (key === "low" || key === "out") result[key] += 1;
@@ -55,7 +55,7 @@ export default function KitchenStock({
   const visibleItems = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
     return items
-      .filter((item) => filter === "all" || getStockHealth(item).key === filter)
+      .filter((item) => !filter.length || filter.includes(getStockHealth(item).key))
       .filter((item) => !query || itemName(item).toLocaleLowerCase().includes(query))
       .sort((a, b) => {
         const healthDifference = getStockHealth(a).priority - getStockHealth(b).priority;
@@ -63,7 +63,7 @@ export default function KitchenStock({
       });
   }, [filter, items, searchQuery]);
 
-  const hasSearchOrFilter = Boolean(searchQuery.trim()) || filter !== "all";
+  const hasSearchOrFilter = Boolean(searchQuery.trim()) || filter.length > 0;
 
   return (
     <main className="ks-shell" aria-labelledby="kitchen-stock-title">
@@ -102,19 +102,7 @@ export default function KitchenStock({
       </label>
 
       <section className="kg-glass ks-controls" aria-label="Filter stock">
-        <div className="ks-filters" role="group" aria-label="Filter by stock status">
-          {FILTERS.map(({ key, label }) => (
-            <button
-              type="button"
-              key={key}
-              className={filter === key ? "ks-filter ks-filter--active" : "ks-filter"}
-              onClick={() => onFilterChange?.(key)}
-              aria-pressed={filter === key}
-            >
-              {label}<span>{counts[key]}</span>
-            </button>
-          ))}
-        </div>
+        <StatusFilter options={FILTERS} counts={counts} selected={filter} onChange={(next) => onFilterChange?.(next)} label="Filter by stock status" />
       </section>
 
       <div className="ks-results-heading" aria-live="polite">
@@ -133,7 +121,7 @@ export default function KitchenStock({
           <h2>{hasSearchOrFilter ? "No matching items" : "No stock items yet"}</h2>
           <p>{hasSearchOrFilter ? "Try another search or view all stock." : "Stock assigned to this kitchen will appear here."}</p>
           {hasSearchOrFilter && (
-            <button type="button" className="kg-btn" onClick={() => { onSearchChange?.(""); onFilterChange?.("all"); }}>View all stock</button>
+            <button type="button" className="kg-btn" onClick={() => { onSearchChange?.(""); onFilterChange?.([]); }}>View all stock</button>
           )}
         </section>
       ) : (

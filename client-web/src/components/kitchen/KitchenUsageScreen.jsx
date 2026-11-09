@@ -7,6 +7,7 @@ import { correctionForDay } from "../../features/kitchen/corrections";
 import DateField from "../ui/DateField";
 import { useConfirm } from "../ui/ConfirmDialog";
 import OrderTicket from "./OrderTicket";
+import StatusFilter from "./StatusFilter";
 import { useWide } from "./useWide";
 import "./KitchenUsageScreen.css";
 
@@ -60,8 +61,8 @@ const daysLeftText = (expiry) => {
 const NO_USAGE_REASONS = [["closed", "Closed"], ["holiday", "Holiday"], ["other", "Other"]];
 const REASON_LABEL = Object.fromEntries(NO_USAGE_REASONS);
 
-/** Filter chips over the list. An item can sit in two groups (expired and low), so each chip counts it. */
-const FILTERS = [{ key: "all", label: "All" }, { key: "expired", label: "Expired" }, { key: "soon", label: "Expiring" }, { key: "low", label: "Low" }, { key: "out", label: "Out" }];
+/** Status filter over the list. An item can sit in two groups (expired and low), so each status counts it. */
+const FILTERS = [{ key: "expired", label: "Expired" }, { key: "soon", label: "Expiring" }, { key: "low", label: "Low" }, { key: "out", label: "Out" }];
 const filterKeysOf = (item, today) => {
   const keys = [];
   const expiry = expiryStatus(item, today).key;
@@ -96,7 +97,7 @@ export default function KitchenUsageScreen({
   lockedItems = [],
 }) {
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [filters, setFilters] = useState([]); // none picked = all items
   const [ticketOpen, setTicketOpen] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
   // "No usage is recorded today": the ticket turns into a reason picker and Record saves a mark for the date.
@@ -127,11 +128,11 @@ export default function KitchenUsageScreen({
   const visibleItems = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return sortByExpiry(items, today)
-      .filter((item) => filter === "all" || filterKeysOf(item, today).includes(filter))
+      .filter((item) => !filters.length || filterKeysOf(item, today).some((key) => filters.includes(key)))
       .filter((item) => !query || String(item?.name || "").toLocaleLowerCase().includes(query));
-  }, [filter, items, search, today]);
+  }, [filters, items, search, today]);
   const counts = useMemo(() => {
-    const result = { all: items.length, expired: 0, soon: 0, low: 0, out: 0 };
+    const result = { expired: 0, soon: 0, low: 0, out: 0 };
     items.forEach((item) => filterKeysOf(item, today).forEach((key) => { result[key] += 1; }));
     return result;
   }, [items, today]);
@@ -348,13 +349,7 @@ export default function KitchenUsageScreen({
           <DateField value={selectedDate} max={today} required label="Usage date"
             onChange={(value) => onDateChange?.(value)} disabled={submitting || Boolean(correction)} />
         </label>
-        {!alreadyNone && <div className="kus-filters" role="group" aria-label="Show only">
-          {FILTERS.map(({ key, label }) => (
-            <button type="button" key={key} className={filter === key ? "kus-filter is-on" : "kus-filter"} aria-pressed={filter === key} onClick={() => setFilter(key)}>
-              {label}<span>{counts[key]}</span>
-            </button>
-          ))}
-        </div>}
+        {!alreadyNone && <StatusFilter options={FILTERS} counts={counts} selected={filters} onChange={setFilters} label="Show only" />}
       </section>
 
       {correctingBanner}
@@ -380,8 +375,8 @@ export default function KitchenUsageScreen({
         {loading ? (
           <div className="kg-glass kus-state" role="status"><span className="kus-spinner" />Loading kitchen stock…</div>
         ) : visibleItems.length === 0 ? (
-          <div className="kg-glass kus-state"><Search size={25} aria-hidden="true" /><strong>No supplies found</strong><span>{filter === "all" ? "Try a different item name." : "Nothing in this group right now."}</span>
-            {filter !== "all" && <button type="button" className="kg-chip" onClick={() => setFilter("all")}>Show all</button>}</div>
+          <div className="kg-glass kus-state"><Search size={25} aria-hidden="true" /><strong>No supplies found</strong><span>{filters.length ? "Nothing in this group right now." : "Try a different item name."}</span>
+            {filters.length > 0 && <button type="button" className="kg-chip" onClick={() => setFilters([])}>Show all</button>}</div>
         ) : (
           <div className="kus-list">
             {visibleItems.map((item, index) => {

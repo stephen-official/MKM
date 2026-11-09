@@ -92,7 +92,7 @@ const viewFromLocation = () => {
 
 const ClientStore = () => {
   const [activeTab, setActiveTabState] = useState(viewFromLocation);
-  const [stockFilter, setStockFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState([]); // Stock levels status filter; none picked = all
   const [supplyInitialTab, setSupplyInitialTab] = useState("requests");
   const [userInfo, setUserInfo] = useState(null);
   const [items, setItems] = useState([]);
