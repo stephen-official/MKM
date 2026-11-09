@@ -144,7 +144,7 @@ export default function KitchenStock({
                       <h2>{itemName(item)}</h2>
                       {unavailable
                         ? <span className="ks-status ks-status--unavailable">{item.archived ? "Discontinued" : "Unavailable"}</span>
-                        : <span className={`ks-status ks-status--${health.tone}`}>{health.label}</span>}
+                        : <span className={`ks-status ks-status--${health.tone}${health.key === "low" || health.key === "out" ? ` kg-tone kg-tone--${health.key}` : ""}`}>{health.label}</span>}
                     </div>
                     <p className="ks-quantity"><strong>{formatStockQuantity(health.quantity, unit, item)}</strong>{productPacks(item).length > 0 && health.quantity > 0 && <span>{formatQuantity(health.quantity)} {unit}</span>}</p>
                   </div>

@@ -410,7 +410,7 @@ export default function KitchenUsageScreen({
                   <div className="kus-item__body">
                     <div className="kus-item__head">
                       <h3>{item?.name || "Unnamed supply"}</h3>
-                      {health.key === "low" && <span className="kg-pill kg-pill--low">Low stock</span>}
+                      {health.key === "low" && <span className="kg-pill kg-tone kg-tone--low">Low stock</span>}
                     </div>
                     <dl className="kus-facts">
                       <div>

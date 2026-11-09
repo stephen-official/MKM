@@ -138,7 +138,7 @@ export default function KitchenItemBuilder({ type, items = [], cart = [], loadin
                 <div className="kb-card__body">
                   <div className="kb-card__head">
                     <h2>{item.name}</h2>
-                    {health.key === "out" ? <span className="kg-pill kg-pill--expired">Out of stock</span> : health.key === "low" ? <span className="kg-pill kg-pill--low">Low stock</span> : null}
+                    {health.key === "out" ? <span className="kg-pill kg-tone kg-tone--out">Out of stock</span> : health.key === "low" ? <span className="kg-pill kg-tone kg-tone--low">Low stock</span> : null}
                   </div>
                   <dl className="kb-facts"><div><dt>Available</dt><dd>{available > 0 ? <>{qty(available)} {unit}</> : <span className="kb-facts__none">Nothing left</span>}</dd></div></dl>
 

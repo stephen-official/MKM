@@ -442,9 +442,11 @@ button.kg-tone[aria-pressed="true"] { transform: scale(0.97); background: linear
 button.kg-tone[aria-pressed] > span { display: inline; min-width: 0; height: auto; margin: 0; padding: 0; color: inherit; background: none; border-radius: 0; font-size: 12px; font-weight: 300; letter-spacing: 0; opacity: 0.75; font-variant-numeric: tabular-nums; }
 button.kg-tone[aria-pressed="true"] > span { opacity: 0.9; }
 @media (prefers-reduced-motion: reduce) { button.kg-tone[aria-pressed] { transition: none; } }
+/* Stock-status pills anywhere in the app (Home, Stock levels, Record, New order, Transfer) use the same colours. */
 /* Status dots: one small dot per stock status that has items (filter button, Home dropdowns). */
 .kg-dots { display: inline-flex; flex: none; gap: 4px; }
 .kg-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--tone-fg); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
+span.kg-tone { color: var(--tone-fg); background: linear-gradient(160deg, rgba(255, 255, 255, 0.8), var(--tone-wash)); border-color: var(--tone-line); }
 @media (prefers-reduced-motion: reduce) {
   .kitchen-bottom-nav__item--active::after { animation: none; }
   .kg-lift, .kg-btn, .kg-chip { transition: none; }
