@@ -39,10 +39,19 @@ export const transitionOrderStatus = async ({ orderId, input, actor }) => {
   const order = await CollaborativePurchaseOrder.findById(orderId);
   if (!order) throw fail(404, "Collaborative purchase order not found");
   if (next !== order.status && !TRANSITIONS[order.status].has(next)) throw fail(409, `An ${order.status} order cannot move to ${next}`);
-  if (next === order.status) return order;
   const before = purchaseSnapshot(order);
+  // "Mark as ordered" may name the supplier in the same call, and must end up with one: kitchens see the
+  // supplier's name and FSSAI licence on every batch they receive.
   if (next === "ordered" && input.supplierId !== undefined) await applyPurchaseDetails(order, { supplierId: input.supplierId });
   if (next === "ordered" && !order.supplierId) throw fail(400, "Choose a supplier before marking the order as ordered", "SUPPLIER_REQUIRED");
+  // Retrying the current status keeps its audit fields; only a supplier named with it is applied.
+  if (next === order.status) {
+    const note = await purchaseChanges(before, order);
+    if (!note) return { order, changed: false };
+    order.events.push(orderEvent(actor, "purchase_updated", { note }));
+    await order.save();
+    return { order, changed: true };
+  }
   if (next === "cancelled") order.cancellationReason = requiredReason(input.reason);
   const note = next === "cancelled" ? order.cancellationReason : await purchaseChanges(before, order);
   order.events.push(orderEvent(actor, "status_changed", { fromStatus: order.status, toStatus: next, note }));
@@ -50,7 +59,7 @@ export const transitionOrderStatus = async ({ orderId, input, actor }) => {
   order.statusChangedAt = new Date();
   order.statusChangedBy = actor.sub;
   await order.save();
-  return order;
+  return { order, changed: true };
 };
 
 export const changeOrderClosingTime = async ({ orderId, input, actor }) => {

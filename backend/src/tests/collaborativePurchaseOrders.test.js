@@ -7,6 +7,7 @@ import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
 import { Supplier } from "../models/SupplierModel.js";
 import { listOrders } from "../modules/collaborative-orders/orderRepository.js";
+import { setIo } from "../realtime.js";
 
 let app;
 let ctx;
@@ -128,6 +129,42 @@ test("retrying the current status does not rewrite its audit fields", async () =
   assert.equal(retried.body.statusChangedAt, closed.body.statusChangedAt);
   assert.equal(String(retried.body.statusChangedBy._id), String(closed.body.statusChangedBy._id));
   assert.equal(retried.body.events.filter((event) => event.action === "status_changed").length, 1);
+});
+
+const placeOrder = async () => {
+  const order = (await createOrder()).body;
+  assert.equal((await call(ctx.admin, "post", `/${order._id}/approve`).send({})).status, 200);
+  const ordered = await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered", supplierId: ctx.supplier._id });
+  assert.equal(ordered.status, 200, JSON.stringify(ordered.body));
+  return ordered.body;
+};
+
+test("marking an ordered order as ordered again with another supplier changes the supplier", async () => {
+  const order = await placeOrder();
+  const other = await Supplier.create({ name: "Ganesh Stores", nameKey: "ganesh stores", fssaiLicence: "22345678901234" });
+
+  const res = await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered", supplierId: other._id });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.supplier.name, "Ganesh Stores");
+  assert.equal(res.body.statusChangedAt, order.statusChangedAt, "the status itself did not change");
+  assert.equal(res.body.events.filter((event) => event.action === "purchase_updated").length, 1);
+
+  const missing = await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "ordered", supplierId: null });
+  assert.equal(missing.body.code, "SUPPLIER_REQUIRED");
+});
+
+test("re-sending the current status does not tell kitchens to refresh", async () => {
+  const order = (await createOrder()).body;
+  assert.equal((await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "closed" })).status, 200);
+  const sent = [];
+  const fake = { to: () => ({ to: () => fake.to(), emit: (event, payload) => sent.push({ event, payload }) }) };
+  setIo(fake);
+  try {
+    assert.equal((await call(ctx.admin, "patch", `/${order._id}/status`).send({ status: "closed" })).status, 200);
+  } finally {
+    setIo(null);
+  }
+  assert.deepEqual(sent, []);
 });
 
 test("invalid products and quantities are rejected", async () => {

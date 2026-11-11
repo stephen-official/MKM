@@ -191,8 +191,8 @@ collaborativePurchaseOrderRoutes.patch("/:id/purchase", adminOnly, route(async (
 
 collaborativePurchaseOrderRoutes.patch("/:id/status", adminOnly, route(async (req, res) => {
     await closeExpiredOrders();
-    const order = await transitionOrderStatus({ orderId: req.params.id, input: req.body, actor: req.user });
-    notifyKitchens("orders");
+    const { order, changed } = await transitionOrderStatus({ orderId: req.params.id, input: req.body, actor: req.user });
+    if (changed) notifyKitchens("orders");
     return res.json(presentOrder(await getOrderDetails(order._id), req.user));
 }));
 
