@@ -83,8 +83,12 @@ export const rejectTransfer = async ({ transferId, actor }) => {
   const transfer = await Transfer.findById(transferId);
   if (!transfer) throw fail(404, "Not found");
   if (transfer.toGodownId.toString() !== actor.godownId.toString()) throw fail(403, "Not allowed");
-  transfer.status = "rejected";
-  transfer.rejectedAt = new Date();
-  await transfer.save();
-  return transfer;
+  // Conditional on "pending" so a reject cannot overwrite an accept that already moved the stock.
+  const rejected = await Transfer.findOneAndUpdate(
+    { _id: transfer._id, status: "pending" },
+    { $set: { status: "rejected", rejectedAt: new Date() } },
+    { new: true },
+  );
+  if (!rejected) throw fail(409, "Already processed");
+  return rejected;
 };

@@ -1,6 +1,7 @@
 import { Consumption, GodownStock, Notification, Request } from "../../models/FlowModels.js";
 import { businessDateOf, normalizeBusinessDate } from "../../executive/params.js";
 import { createStockBatch, deductFefo, valuationFromAllocations } from "../../stock/batchService.js";
+import { fail } from "../../shared/httpErrors.js";
 import { isAdminRole } from "../../utils/roles.js";
 import { deepPopulateItem } from "../operations/operationItemPopulation.js";
 import { priceLines } from "../consumption/consumptionValuation.js";
@@ -86,10 +87,12 @@ export const approveStockRequest = async ({ requestId, input, actor, session }) 
 };
 
 export const rejectStockRequest = async ({ requestId, input }) => {
-    const request = await Request.findByIdAndUpdate(requestId, {
+    // Conditional on "pending" so a reject cannot overwrite an approval whose stock effects already exist.
+    const request = await Request.findOneAndUpdate({ _id: requestId, status: "pending" }, {
       status: "rejected",
       adminDecision: input.note || "Rejected"
     }, { new: true });
-
-    return request;
+    if (request) return request;
+    if (await Request.exists({ _id: requestId })) throw fail(409, "Request already processed");
+    throw fail(404, "Request not found");
 };

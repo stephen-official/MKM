@@ -49,4 +49,4 @@ stockRequestRoutes.post("/requests/:id/reject", authorize(["admin"]), asyncRoute
     notifyKitchen(request.godownId, "requests");
     res.json(request);
 
-}, legacyErrorPolicy({ status: 500, field: "error" })));
+}, legacyErrorPolicy({ status: 500, respectStatus: true, field: "error" })));

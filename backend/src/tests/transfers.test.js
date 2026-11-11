@@ -90,3 +90,12 @@ test("admin transfer creation and kitchen validation retain their distinct contr
   assert.deepEqual(invalid.body, { error: "Transfer quantity must be greater than zero" });
   assert.equal((await call(ctx.admin, "post", "/user-transfers").send(body())).status, 403);
 });
+
+test("an accepted transfer cannot be rejected afterwards", async () => {
+  const id = (await call(ctx.cookA, "post", "/user-transfers").send(body())).body._id;
+  assert.equal((await call(ctx.cookB, "post", `/user-transfers/${id}/accept`)).status, 200);
+  const rejected = await call(ctx.cookB, "post", `/user-transfers/${id}/reject`);
+  assert.equal(rejected.status, 409);
+  assert.deepEqual(rejected.body, { error: "Already processed" });
+  assert.equal((await Transfer.findById(id)).status, "accepted");
+});

@@ -75,3 +75,17 @@ test("rejection preserves the decision and leaves stock unchanged", async () => 
   assert.equal((await GodownStock.findById(ctx.rice._id)).qtyBaseUnit, 20);
   assert.equal(await Consumption.countDocuments(), 0);
 });
+
+test("an approved request cannot be rejected afterwards, and an unknown one is a 404", async () => {
+  const id = (await call(ctx.cook, "post", "").send(body())).body._id;
+  assert.equal((await call(ctx.admin, "post", `/${id}/approve`).send({})).status, 200);
+  const rejected = await call(ctx.admin, "post", `/${id}/reject`).send({ note: "Too late" });
+  assert.equal(rejected.status, 409);
+  assert.deepEqual(rejected.body, { error: "Request already processed" });
+  const saved = await Request.findById(id).lean();
+  assert.deepEqual([saved.status, saved.adminDecision], ["approved", "Approved"]);
+
+  const missing = await call(ctx.admin, "post", "/000000000000000000000000/reject").send({});
+  assert.equal(missing.status, 404);
+  assert.deepEqual(missing.body, { error: "Request not found" });
+});
