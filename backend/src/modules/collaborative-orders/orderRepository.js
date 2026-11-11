@@ -2,8 +2,8 @@ import mongoose from "mongoose";
 import { CollaborativePurchaseOrder } from "../../models/CollaborativePurchaseOrderModel.js";
 import { fail } from "../../shared/httpErrors.js";
 
-/** Applies the complete detail projection used by the current admin and kitchen order screens. */
-export const populateOrderDetails = (query) => query
+/** Fields shared by detail responses and list summaries. */
+const populateOrderSummary = (query) => query
   .populate("createdBy", "name")
   .populate("createdByGodown", "name")
   .populate("statusChangedBy", "name")
@@ -12,15 +12,18 @@ export const populateOrderDetails = (query) => query
   .populate("contributions.items.ticketId", "status reason receivedQtyBaseUnit resolution.acceptedQtyBaseUnit resolution.reorderShortfall raisedAt")
   .populate("contributions.userId", "name")
   .populate("contributions.godownId", "name")
-  .populate("events.actorId", "name")
-  .populate("events.godownId", "name")
-  .populate({ path: "events.items.stockItemId", select: "name unitId", populate: { path: "unitId", select: "symbol" } })
   .populate({ path: "contributions.adminChange.before.stockItemId", select: "name unitId", populate: { path: "unitId", select: "symbol" } })
   .populate({
     path: "contributions.items.stockItemId",
     select: "name imageUrl unitId stockGroupId brand productCode soldInPacks packs expiryRequired",
     populate: [{ path: "unitId", select: "name symbol" }, { path: "stockGroupId", select: "name" }],
   });
+
+/** Applies the complete detail projection used by the current admin and kitchen order screens. */
+export const populateOrderDetails = (query) => populateOrderSummary(query)
+  .populate("events.actorId", "name")
+  .populate("events.godownId", "name")
+  .populate({ path: "events.items.stockItemId", select: "name unitId", populate: { path: "unitId", select: "symbol" } });
 
 export const requireOrderById = async (id) => {
   if (!mongoose.isValidObjectId(id)) throw fail(404, "Collaborative purchase order not found");
@@ -29,9 +32,10 @@ export const requireOrderById = async (id) => {
   return order;
 };
 
-export const listOrders = async ({ filter, page, limit }) => {
+export const listOrders = async ({ filter, page, limit, includeHistory = true }) => {
+  const query = CollaborativePurchaseOrder.find(filter).sort({ updatedAt: -1 }).skip((page - 1) * limit).limit(limit);
   const [orders, total] = await Promise.all([
-    populateOrderDetails(CollaborativePurchaseOrder.find(filter).sort({ updatedAt: -1 }).skip((page - 1) * limit).limit(limit)),
+    includeHistory ? populateOrderDetails(query) : populateOrderSummary(query.select("-events")),
     CollaborativePurchaseOrder.countDocuments(filter),
   ]);
   return { orders, total };

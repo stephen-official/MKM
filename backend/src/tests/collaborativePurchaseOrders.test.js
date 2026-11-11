@@ -6,6 +6,7 @@ import { createGodown, createUser } from "./helpers/auth.js";
 import { StockGroup, StockItem, Unit } from "../models/InventoryModels.js";
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
 import { Supplier } from "../models/SupplierModel.js";
+import { listOrders } from "../modules/collaborative-orders/orderRepository.js";
 
 let app;
 let ctx;
@@ -50,6 +51,34 @@ test("a kitchen opens an order that all kitchens and admins can see", async () =
     assert.equal(list.body.items[0].createdByGodown.name, "Kitchen A");
   }
   assert.equal((await call(ctx.admin, "post", "/").send({ neededIn: "1w", items: [{ stockItemId: ctx.rice._id, qtyBaseUnit: 1 }] })).status, 400);
+});
+
+test("summary lists exclude history at the query boundary and preserve order fields and kitchen privacy", async () => {
+  const order = (await createOrder()).body;
+  await call(ctx.cookB, "post", `/${order._id}/contributions`).send({
+    note: "Kitchen B private note", items: [{ stockItemId: ctx.dal._id, qtyBaseUnit: 8 }],
+  });
+  const { orders } = await listOrders({ filter: {}, page: 1, limit: 25, includeHistory: false });
+  assert.equal(orders[0].isSelected("events"), false, "MongoDB excludes events before hydration");
+  assert.equal(orders[0].populated("events.actorId"), undefined);
+  assert.equal(orders[0].populated("events.godownId"), undefined);
+  assert.equal(orders[0].populated("events.items.stockItemId"), undefined);
+
+  for (const actor of [ctx.admin, ctx.cookA, ctx.cookB]) {
+    const full = await call(actor, "get", "/");
+    const summary = await call(actor, "get", "/?view=summary&status=open&page=1&limit=1");
+    assert.equal(summary.status, 200, JSON.stringify(summary.body));
+    assert.deepEqual([summary.body.total, summary.body.page, summary.body.limit, summary.body.pages], [1, 1, 1, 1]);
+    const { events, ...expected } = full.body.items[0];
+    assert.ok(events.length > 0, "default lists retain visible history");
+    assert.deepEqual(summary.body.items[0], expected);
+    const detail = await call(actor, "get", `/${order._id}`);
+    assert.deepEqual(detail.body.events, events, "detail reads retain complete visible history");
+  }
+  const emptyPage = await call(ctx.admin, "get", "/?view=summary&page=2&limit=1");
+  assert.deepEqual(emptyPage.body, { items: [], total: 1, page: 2, limit: 1, pages: 1 });
+  const filtered = await call(ctx.admin, "get", "/?view=summary&status=cancelled");
+  assert.deepEqual(filtered.body, { items: [], total: 0, page: 1, limit: 25, pages: 1 });
 });
 
 test("another kitchen adds, edits and removes its own contribution", async () => {

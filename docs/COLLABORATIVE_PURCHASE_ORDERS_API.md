@@ -12,6 +12,8 @@ Quantities are always stored and returned in the product's base unit. Pack field
 
 `GET /?status=open&page=1&limit=25`
 
+For a list without history, add `view=summary` (for example, `GET /?view=summary&status=open&page=1&limit=25`). Summary items omit the `events` key; all other order fields, kitchen visibility rules and pagination are identical to the default list. The query excludes history from MongoDB results and skips history population. Fetch `GET /:id` for the complete visible history. The default list continues to include history for existing clients.
+
 Available statuses are `open`, `closed`, `approved`, `ordered`, and `cancelled`. The response contains `items`, `page`, `limit`, `total`, and `pages`.
 
 ### Get one order

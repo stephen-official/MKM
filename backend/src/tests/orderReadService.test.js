@@ -3,11 +3,16 @@ import test from "node:test";
 import { normalizeOrderListParams } from "../modules/collaborative-orders/orderReadService.js";
 
 test("shared-order list parameters have stable defaults and bounds", () => {
-  assert.deepEqual(normalizeOrderListParams(), { filter: {}, page: 1, limit: 25 });
+  assert.deepEqual(normalizeOrderListParams(), { filter: {}, page: 1, limit: 25, includeHistory: true });
   assert.deepEqual(normalizeOrderListParams({ status: "ordered", page: "3", limit: "500" }), {
-    filter: { status: "ordered" }, page: 3, limit: 100,
+    filter: { status: "ordered" }, page: 3, limit: 100, includeHistory: true,
   });
-  assert.deepEqual(normalizeOrderListParams({ page: "-2", limit: "0" }), { filter: {}, page: 1, limit: 25 });
+  assert.deepEqual(normalizeOrderListParams({ page: "-2", limit: "0" }), { filter: {}, page: 1, limit: 25, includeHistory: true });
+});
+
+test("summary lists omit history only when explicitly requested", () => {
+  assert.equal(normalizeOrderListParams({ view: "summary" }).includeHistory, false);
+  assert.equal(normalizeOrderListParams({ view: "unknown" }).includeHistory, true);
 });
 
 test("shared-order list parameters reject unknown statuses", () => {

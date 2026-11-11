@@ -14,7 +14,7 @@ const hideOtherKitchenDetails = (value, viewer) => ({
 });
 
 /** Builds the public order representation for an admin or kitchen viewer. */
-export const presentOrder = (order, viewer) => {
+export const presentOrder = (order, viewer, { includeHistory = true } = {}) => {
   const value = order.toObject ? order.toObject() : order;
   const totals = new Map();
   for (const contribution of value.contributions || []) {
@@ -35,7 +35,7 @@ export const presentOrder = (order, viewer) => {
     supplier,
     kitchenCount: value.contributions?.length || 0,
     combinedItems: [...totals.values()],
-    events: visibleEvents(value.events, viewer),
+    events: includeHistory ? visibleEvents(value.events, viewer) : undefined,
   };
   return isKitchenRole(viewer?.role) ? hideOtherKitchenDetails({ ...full, supplierId: undefined }, viewer) : full;
 };

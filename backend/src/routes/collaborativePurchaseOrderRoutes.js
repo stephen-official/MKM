@@ -33,8 +33,8 @@ export { closeExpiredOrders } from "../modules/collaborative-orders/orderLifecyc
 
 collaborativePurchaseOrderRoutes.get("/", everyone, route(async (req, res) => {
     await closeExpiredOrders();
-    const { orders, ...pagination } = await getOrderPage(req.query);
-    return res.json({ items: orders.map((order) => presentOrder(order, req.user)), ...pagination });
+    const { orders, includeHistory, ...pagination } = await getOrderPage(req.query);
+    return res.json({ items: orders.map((order) => presentOrder(order, req.user, { includeHistory })), ...pagination });
 }));
 
 collaborativePurchaseOrderRoutes.post("/", everyone, requireAvailableProducts(bodyItemIds), route(async (req, res) => {
