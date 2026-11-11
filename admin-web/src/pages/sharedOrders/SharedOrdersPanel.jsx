@@ -29,6 +29,8 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [selectedId, setSelectedId] = useState(null);
+  const [historyResult, setHistoryResult] = useState(null);
+  const [historyRetry, setHistoryRetry] = useState(0);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const [suppliers, setSuppliers] = useState([]);
@@ -40,7 +42,7 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
   const [adjusting, setAdjusting] = useState(null);
   const requestId = useRef(0);
 
-  const fetchList = () => api.get(BASE, { params: { limit: 100 } }).then((res) => res.data.items || []);
+  const fetchList = () => api.get(BASE, { params: { limit: 100, view: "summary" } }).then((res) => res.data.items || []);
   const applyList = useCallback((list) => {
     setOrders(list);
     setLoadError("");
@@ -66,6 +68,16 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
   useEffect(() => { const timer = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(timer); }, []);
 
   const order = useMemo(() => orders.find((candidate) => candidate._id === selectedId) || null, [orders, selectedId]);
+  // Refresh the selected history after each list refresh; ignore replies for an older selection or snapshot.
+  useEffect(() => {
+    if (!order) return;
+    let active = true;
+    api.get(`${BASE}/${order._id}`)
+      .then(({ data }) => { if (active) setHistoryResult({ order, events: data.events || [] }); })
+      .catch((error) => { if (active) setHistoryResult({ order, error: errorMessage(error, "Could not load order history") }); });
+    return () => { active = false; };
+  }, [order, historyRetry]);
+  const history = historyResult?.order === order ? historyResult : null;
   const productIdOf = (line) => String(line.stockItemId?._id || line.stockItemId);
   const savedExpiry = Object.fromEntries((order?.expiryByProduct || []).map((entry) => [String(entry.stockItemId?._id || entry.stockItemId), entry.expiryDate]));
   const savedOverrides = Object.fromEntries((order?.supplierByProduct || []).map((entry) => [String(entry.stockItemId?._id || entry.stockItemId), String(entry.supplierId?._id || entry.supplierId)]));
@@ -361,13 +373,15 @@ export function SharedOrdersPanel({ raising = false, onRaiseClose = () => {} }) 
                 ))}
               </tbody>
             </table>
-            {(order.events || []).length > 0 && (
+            <h3 style={{ fontSize: 14, margin: "16px 0 8px" }}>History</h3>
+            {!history ? <p role="status">Loading order history…</p>
+              : history.error ? <div role="alert"><p>{history.error}</p><Button variant="ghost" onClick={() => { setHistoryResult(null); setHistoryRetry((value) => value + 1); }}>Try again</Button></div>
+              : history.events.length === 0 ? <p>No order history yet.</p> : (
               <>
-                <h3 style={{ fontSize: 14, margin: "16px 0 8px" }}>History</h3>
                 <table className="table">
                   <thead><tr><th scope="col">When</th><th scope="col">Who</th><th scope="col">What happened</th></tr></thead>
                   <tbody>
-                    {[...order.events].reverse().map((event, index) => (
+                    {[...history.events].reverse().map((event, index) => (
                       <tr key={`${event.at}:${event.action}:${index}`}>
                         <td style={{ whiteSpace: "nowrap", color: "var(--muted)" }}>{when(event.at, true)}</td>
                         <td style={{ whiteSpace: "nowrap" }}>{eventActor(event)}</td>

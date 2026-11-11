@@ -15,7 +15,7 @@ import "./planning.css";
 
 const BASE = "/procurement/collaborative-purchase-orders";
 const errorMessage = (error, fallback) => error?.response?.data?.message || fallback;
-const fetchStatus = (status) => api.get(BASE, { params: { status, limit: 100 } }).then((res) => res.data.items || []);
+const fetchStatus = (status) => api.get(BASE, { params: { status, limit: 100, view: "summary" } }).then((res) => res.data.items || []);
 
 /**
  * Purchasing › Planning: every kitchen order still being gathered (open, or closed and waiting for approval) as a card,

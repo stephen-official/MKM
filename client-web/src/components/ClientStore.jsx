@@ -275,7 +275,7 @@ setItems(formatted);
   };
   const fetchSharedOrders = async () => {
     try {
-      const res = await api.get("/procurement/collaborative-purchase-orders", { params: { limit: 100 } });
+      const res = await api.get("/procurement/collaborative-purchase-orders", { params: { limit: 100, view: "summary" } });
       setSharedOrders(res.data.items || []);
     } catch { setSharedOrders([]); }
   };

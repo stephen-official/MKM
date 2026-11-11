@@ -61,7 +61,19 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive, onShowChange }) 
   const others = order.kitchenCount - 1;
   const arriving = hasArriving(order, godownId);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const history = kitchenHistory(order);
+  const [historyResult, setHistoryResult] = useState(null);
+  const [historyRetry, setHistoryRetry] = useState(0);
+  // Fetch history only for an expanded card, and refresh it when realtime updates replace the list snapshot.
+  useEffect(() => {
+    if (!historyOpen) return;
+    let active = true;
+    api.get(`${BASE}/${order._id}`)
+      .then(({ data }) => { if (active) setHistoryResult({ order, events: data.events || [] }); })
+      .catch((error) => { if (active) setHistoryResult({ order, error: errorText(error, "Could not load order history. Try again.") }); });
+    return () => { active = false; };
+  }, [historyOpen, order, historyRetry]);
+  const historyState = historyResult?.order === order ? historyResult : null;
+  const history = kitchenHistory(historyState);
   const editable = canEditShare(order, godownId, now);
   const notSent = share.items.filter((line) => lineState(line, share) === "not_sent").length;
   return <article className={`kg-glass kg-lift ko-card${order.emergency ? " ko-card--urgent" : ""}`}>
@@ -88,18 +100,20 @@ function MyOrderCard({ order, godownId, now, onEdit, onReceive, onShowChange }) 
       </li>)}
     </ul>
     {order.supplier && stage === "delivered" && <p className="ko-note">From {order.supplier.name}{order.invoiceNo ? ` · Invoice ${order.invoiceNo}` : ""}</p>}
-    {historyOpen && <ol className="ko-history" aria-label="Order history">
+    {historyOpen && (!historyState ? <p role="status">Loading order history…</p>
+      : historyState.error ? <div role="alert"><p>{historyState.error}</p><button type="button" className="kg-chip" onClick={() => { setHistoryResult(null); setHistoryRetry((value) => value + 1); }}>Try again</button></div>
+      : history.length === 0 ? <p>No order history yet.</p> : <ol className="ko-history" aria-label="Order history">
       {history.map((event, index) => <li key={`${event.at}:${event.action}:${index}`}>
         <time dateTime={event.at}>{deliveryDateText(event.at, { withTime: true })}</time>
         <span>{kitchenEventText(event)}</span>
       </li>)}
-    </ol>}
-    {(editable || history.length > 0) && <footer className="ko-actions">
-      {history.length > 0 && <button type="button" className="kg-chip" aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
+    </ol>)}
+    <footer className="ko-actions">
+      <button type="button" className="kg-chip" aria-expanded={historyOpen} onClick={() => setHistoryOpen((open) => !open)}>
         <History size={15} aria-hidden="true" /> {historyOpen ? "Hide order history" : "Order history"}
-      </button>}
+      </button>
       {editable && <button type="button" className="kg-chip" onClick={() => onEdit(order)}>Edit my items</button>}
-    </footer>}
+    </footer>
     {arriving && <footer className="ko-confirm"><p className="ko-hint"><Truck size={15} aria-hidden="true" /> {notSent ? "Some items are on the way; the rest will come later." : "On the way."} Something wrong with an item? You can mark it as a problem inside.</p><button type="button" className="kg-btn" onClick={() => onReceive(order, notSent)}>Receive items <ChevronRight size={17} aria-hidden="true" /></button></footer>}
   </article>;
 }
@@ -390,7 +404,7 @@ export default function KitchenOrders({ products = [], godownId, onOrdersLoaded,
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, figures] = await Promise.all([api.get(BASE, { params: { limit: 100 } }), api.get("/ordering-settings")]);
+      const [list, figures] = await Promise.all([api.get(BASE, { params: { limit: 100, view: "summary" } }), api.get("/ordering-settings")]);
       setOrders(list.data.items || []);
       onOrdersLoaded?.(list.data.items || []);
       setSettings(figures.data.settings);
