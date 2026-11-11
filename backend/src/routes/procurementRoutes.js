@@ -3,7 +3,6 @@ import { notifyKitchen } from "../realtime.js";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { 
-  Distribution, 
   GodownStock, 
   Indent, 
   Notification, 
@@ -17,6 +16,8 @@ import { OpeningBalance } from "../models/OpeningBalanceModel.js";
 import { isValidPrice } from "../catalog/completeness.js";
 import { isSuperAdmin } from "../utils/roles.js";
 import { parseOpeningDate } from "../stock/openingDate.js";
+
+import { distributionRoutes } from "./distributionRoutes.js";
 
 export const procurementRoutes = express.Router();
 const adminOnly = authorize(["admin"]);
@@ -208,72 +209,7 @@ procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
 
 // --- DISTRIBUTION & STOCK ROUTES ---
 
-procurementRoutes.post("/distributions", adminOnly, async (req, res) => {
-  const session = await mongoose.startSession();
-  const { purchaseOrderId, leftoverSourceId, allocations, leftovers } = req.body;
-  const cleanPOId = purchaseOrderId && purchaseOrderId !== "" ? purchaseOrderId : null;
-  const cleanLeftoverId = leftoverSourceId && leftoverSourceId !== "" ? leftoverSourceId : null;
-
-  try {
-    if ((allocations || []).some((item) => !(Number(item.qtyBaseUnit) > 0) || !packQuantityMatchesBase(item, item.qtyBaseUnit))) {
-      return res.status(400).json({ message: "Enter valid base-unit or pack allocation quantities" });
-    }
-    await session.withTransaction(async () => {
-      const distribution = await Distribution.create(
-        [{ 
-          purchaseOrderId: cleanPOId, 
-          leftoverSourceId: cleanLeftoverId, 
-          allocations: (allocations || []).map((item) => ({ ...item, ...packSnapshot(item) })),
-          leftovers: leftovers || [] 
-        }], 
-        { session }
-      );
-
-      const po = cleanPOId ? await PurchaseOrder.findById(cleanPOId).session(session) : null;
-
-      for (const item of (allocations || [])) {
-        await GodownStock.findOneAndUpdate(
-          { godownId: item.godownId, stockItemId: item.stockItemId },
-          { 
-            $inc: { qtyBaseUnit: item.qtyBaseUnit }, 
-            $setOnInsert: { thresholdBaseUnit: 0 } 
-          },
-          { upsert: true, session }
-        );
-        await createStockBatch({
-          godownId: item.godownId,
-          stockItemId: item.stockItemId,
-          quantity: item.qtyBaseUnit,
-          unitPrice: item.unitPrice,
-          sourceType: "distribution",
-          sourceId: distribution[0]._id,
-          receivedAt: po?.receivedAt || new Date(),
-          createdBy: req.user.sub,
-          session,
-        });
-      }
-
-      if (cleanPOId) {
-        await PurchaseOrder.findByIdAndUpdate(cleanPOId, { $set: { status: "distributed" } }, { session });
-      }
-
-      if (cleanLeftoverId) {
-        await Distribution.findOneAndUpdate(
-          { _id: cleanLeftoverId },
-          { $set: { "leftovers.$[].qtyBaseUnit": 0 } },
-          { session }
-        );
-      }
-
-      for (const id of new Set((allocations || []).map((item) => String(item.godownId)))) notifyKitchen(id, "stock");
-      res.status(201).json(distribution[0]);
-    });
-  } catch (error) {
-    res.status(500).json({ message: "Distribution failed", error: error.message });
-  } finally {
-    await session.endSession();
-  }
-});
+procurementRoutes.use(distributionRoutes);
 
 /**
  * @route   GET /api/procurement/godown-stocks
@@ -395,55 +331,6 @@ procurementRoutes.post("/opening-balances", superAdminOnly, async (req, res) => 
     return res.status(error.status || 500).json({ message: error.status ? error.message : "Opening balance failed", ...(error.status ? {} : { error: error.message }) });
   } finally {
     await session.endSession();
-  }
-});
-
-// --- LOGS & ANALYTICS ---
-
-procurementRoutes.get("/distributions/logs", adminOnly, async (_req, res) => {
-  try {
-    const logs = await Distribution.find()
-      .populate({
-        path: "purchaseOrderId",
-        populate: { path: "indentId", select: "indentNo" }
-      })
-      .sort({ createdAt: -1 });
-    res.json(logs);
-  } catch (error) {
-    res.status(500).json({ message: "Fetch logs failed", error: error.message });
-  }
-});
-
-procurementRoutes.get("/distributions/:id/details", adminOnly, async (req, res) => {
-  try {
-    const distribution = await Distribution.findById(req.params.id)
-      .populate({ path: "allocations.stockItemId", select: "name" })
-      .populate({ path: "allocations.godownId", select: "name" });
-
-    if (!distribution) return res.status(404).json({ message: "Log not found" });
-
-    const logs = distribution.allocations.map((item) => ({
-      itemId: item.stockItemId?._id,
-      itemName: item.stockItemId?.name || "Unknown Item",
-      destination: item.godownId?.name || "Direct Delivery",
-      quantity: item.qtyBaseUnit,
-    }));
-
-    res.json({ distributionId: distribution._id, logs });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch details", error: error.message });
-  }
-});
-
-procurementRoutes.get("/distributions/leftovers", adminOnly, async (_req, res) => {
-  try {
-    const docs = await Distribution.find().sort({ createdAt: -1 });
-    const leftovers = docs.flatMap((d) => 
-      d.leftovers.map((l) => ({ ...l.toObject(), distributionId: d._id }))
-    );
-    res.json(leftovers.filter((l) => l.qtyBaseUnit > 0));
-  } catch (error) {
-    res.status(500).json({ message: "Fetch leftovers failed", error: error.message });
   }
 });
 
