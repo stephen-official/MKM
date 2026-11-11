@@ -7,6 +7,7 @@ import { correctionForDay } from "../../features/kitchen/corrections";
 import DateField from "../ui/DateField";
 import { useConfirm } from "../ui/ConfirmDialog";
 import OrderTicket from "./OrderTicket";
+import StatusFilter from "./StatusFilter";
 import { useWide } from "./useWide";
 import "./KitchenUsageScreen.css";
 
@@ -60,8 +61,8 @@ const daysLeftText = (expiry) => {
 const NO_USAGE_REASONS = [["closed", "Closed"], ["holiday", "Holiday"], ["other", "Other"]];
 const REASON_LABEL = Object.fromEntries(NO_USAGE_REASONS);
 
-/** Filter chips over the list. An item can sit in two groups (expired and low), so each chip counts it. */
-const FILTERS = [{ key: "all", label: "All" }, { key: "expired", label: "Expired" }, { key: "soon", label: "Expiring" }, { key: "low", label: "Low" }, { key: "out", label: "Out" }];
+/** Status filter over the list. An item can sit in two groups (expired and low), so each status counts it. */
+const FILTERS = [{ key: "expired", label: "Expired" }, { key: "soon", label: "Expiring" }, { key: "low", label: "Low" }, { key: "out", label: "Out" }];
 const filterKeysOf = (item, today) => {
   const keys = [];
   const expiry = expiryStatus(item, today).key;
@@ -92,11 +93,13 @@ export default function KitchenUsageScreen({
   // original = { [stockItemId]: qtyBaseUnit } of the record being changed.
   correction = null,
   onCancelCorrection,
+  // Correction of a day's only usage record: (reason, note) asks the admin to cancel it and mark the day "no usage".
+  onCorrectionNoUsage,
   // Correction mode only: products on the record that kitchens may no longer use. They stay on the ticket, reduce-only, and are not listed below.
   lockedItems = [],
 }) {
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [filters, setFilters] = useState([]); // none picked = all items
   const [ticketOpen, setTicketOpen] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
   // "No usage is recorded today": the ticket turns into a reason picker and Record saves a mark for the date.
@@ -127,11 +130,11 @@ export default function KitchenUsageScreen({
   const visibleItems = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
     return sortByExpiry(items, today)
-      .filter((item) => filter === "all" || filterKeysOf(item, today).includes(filter))
+      .filter((item) => !filters.length || filterKeysOf(item, today).some((key) => filters.includes(key)))
       .filter((item) => !query || String(item?.name || "").toLocaleLowerCase().includes(query));
-  }, [filter, items, search, today]);
+  }, [filters, items, search, today]);
   const counts = useMemo(() => {
-    const result = { all: items.length, expired: 0, soon: 0, low: 0, out: 0 };
+    const result = { expired: 0, soon: 0, low: 0, out: 0 };
     items.forEach((item) => filterKeysOf(item, today).forEach((key) => { result[key] += 1; }));
     return result;
   }, [items, today]);
@@ -227,6 +230,14 @@ export default function KitchenUsageScreen({
     if (rowCount === 0 && seen.rowCount !== 0) setSheetOpen(false);
     if (cartSize === 0 && seen.cartSize !== 0) setStarted({});
   }
+  // Edit on History (or Home) lands here with the record's lines on the ticket: open it straight away.
+  const correctionKey = correction ? `${correction.kind}:${correction.consumptionId || correction.date}` : "";
+  const [openedFor, setOpenedFor] = useState("");
+  if (openedFor !== correctionKey) {
+    setOpenedFor(correctionKey);
+    setNoUsage(false); setReason("closed"); setNote("");
+    if (correction?.kind === "edit_usage") { setTicketOpen(true); if (!wide) setSheetOpen(true); }
+  }
   useEffect(() => {
     if (!sheetOpen) return undefined;
     const onKey = (event) => { if (event.key === "Escape") { setSheetOpen(false); setNoUsage(false); setReason("closed"); setNote(""); } };
@@ -258,21 +269,25 @@ export default function KitchenUsageScreen({
   }, [noUsage, wide]);
   const recordNoUsage = async () => {
     setSavingNoUsage(true);
+    if (correction) { await onCorrectionNoUsage?.(reason, note.trim()); setSavingNoUsage(false); return; }
     const ok = await onNoUsage?.(selectedDate, reason, note.trim());
     setSavingNoUsage(false);
     if (ok) { toggleNoUsage(false); setSheetOpen(false); }
   };
+  // On a correction, "No usage" swaps the ticket for the reason picker; going back keeps the items as they were.
+  const canCorrectToNone = correction?.kind === "edit_usage" && correction.onlyEntry && Boolean(onCorrectionNoUsage);
+  const backToItems = () => { setNoUsage(false); setReason("closed"); setNote(""); };
   const noUsageTicket = (
     <section className="kg-glass kt-ticket kus-none-ticket" aria-labelledby="kus-none-title">
-      <div className="kt-ticket__head"><span><p>Usage ticket</p><h2 id="kus-none-title">No usage</h2></span></div>
+      <div className="kt-ticket__head"><span><p>{correction ? "Correction ticket" : "Usage ticket"}</p><h2 id="kus-none-title">No usage</h2></span></div>
       <dl className="kt-ticket__meta"><dt>Usage date</dt><dd>{formatDateKey(selectedDate)}</dd></dl>
       <p className="kus-none-ticket__label">Why was nothing used?</p>
       <div className="kus-none-ticket__chips" role="group" aria-label="Reason">
         {NO_USAGE_REASONS.map(([key, label]) => <button type="button" key={key} className={reason === key ? "is-on" : ""} aria-pressed={reason === key} disabled={savingNoUsage} onClick={() => setReason(key)}>{label}</button>)}
       </div>
       {reason === "other" && <input className="kus-none-ticket__note" type="text" value={note} maxLength={200} placeholder="What happened?" aria-label="What happened?" disabled={savingNoUsage} onChange={(event) => setNote(event.target.value)} />}
-      <button type="button" className="kg-btn kt-ticket__submit" disabled={savingNoUsage || !selectedDate || (reason === "other" && !note.trim())} onClick={recordNoUsage}>{savingNoUsage ? "Saving…" : "Record"}</button>
-      <button type="button" className="kt-ticket__clear" disabled={savingNoUsage} onClick={closeSheet}>Cancel</button>
+      <button type="button" className="kg-btn kt-ticket__submit" disabled={savingNoUsage || !selectedDate || (reason === "other" && !note.trim())} onClick={recordNoUsage}>{savingNoUsage ? (correction ? "Sending…" : "Saving…") : correction ? "Send to admin" : "Record"}</button>
+      <button type="button" className="kt-ticket__clear" disabled={savingNoUsage} onClick={correction ? backToItems : closeSheet}>{correction ? "Back to items" : "Cancel"}</button>
     </section>
   );
   const ticket = <OrderTicket title={correction ? "Correction ticket" : "Usage ticket"} rows={ticketRows} meta={[{ label: "Usage date", value: formatDateKey(selectedDate) }]}
@@ -280,7 +295,9 @@ export default function KitchenUsageScreen({
     open={wide ? ticketOpen : true} onToggle={wide ? () => setTicketOpen((value) => !value) : undefined}
     onChange={changeRow} onClear={onClear ? clearTicket : undefined}
     onSubmit={onSubmit} submitLabel={correction ? "Send to admin" : "Record"} submittingLabel={correction ? "Sending…" : "Saving…"}
-    allowEmpty={correction?.kind === "edit_usage"} submitting={submitting} submitDisabled={!selectedDate} />;
+    allowEmpty={correction?.kind === "edit_usage"} submitting={submitting} submitDisabled={!selectedDate}
+    extra={canCorrectToNone && <button type="button" className="kus-ticket-none" disabled={submitting} onClick={() => setNoUsage(true)}>
+      <CalendarOff size={16} strokeWidth={1.7} aria-hidden="true" />Nothing was used this day</button>} />;
 
   const ticketPanel = noUsage ? noUsageTicket : ticket;
   const closedDay = alreadyNone && (
@@ -348,13 +365,7 @@ export default function KitchenUsageScreen({
           <DateField value={selectedDate} max={today} required label="Usage date"
             onChange={(value) => onDateChange?.(value)} disabled={submitting || Boolean(correction)} />
         </label>
-        {!alreadyNone && <div className="kus-filters" role="group" aria-label="Show only">
-          {FILTERS.map(({ key, label }) => (
-            <button type="button" key={key} className={filter === key ? "kus-filter is-on" : "kus-filter"} aria-pressed={filter === key} onClick={() => setFilter(key)}>
-              {label}<span>{counts[key]}</span>
-            </button>
-          ))}
-        </div>}
+        {!alreadyNone && <StatusFilter options={FILTERS} counts={counts} selected={filters} onChange={setFilters} label="Show only" />}
       </section>
 
       {correctingBanner}
@@ -380,8 +391,8 @@ export default function KitchenUsageScreen({
         {loading ? (
           <div className="kg-glass kus-state" role="status"><span className="kus-spinner" />Loading kitchen stock…</div>
         ) : visibleItems.length === 0 ? (
-          <div className="kg-glass kus-state"><Search size={25} aria-hidden="true" /><strong>No supplies found</strong><span>{filter === "all" ? "Try a different item name." : "Nothing in this group right now."}</span>
-            {filter !== "all" && <button type="button" className="kg-chip" onClick={() => setFilter("all")}>Show all</button>}</div>
+          <div className="kg-glass kus-state"><Search size={25} aria-hidden="true" /><strong>No supplies found</strong><span>{filters.length ? "Nothing in this group right now." : "Try a different item name."}</span>
+            {filters.length > 0 && <button type="button" className="kg-chip" onClick={() => setFilters([])}>Show all</button>}</div>
         ) : (
           <div className="kus-list">
             {visibleItems.map((item, index) => {
@@ -415,7 +426,7 @@ export default function KitchenUsageScreen({
                   <div className="kus-item__body">
                     <div className="kus-item__head">
                       <h3>{item?.name || "Unnamed supply"}</h3>
-                      {health.key === "low" && <span className="kg-pill kg-pill--low">Low stock</span>}
+                      {health.key === "low" && <span className="kg-pill kg-tone kg-tone--low">Low stock</span>}
                     </div>
                     <dl className="kus-facts">
                       <div>

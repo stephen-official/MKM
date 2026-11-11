@@ -236,6 +236,7 @@ export default function KitchenReceiveItems({ order, lines, notSentCount = 0, on
   const [forms, setForms] = useState(() => Object.fromEntries(products.map((line) => [receiptKeyOf(line), emptyReceipt(adminExpiryFor(order, line))])));
   const [busy, setBusy] = useState(false);
   const ready = receiptReady(lines, forms, today);
+  const hasProblems = Object.values(forms).some((form) => form.problem);
   const readyCount = products.filter((line) => receiptProblems(line, forms[receiptKeyOf(line)], today).length === 0).length;
   /** `change` is a partial form, or a function of the latest form returning one (for changes that build on other fields). */
   const update = (line, change) => setForms((previous) => {
@@ -278,6 +279,7 @@ export default function KitchenReceiveItems({ order, lines, notSentCount = 0, on
     </section>)}
 
     <footer className="kr-submit"><div><strong>{readyCount} of {products.length}</strong><span>{products.length === 1 ? "item ready" : "items ready"}</span></div>
-      <button type="button" className="kg-btn" disabled={busy || !ready} onClick={submit}>{busy ? "Saving…" : <><PackageCheck size={18} aria-hidden="true" /> {Object.values(forms).some((form) => form.problem) ? "Save & send problems" : "Add to my stock"}</>}</button></footer>
+      {/* Green tick only for a clean receipt; with problems it stays the plain button. */}
+      <button type="button" className={`kg-btn${hasProblems ? "" : " kg-btn--ok"}`} disabled={busy || !ready} onClick={submit}>{busy ? "Saving…" : hasProblems ? <><PackageCheck size={18} aria-hidden="true" /> Save &amp; send problems</> : <><Check size={18} aria-hidden="true" /> Add to my stock</>}</button></footer>
   </main>;
 }

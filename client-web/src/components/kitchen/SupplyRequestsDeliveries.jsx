@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   CalendarDays,
+  Check,
   CheckCircle2,
   ChevronRight,
   ClipboardList,
@@ -172,8 +173,8 @@ function DeliveryCard({ delivery, rawRecord, onReceiveDelivery }) {
           <strong>{formatQuantity(delivery.remainingQuantity)} total units</strong>
         </div>
         {delivery.canReceive ? (
-          <button type="button" className="kg-btn srd-receive" onClick={() => onReceiveDelivery?.(rawRecord)}>
-            Confirm received <ChevronRight size={18} aria-hidden="true" />
+          <button type="button" className="kg-btn kg-btn--ok srd-receive" onClick={() => onReceiveDelivery?.(rawRecord)}>
+            <Check size={17} aria-hidden="true" /> Confirm received <ChevronRight size={18} aria-hidden="true" />
           </button>
         ) : (
           <span className="srd-complete"><CheckCircle2 size={17} aria-hidden="true" /> Receipt confirmed</span>

@@ -7,12 +7,14 @@ import { CORRECTION_KINDS, UsageCorrection } from "../models/UsageCorrectionMode
 import { isIsoDate } from "../executive/params.js";
 import { io, notifyKitchen } from "../realtime.js";
 import { CatalogError, assertKitchenCanUse } from "../catalog/productService.js";
+import { NO_USAGE_REASONS } from "../usage/usageDays.js";
 import { applyConsumptionEdit, recordConsumption, removeConsumption } from "./operationsRoutes.js";
 
 /**
  * Corrections: a kitchen asks to change what it recorded; nothing changes until an admin approves.
  * "reopen_day": a day marked "no usage" by mistake, with the usage to record once it is open.
  * "edit_usage": a usage record with the wrong lines; the proposed lines replace them (none = cancel the record).
+ *   With `noUsage: { reason, note }` and no lines, nothing was used that day: approval cancels the record and marks the day.
  * Errors are { code, message }.
  */
 export const usageCorrectionRoutes = express.Router();
@@ -49,6 +51,7 @@ const shape = (row) => ({
   items: (row.items || []).map(shapeLine),
   before: (row.before || []).map(shapeLine),
   reason: row.reason,
+  noUsageReason: row.noUsageReason || null,
   note: row.note,
   status: row.status,
   decisionNote: row.decisionNote,
@@ -91,13 +94,13 @@ const sameLines = (a, b) => {
   return key(a) === key(b);
 };
 
-// POST / { kind, date, items, consumptionId? } → the kitchen asks for a day to be reopened with this usage, or for a record's lines to be replaced.
+// POST / { kind, date, items, consumptionId?, noUsage? } → the kitchen asks for a day to be reopened with this usage, or for a record's lines to be replaced.
 // A product that is no longer available to kitchens may stay or go down (it was already used); only a new or larger line needs an available product.
 usageCorrectionRoutes.post("/", kitchenOnly, async (req, res) => {
   try {
     const godownId = req.user.godownId;
     if (!godownId) throw new CorrectionError(400, "NO_KITCHEN", "Your account is not linked to a kitchen");
-    const { kind, date, consumptionId = null, items = [] } = req.body || {};
+    const { kind, date, consumptionId = null, items = [], noUsage = null } = req.body || {};
     if (!CORRECTION_KINDS.includes(kind)) throw new CorrectionError(400, "INVALID_KIND", "Choose what went wrong");
     const lines = await readLines(godownId, items);
     const doc = { godownId, userId: req.user.sub, kind, date, items: lines };
@@ -115,13 +118,25 @@ usageCorrectionRoutes.post("/", kitchenOnly, async (req, res) => {
       if (!consumption) throw new CorrectionError(404, "NOT_FOUND", "Usage record not found");
       if (await UsageCorrection.exists({ godownId, consumptionId, status: "pending" })) throw new CorrectionError(409, "ALREADY_PENDING", "The admin has already been asked about this record");
       doc.before = snapshot(consumption);
+      if (noUsage) {
+        if (lines.length) throw new CorrectionError(400, "INVALID_ITEMS", "Remove the items to mark the day as no usage");
+        if (!NO_USAGE_REASONS.includes(noUsage.reason)) throw new CorrectionError(400, "INVALID_REASON", "Choose a reason");
+        const note = String(noUsage.note || "").trim().slice(0, 200);
+        if (noUsage.reason === "other" && !note) throw new CorrectionError(400, "NOTE_REQUIRED", "Say what happened");
+        if (await Consumption.exists({ godownId, date: consumption.date, _id: { $ne: consumption._id } })) {
+          throw new CorrectionError(409, "OTHER_USAGE", "Other usage is recorded for that day, so it cannot be marked as no usage");
+        }
+        doc.noUsageReason = noUsage.reason;
+        doc.note = note;
+      }
       if (sameLines(doc.before, lines)) throw new CorrectionError(400, "NO_CHANGE", "Nothing was changed");
       const wasUsed = new Map(doc.before.map((line) => [String(line.stockItemId), Number(line.qtyBaseUnit) || 0]));
       await assertKitchenCanUse(req.user, lines.filter((line) => line.qtyBaseUnit > (wasUsed.get(String(line.stockItemId)) || 0)).map((line) => line.stockItemId));
       doc.date = consumption.date;
       doc.consumptionId = consumption._id;
       doc.recordUpdatedAt = consumption.updatedAt;
-      message = lines.length === 0 ? `A kitchen asks to cancel its usage record of ${doc.date}` : `A kitchen asks to change its usage record of ${doc.date}`;
+      message = doc.noUsageReason ? `A kitchen says nothing was used on ${doc.date} and asks to cancel its usage record`
+        : lines.length === 0 ? `A kitchen asks to cancel its usage record of ${doc.date}` : `A kitchen asks to change its usage record of ${doc.date}`;
     }
     const created = await UsageCorrection.create(doc);
     const notification = await Notification.create({
@@ -216,8 +231,19 @@ const apply = async (row, user, session) => {
     if (row.recordUpdatedAt && consumption.updatedAt && consumption.updatedAt.getTime() !== row.recordUpdatedAt.getTime()) {
       throw new CorrectionError(409, "RECORD_CHANGED", "This record was changed after the kitchen asked. Reject this and ask the kitchen to check it again.");
     }
-    if (lines.length === 0) await removeConsumption({ consumption, session });
-    else await applyConsumptionEdit({ consumption, items: lines, userId: user.sub, session });
+    if (lines.length === 0) {
+      await removeConsumption({ consumption, session });
+      if (row.noUsageReason) {
+        if (await Consumption.exists({ godownId: row.godownId, date: row.date }).session(session)) {
+          throw new CorrectionError(409, "OTHER_USAGE", "Other usage was recorded for that day after the kitchen asked. Reject this and ask the kitchen to check it again.");
+        }
+        await NoUsageDay.findOneAndUpdate(
+          { godownId: row.godownId, date: row.date },
+          { $set: { reason: row.noUsageReason, note: row.note || "", createdBy: row.userId } },
+          { upsert: true, setDefaultsOnInsert: true, session },
+        );
+      }
+    } else await applyConsumptionEdit({ consumption, items: lines, userId: user.sub, session });
   } catch (error) {
     if (error instanceof CorrectionError) throw error;
     throw new CorrectionError(409, "CANNOT_APPLY", error.message);

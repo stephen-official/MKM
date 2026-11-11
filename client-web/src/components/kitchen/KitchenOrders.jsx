@@ -268,7 +268,7 @@ function ItemPicker({ mode, products, cart, setCart, settings, neededIn, setNeed
               <div className="ko-product__body">
                 <div className="ko-product__head">
                   <h3>{product.name}</h3>
-                  {health.key === "out" ? <span className="kg-pill kg-pill--expired">Out of stock</span> : health.key === "low" ? <span className="kg-pill kg-pill--low">Low stock</span> : null}
+                  {health.key === "out" ? <span className="kg-pill kg-tone kg-tone--out">Out of stock</span> : health.key === "low" ? <span className="kg-pill kg-tone kg-tone--low">Low stock</span> : null}
                 </div>
                 <dl className="ko-facts">
                   <div>

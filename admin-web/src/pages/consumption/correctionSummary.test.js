@@ -37,6 +37,13 @@ describe("describeCorrection", () => {
     expect(out.title).toBe("Cancel usage record of 27 Oct 2026 · Main Kitchen");
     expect(out.lines[0]).toBe("Wants the whole record removed: Rice 10 kg.");
   });
+  it("says when the kitchen wants the day marked no usage instead", () => {
+    const out = describeCorrection({ kind: "edit_usage", date: "2026-10-27", kitchen, before: [line("r", "Rice", 10)], items: [], noUsageReason: "holiday", note: "Diwali" });
+    expect(out.title).toMatch(/^No usage on 27 Oct 2026/);
+    expect(out.lines[0]).toMatch(/Holiday: Diwali/);
+    expect(out.lines[1]).toMatch(/marks the day "no usage"/);
+  });
+
   it("longDay keeps the business date as written", () => {
     expect(longDay("2026-01-05")).toBe("5 Jan 2026");
     expect(longDay("")).toBe("-");

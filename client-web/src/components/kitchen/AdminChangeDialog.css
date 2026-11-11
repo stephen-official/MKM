@@ -4,8 +4,7 @@
 .kac-notice__dot { flex: none; width: 8px; height: 8px; background: var(--blue); border-radius: 50%; box-shadow: 0 0 0 3px rgba(63,108,176,.18); }
 button.kac-notice { width: 100%; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
 
-.cd-layer .kac-panel { max-height: 90vh; overflow-y: auto; }
-.cd-layer .kac-panel footer { grid-template-columns: 1fr; }
+.cd-layer .kac-panel { text-align: left; }
 .kac-rows { display: grid; gap: 8px; margin: 0 0 18px; padding: 0; list-style: none; }
 .kac-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; padding: 10px 12px; background: rgba(255,255,255,.7); border: 1px solid var(--glass-border); border-radius: 14px; }
 .kac-row__name { font-weight: 500; overflow-wrap: anywhere; }

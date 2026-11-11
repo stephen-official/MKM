@@ -74,11 +74,13 @@ const qtyText = (value, item) => `${asNumber(value).toLocaleString("en-IN", { ma
 
 /** One item line: name and hint on the left, a status pill, the quantity on the right.
  *  With onAdd, an "Add" chip sits at the end of the row and puts the item on the supply-order ticket ("Added" once it is there). */
+const STOCK_TONES = new Set(["low", "soon", "out", "expired"]); // stock statuses share the filter colours (kg-tone)
+const pillClass = (tone) => `kg-pill ${STOCK_TONES.has(tone) ? `kg-tone kg-tone--${tone}` : `kg-pill--${tone}`}`;
 const Row = ({ name, hint, tone, status, qty, onClick, onAdd, added = false }) => {
   const main = (
     <button type="button" className={onAdd ? "kh-row kh-row__main" : "kg-row kh-row"} onClick={onClick}>
       <span className="kh-row__text"><strong>{name}</strong><small>{hint}</small></span>
-      {status && <span className={`kg-pill kg-pill--${tone}`}>{status}</span>}
+      {status && <span className={pillClass(tone)}>{status}</span>}
       {qty && <span className="kh-row__qty">{qty}</span>}
     </button>
   );
@@ -146,11 +148,16 @@ const LinkTile = ({ className, labelledBy, onOpen, children }) => {
 };
 
 /** A dropdown row inside a section (Stock has two: Use first and Running low). Same header grammar as a section, smaller. */
-const Group = ({ id, title, summary, attention = false, open, onToggle, children }) => {
+// dots: [{ key, label, count }] stock statuses; one coloured dot for each with items, in place of the alert icon.
+const Group = ({ id, title, summary, attention = false, dots, open, onToggle, children }) => {
+  const flagged = (dots || []).filter((dot) => dot.count > 0);
   const head = (
     <>
       <span className="kh-group__title">{title}</span>
       {summary && <span className="kh-card__summary">{summary}</span>}
+      {flagged.length > 0 && <span className="kg-dots" role="img" aria-label={flagged.map((dot) => `${dot.count} ${dot.label}`).join(", ")}>
+        {flagged.map((dot) => <i key={dot.key} className={`kg-tone--${dot.key}`} />)}
+      </span>}
       {attention && <span className="kh-card__alert" role="img" aria-label="Needs attention"><AlertCircle size={18} strokeWidth={1.9} /></span>}
     </>
   );
@@ -290,8 +297,8 @@ export default function KitchenHome({
         <div className="kh-col">
           <InventoryTile wide={wide} onOpen={onViewStock} tint={expiredCount > 0 || outOfStock.length > 0 ? " kg-glass--rose" : useFirst.length > 0 || lowStock.length > 0 ? " kg-glass--warm" : ""}>
             <div className="kh-card__body">
-              {canRecordUsage && <Group id="use-first" title="Use first" attention={useFirst.length > 0}
-                summary={expiredCount > 0 ? <span className="kg-pill kg-pill--expired">{expiredCount} expired</span> : `${useFirst.length} ${useFirst.length === 1 ? "item" : "items"}`}
+              {canRecordUsage && <Group id="use-first" title="Use first" dots={[{ key: "expired", label: "expired", count: expiredCount }, { key: "soon", label: "expiring", count: useFirst.length - expiredCount }]}
+                summary={expiredCount > 0 ? <span className={pillClass("expired")}>{expiredCount} expired</span> : `${useFirst.length} ${useFirst.length === 1 ? "item" : "items"}`}
                 open={isOpen("use-first")} onToggle={() => toggle("use-first")}>
                 {useFirst.length === 0 && <Row name="Nothing expiring this week" hint="Every dated item has more than 7 days left" tone="routine" status="In date" onClick={onViewStock} />}
                 {useFirst.slice(0, 3).map((item, index) => {
@@ -303,15 +310,15 @@ export default function KitchenHome({
                 })}
               </Group>}
 
-              <Group id="running-low" title="Running low" attention={attentionItems.length > 0}
-                summary={outOfStock.length > 0 ? <span className="kg-pill kg-pill--expired">{outOfStock.length} out of stock</span> : lowStock.length > 0 ? <span className="kg-pill kg-pill--low">{lowStock.length} low</span> : "All fine"}
+              <Group id="running-low" title="Running low" dots={[{ key: "out", label: "out of stock", count: outOfStock.length }, { key: "low", label: "low", count: lowStock.length }]}
+                summary={outOfStock.length > 0 ? <span className={pillClass("out")}>{outOfStock.length} out of stock</span> : lowStock.length > 0 ? <span className={pillClass("low")}>{lowStock.length} low</span> : "All fine"}
                 open={isOpen("running-low")} onToggle={() => toggle("running-low")}>
                 {attentionItems.length === 0 && <Row name="All stock above its low level" hint={`${items.filter((item) => item.available !== false).length} items you can use`} tone="routine" status="Fine" onClick={onViewStock} />}
                 {attentionItems.slice(0, 3).map((item, index) => {
                   const quantity = asNumber(item.currentQty ?? item.quantity ?? item.kitchenQty);
                   const out = quantity <= 0;
                   return <Row key={item._id || item.stockRecordId || `${item.name}-${index}`} name={item.name || "Unnamed item"}
-                    hint={out ? "Ask for supplies now" : "Ask for supplies soon"} tone={out ? "expired" : "low"} status={out ? "Out of stock" : "Low stock"}
+                    hint={out ? "Ask for supplies now" : "Ask for supplies soon"} tone={out ? "out" : "low"} status={out ? "Out of stock" : "Low stock"}
                     qty={qtyText(quantity, item)} onClick={onViewStock} {...addProps(item)} />;
                 })}
                 <div className="kh-card__foot"><button type="button" className="kg-chip" onClick={onViewStock}>View all</button></div>

@@ -418,11 +418,35 @@
 .kg-chip { height: 36px; padding: 0 14px; background: var(--btn-glass-bg); color: var(--ink-2); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; box-shadow: 0 0 0 1px var(--btn-glass-line), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.25), 0 0 0 0 rgba(255,255,255,0), 0 0 0 0 rgba(150,172,206,0), 0 6px 16px rgba(30,52,92,.07); }
 .kg-btn:hover, .kg-btn:active, .kg-btn:focus-visible, .kg-chip:hover, .kg-chip:active, .kg-chip:focus-visible { transform: scale(.97); color: var(--blue-deep); box-shadow: 0 0 0 1px var(--btn-glass-primary-line), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(170,186,210,.2), 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(150,172,206,.55), 0 4px 10px rgba(30,52,92,.06); }
 .kg-btn:disabled, .kg-chip:disabled { cursor: default; opacity: .55; transform: none; }
+/* Approve/confirm actions: the same glass pill with a green tint. */
+.kg-btn--ok { background: var(--btn-glass-ok-bg); color: var(--ok-deep); box-shadow: 0 0 0 1px var(--ok-line), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(110,176,132,.25), 0 0 0 0 rgba(255,255,255,0), 0 0 0 0 rgba(110,176,132,0), 0 6px 16px rgba(47,125,71,.14); }
+.kg-btn--no { background: var(--btn-glass-no-bg); color: var(--no-deep); box-shadow: 0 0 0 1px var(--no-line), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(214,140,130,.25), 0 0 0 0 rgba(255,255,255,0), 0 0 0 0 rgba(214,140,130,0), 0 6px 16px rgba(155,63,54,.14); }
+.kg-btn--no:hover, .kg-btn--no:active, .kg-btn--no:focus-visible { color: var(--no-deep); box-shadow: 0 0 0 1px var(--no-line), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(214,140,130,.2), 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(214,140,130,.55), 0 4px 10px rgba(92,40,30,.06); }
+.kg-btn--ok:hover, .kg-btn--ok:active, .kg-btn--ok:focus-visible { color: var(--ok-deep); box-shadow: 0 0 0 1px var(--ok-line), inset 0 1px 0 #fff, inset 0 -1px 0 rgba(110,176,132,.2), 0 0 0 4px rgba(255,255,255,.6), 0 0 0 5px rgba(110,176,132,.55), 0 4px 10px rgba(30,92,52,.06); }
 .kg-pill { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; border: 1px solid transparent; }
 .kg-pill--expired { background: var(--st-expired-bg); border-color: var(--st-expired-line); color: var(--st-expired-fg); }
 .kg-pill--soon { background: var(--st-soon-bg); border-color: var(--st-soon-line); color: var(--st-soon-fg); }
 .kg-pill--low { background: var(--st-low-bg); border-color: var(--st-low-line); color: var(--st-low-fg); }
 .kg-pill--routine { background: var(--st-routine-bg); border-color: var(--st-routine-line); color: var(--st-routine-fg); }
+/* Status filter chips (Stock levels, Record). Every chip always wears its colour: Low = yellow,
+   Expiring = dark yellow, Out = lighter red, Expired = dark red. The pressed chip sinks in (inner shadow, slight
+   shrink, deeper tint). The count is a thin number beside the word, not a bubble, so the chips stay even. */
+.kg-tone--low { --tone-fg: #94700f; --tone-bg: #fbecc0; --tone-wash: rgba(251, 236, 192, 0.5); --tone-line: rgba(226, 192, 96, 0.6); }
+.kg-tone--soon { --tone-fg: #6f4c0c; --tone-bg: #f1dcaa; --tone-wash: rgba(241, 220, 170, 0.5); --tone-line: rgba(190, 146, 62, 0.55); }
+.kg-tone--out { --tone-fg: #c2584c; --tone-bg: #fbe1dd; --tone-wash: rgba(251, 225, 221, 0.5); --tone-line: rgba(228, 160, 150, 0.6); }
+.kg-tone--expired { --tone-fg: #8a2d25; --tone-bg: #f4cdc7; --tone-wash: rgba(244, 205, 199, 0.5); --tone-line: rgba(186, 104, 94, 0.5); }
+button.kg-tone[aria-pressed] { display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; color: var(--tone-fg); background: linear-gradient(160deg, rgba(255, 255, 255, 0.86), var(--tone-wash)); border: 1px solid rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px var(--tone-line), inset 0 1px 0 #fff, 0 2px 6px rgba(30, 52, 92, 0.05); transition: transform 0.18s var(--ease-glass), box-shadow 0.18s var(--ease-glass), background 0.18s var(--ease-glass); }
+button.kg-tone[aria-pressed]:hover { color: var(--tone-fg); box-shadow: 0 0 0 1px var(--tone-line), inset 0 1px 0 #fff, 0 4px 10px rgba(30, 52, 92, 0.08); }
+button.kg-tone[aria-pressed]:active { transform: scale(0.95); }
+button.kg-tone[aria-pressed="true"] { transform: scale(0.97); background: linear-gradient(160deg, var(--tone-wash), var(--tone-bg)); border-color: transparent; box-shadow: 0 0 0 1px var(--tone-line), inset 0 2px 5px rgba(30, 52, 92, 0.14), inset 0 -1px 0 rgba(255, 255, 255, 0.6); }
+button.kg-tone[aria-pressed] > span { display: inline; min-width: 0; height: auto; margin: 0; padding: 0; color: inherit; background: none; border-radius: 0; font-size: 12px; font-weight: 300; letter-spacing: 0; opacity: 0.75; font-variant-numeric: tabular-nums; }
+button.kg-tone[aria-pressed="true"] > span { opacity: 0.9; }
+@media (prefers-reduced-motion: reduce) { button.kg-tone[aria-pressed] { transition: none; } }
+/* Stock-status pills anywhere in the app (Home, Stock levels, Record, New order, Transfer) use the same colours. */
+/* Status dots: one small dot per stock status that has items (filter button, Home dropdowns). */
+.kg-dots { display: inline-flex; flex: none; gap: 4px; }
+.kg-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--tone-fg); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9); }
+span.kg-tone { color: var(--tone-fg); background: linear-gradient(160deg, rgba(255, 255, 255, 0.8), var(--tone-wash)); border-color: var(--tone-line); }
 @media (prefers-reduced-motion: reduce) {
   .kitchen-bottom-nav__item--active::after { animation: none; }
   .kg-lift, .kg-btn, .kg-chip { transition: none; }

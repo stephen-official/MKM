@@ -52,7 +52,9 @@
 .kl-card__note { margin: 10px 0 0; color: var(--muted-2); font-size: 13px; font-weight: 300; }
 .kl-card__foot { display: flex; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(170,186,210,.28); }
 .kl-card__foot .kg-btn { flex: 1; }
-.kl-reject { color: var(--st-expired-fg); }
+/* Incoming transfer: a round cross and a round tick on the right, in the same order as the item boxes. */
+.kl-card__foot.kl-card__foot--respond { flex-direction: row; justify-content: flex-end; gap: 12px; }
+.kl-card__foot--respond .kg-btn { flex: none; width: 48px; height: 48px; padding: 0; border-radius: 50%; }
 
 /* Empty and loading */
 .kl-state { display: flex; min-height: 200px; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 24px; color: var(--muted-2); font-size: 13px; text-align: center; }
