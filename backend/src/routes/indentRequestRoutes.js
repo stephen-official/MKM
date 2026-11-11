@@ -1,3 +1,4 @@
+import { asyncRoute, legacyErrorPolicy } from "../shared/httpErrors.js";
 import express from "express";
 import { notifyKitchen } from "../realtime.js";
 import mongoose from "mongoose";
@@ -38,8 +39,8 @@ export const normalizePositiveItems = (items) => {
 export const userOwnsRequest = (request, user) =>
   String(request.userId) === String(user.sub) && String(request.godownId) === String(user.godownId);
 
-router.post("/", authorize(["user"]), requireAvailableProducts(bodyItemIds), async (req, res) => {
-  try {
+router.post("/", authorize(["user"]), requireAvailableProducts(bodyItemIds), asyncRoute(async (req, res) => {
+
     const items = normalizePositiveItems(req.body.items);
     if (!items) return res.status(400).json({ message: "Add at least one item with a valid quantity" });
     const request = await IndentRequest.create({
@@ -50,13 +51,11 @@ router.post("/", authorize(["user"]), requireAvailableProducts(bodyItemIds), asy
       targetDate: req.body.targetDate || null,
     });
     return res.status(201).json(request);
-  } catch (error) {
-    return res.status(500).json({ message: "Supply request failed", error: error.message });
-  }
-});
 
-router.get("/me", authorize(["user"]), async (req, res) => {
-  try {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Supply request failed", includeError: true })));
+
+router.get("/me", authorize(["user"]), asyncRoute(async (req, res) => {
+
     const requests = await IndentRequest.find({ userId: req.user.sub, godownId: req.user.godownId })
       .populate({
         path: "items.stockItemId",
@@ -65,13 +64,11 @@ router.get("/me", authorize(["user"]), async (req, res) => {
       })
       .sort({ createdAt: -1 });
     return res.json(requests);
-  } catch {
-    return res.status(500).json({ message: "Failed to fetch supply requests" });
-  }
-});
 
-router.get("/", authorize(["admin"]), async (_req, res) => {
-  try {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Failed to fetch supply requests" })));
+
+router.get("/", authorize(["admin"]), asyncRoute(async (_req, res) => {
+
     const requests = await IndentRequest.find()
       .populate("userId", "name")
       .populate("godownId", "name")
@@ -82,13 +79,11 @@ router.get("/", authorize(["admin"]), async (_req, res) => {
       })
       .sort({ createdAt: -1 });
     return res.json(requests);
-  } catch {
-    return res.status(500).json({ message: "Failed to fetch supply requests" });
-  }
-});
 
-router.patch("/:id/confirm", authorize(["admin"]), async (req, res) => {
-  try {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Failed to fetch supply requests" })));
+
+router.patch("/:id/confirm", authorize(["admin"]), asyncRoute(async (req, res) => {
+
     const request = await IndentRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: "Supply request not found" });
     if (request.status !== "pending") return res.status(409).json({ message: "Only pending requests can be reviewed" });
@@ -103,13 +98,11 @@ router.patch("/:id/confirm", authorize(["admin"]), async (req, res) => {
     await request.save();
     notifyKitchen(request.godownId, "indents");
     return res.json({ success: true, request });
-  } catch (error) {
-    return res.status(500).json({ message: "Review failed", error: error.message });
-  }
-});
 
-router.patch("/:id/select-item", authorize(["admin"]), async (req, res) => {
-  try {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Review failed", includeError: true })));
+
+router.patch("/:id/select-item", authorize(["admin"]), asyncRoute(async (req, res) => {
+
     const request = await IndentRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: "Supply request not found" });
     const item = request.items.find((candidate) => String(candidate.stockItemId) === String(req.body.stockItemId));
@@ -119,12 +112,10 @@ router.patch("/:id/select-item", authorize(["admin"]), async (req, res) => {
     await request.save();
     notifyKitchen(request.godownId, "indents");
     return res.json({ success: true, item });
-  } catch (error) {
-    return res.status(500).json({ message: "Item update failed", error: error.message });
-  }
-});
 
-router.post("/:id/receive", authorize(["user", "admin"]), async (req, res) => {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Item update failed", includeError: true })));
+
+router.post("/:id/receive", authorize(["user", "admin"]), asyncRoute(async (req, res) => {
   const session = await mongoose.startSession();
   try {
     const updatedRequest = await stockTransaction(req, session, async () => {
@@ -187,16 +178,13 @@ router.post("/:id/receive", authorize(["user", "admin"]), async (req, res) => {
     notifyKitchen(updatedRequest.godownId, "stock");
     }
     return res.json({ success: true, request: updatedRequest });
-  } catch (error) {
-    if (error.stockCommandError) throw error;
-    return res.status(error.status || 500).json({ message: error.message });
   } finally {
     await session.endSession();
   }
-});
+}, legacyErrorPolicy({ status: 500, respectStatus: true, field: "message" })));
 
-router.put("/:id", authorize(["user"]), requireAvailableProducts(bodyItemIds), async (req, res) => {
-  try {
+router.put("/:id", authorize(["user"]), requireAvailableProducts(bodyItemIds), asyncRoute(async (req, res) => {
+
     const request = await IndentRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: "Supply request not found" });
     if (!userOwnsRequest(request, req.user)) return res.status(403).json({ message: "Forbidden" });
@@ -208,13 +196,11 @@ router.put("/:id", authorize(["user"]), requireAvailableProducts(bodyItemIds), a
     request.targetDate = req.body.targetDate || null;
     await request.save();
     return res.json({ message: "Supply request updated", request });
-  } catch (error) {
-    return res.status(500).json({ message: "Update failed", error: error.message });
-  }
-});
 
-router.patch("/:id/reject", authorize(["admin"]), async (req, res) => {
-  try {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Update failed", includeError: true })));
+
+router.patch("/:id/reject", authorize(["admin"]), asyncRoute(async (req, res) => {
+
     const request = await IndentRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: "Supply request not found" });
     if (!["pending", "confirmed"].includes(request.status)) {
@@ -225,13 +211,11 @@ router.patch("/:id/reject", authorize(["admin"]), async (req, res) => {
     await request.save();
     notifyKitchen(request.godownId, "indents");
     return res.json({ success: true, request });
-  } catch (error) {
-    return res.status(500).json({ message: "Rejection failed", error: error.message });
-  }
-});
 
-router.delete("/:id", authorize(["user", "admin"]), async (req, res) => {
-  try {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Rejection failed", includeError: true })));
+
+router.delete("/:id", authorize(["user", "admin"]), asyncRoute(async (req, res) => {
+
     const request = await IndentRequest.findById(req.params.id);
     if (!request) return res.status(404).json({ message: "Supply request not found" });
     if (isKitchenRole(req.user.role) && !userOwnsRequest(request, req.user)) return res.status(403).json({ message: "Forbidden" });
@@ -241,9 +225,7 @@ router.delete("/:id", authorize(["user", "admin"]), async (req, res) => {
     await request.deleteOne();
     notifyKitchen(request.godownId, "indents");
     return res.json({ success: true, message: "Supply request deleted" });
-  } catch (error) {
-    return res.status(500).json({ message: "Delete failed", error: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Delete failed", includeError: true })));
 
 export const indentRequestRoutes = router;

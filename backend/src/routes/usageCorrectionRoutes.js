@@ -1,3 +1,4 @@
+import { asyncRoute, typedErrorPolicy } from "../shared/httpErrors.js";
 import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
@@ -26,12 +27,7 @@ const kitchenOnly = authorize(["user"]);
 class CorrectionError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
-const send = (res, error) => {
-  if (error.stockCommandError) throw error;
-  if (error instanceof CorrectionError) return res.status(error.status).json({ code: error.code, message: error.message });
-  if (error instanceof CatalogError) return res.status(error.status).json({ code: error.code, message: error.message, products: error.products });
-  return res.status(500).json({ code: "CORRECTION_FAILED", message: error.message });
-};
+const errorPolicy = typedErrorPolicy({ isPublic: (error) => error instanceof CorrectionError || error instanceof CatalogError, extraFields: ["products"], fallbackCode: "CORRECTION_FAILED", useErrorMessage: true });
 
 const lineProduct = { path: "stockItemId", select: "name unitId", populate: { path: "unitId", select: "symbol name" } };
 const populated = (query) => query
@@ -98,8 +94,8 @@ const sameLines = (a, b) => {
 
 // POST / { kind, date, items, consumptionId?, noUsage? } → the kitchen asks for a day to be reopened with this usage, or for a record's lines to be replaced.
 // A product that is no longer available to kitchens may stay or go down (it was already used); only a new or larger line needs an available product.
-usageCorrectionRoutes.post("/", kitchenOnly, async (req, res) => {
-  try {
+usageCorrectionRoutes.post("/", kitchenOnly, asyncRoute(async (req, res) => {
+
     const godownId = req.user.godownId;
     if (!godownId) throw new CorrectionError(400, "NO_KITCHEN", "Your account is not linked to a kitchen");
     const { kind, date, consumptionId = null, items = [], noUsage = null } = req.body || {};
@@ -149,24 +145,20 @@ usageCorrectionRoutes.post("/", kitchenOnly, async (req, res) => {
     io.to("admins").emit("usage_correction_created", { id: created._id, notification });
     notifyKitchen(godownId, "usage");
     return res.status(201).json(await load(created._id));
-  } catch (error) {
-    return send(res, error);
-  }
-});
+
+}, errorPolicy));
 
 // GET /me → this kitchen's corrections, newest first.
-usageCorrectionRoutes.get("/me", kitchenOnly, async (req, res) => {
-  try {
+usageCorrectionRoutes.get("/me", kitchenOnly, asyncRoute(async (req, res) => {
+
     const rows = await populated(UsageCorrection.find({ godownId: req.user.godownId }).sort({ createdAt: -1 }).limit(100)).lean();
     return res.json(rows.map(shape));
-  } catch (error) {
-    return send(res, error);
-  }
-});
+
+}, errorPolicy));
 
 // DELETE /:id → the kitchen takes back its own ask while the admin has not decided.
-usageCorrectionRoutes.delete("/:id", kitchenOnly, async (req, res) => {
-  try {
+usageCorrectionRoutes.delete("/:id", kitchenOnly, asyncRoute(async (req, res) => {
+
     if (!mongoose.isValidObjectId(req.params.id)) throw new CorrectionError(404, "NOT_FOUND", "Correction not found");
     const row = await UsageCorrection.findOne({ _id: req.params.id, godownId: req.user.godownId });
     if (!row) throw new CorrectionError(404, "NOT_FOUND", "Correction not found");
@@ -175,21 +167,17 @@ usageCorrectionRoutes.delete("/:id", kitchenOnly, async (req, res) => {
     io.to("admins").emit("usage_correction_withdrawn", { id: row._id });
     notifyKitchen(req.user.godownId, "usage");
     return res.json({ ok: true });
-  } catch (error) {
-    return send(res, error);
-  }
-});
+
+}, errorPolicy));
 
 // GET /?status=pending → every kitchen's corrections for the admin.
-usageCorrectionRoutes.get("/", adminOnly, async (req, res) => {
-  try {
+usageCorrectionRoutes.get("/", adminOnly, asyncRoute(async (req, res) => {
+
     const status = ["pending", "approved", "rejected"].includes(req.query.status) ? req.query.status : null;
     const rows = await populated(UsageCorrection.find(status ? { status } : {}).sort({ createdAt: -1 }).limit(200)).lean();
     return res.json(rows.map(shape));
-  } catch (error) {
-    return send(res, error);
-  }
-});
+
+}, errorPolicy));
 
 const loadPending = async (id, session) => {
   if (!mongoose.isValidObjectId(id)) throw new CorrectionError(404, "NOT_FOUND", "Correction not found");
@@ -253,7 +241,7 @@ const apply = async (row, user, session) => {
 };
 
 // POST /:id/approve { note? } → the change is made (day reopened and usage recorded, or the record's lines replaced).
-usageCorrectionRoutes.post("/:id/approve", adminOnly, async (req, res) => {
+usageCorrectionRoutes.post("/:id/approve", adminOnly, asyncRoute(async (req, res) => {
   const session = await mongoose.startSession();
   try {
     const row = await stockTransaction(req, session, async () => {
@@ -263,23 +251,19 @@ usageCorrectionRoutes.post("/:id/approve", adminOnly, async (req, res) => {
     });
     if (!req.stockCommandReplayed) tellKitchen(row);
     return res.json(await load(row._id));
-  } catch (error) {
-    return send(res, error);
   } finally {
     await session.endSession();
   }
-});
+}, errorPolicy));
 
 // POST /:id/reject { note } → nothing changes; the kitchen sees the note.
-usageCorrectionRoutes.post("/:id/reject", adminOnly, async (req, res) => {
-  try {
+usageCorrectionRoutes.post("/:id/reject", adminOnly, asyncRoute(async (req, res) => {
+
     const row = await loadPending(req.params.id);
     const note = String(req.body?.note || "").trim().slice(0, 300);
     if (!note) throw new CorrectionError(400, "NOTE_REQUIRED", "Tell the kitchen why");
     const saved = await decide(row, req.user, { status: "rejected", decisionNote: note });
     tellKitchen(saved);
     return res.json(await load(saved._id));
-  } catch (error) {
-    return send(res, error);
-  }
-});
+
+}, errorPolicy));

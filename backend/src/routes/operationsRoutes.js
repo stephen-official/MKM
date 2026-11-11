@@ -1,3 +1,4 @@
+import { asyncRoute, legacyErrorPolicy } from "../shared/httpErrors.js";
 import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
@@ -45,8 +46,8 @@ const suppliersFor = async (godownId) => {
 };
 
 // --- 1. KITCHEN STOCK FETCH ---
-operationsRoutes.get("/my-kitchen-stock", authorize(["user", "admin"]), async (req, res) => {
-  try {
+operationsRoutes.get("/my-kitchen-stock", authorize(["user", "admin"]), asyncRoute(async (req, res) => {
+
     const godownId = req.user.godownId;
     if (!godownId) return res.status(400).json({ error: "User not assigned to a godown" });
     const [expiryLots, suppliers] = await Promise.all([expiryLotsFor(godownId), suppliersFor(godownId)]);
@@ -85,10 +86,8 @@ select: "name stockGroupId unitId imageUrl itemType pricePerUnit soldInPacks pac
 }));
 
     res.json(formatted);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "error" })));
 
 // Keep both /api and /api/operations aliases through this router.
 operationsRoutes.use(consumptionRoutes);
@@ -100,8 +99,8 @@ operationsRoutes.use(transferRoutes);
 operationsRoutes.get(
   "/godown-stocks",
   authorize(["admin", "user"]),
-  async (req, res) => {
-    try {
+  asyncRoute(async (req, res) => {
+
      let filter = {};
 
 if (isKitchenRole(req.user.role)) {
@@ -134,20 +133,14 @@ const stocks = await GodownStock.find(filter)
         .sort({ createdAt: -1 });
 
       res.json(stocks);
-    } catch (err) {
-      res.status(500).json({
-        error: err.message
-      });
-    }
-  }
+
+  }, legacyErrorPolicy({ status: 500, field: "error" }))
 );
 // --- 6. NOTIFICATIONS ---
-operationsRoutes.get("/notifications", authorize(["admin", "user"]), async (req, res) => {
-  try {
+operationsRoutes.get("/notifications", authorize(["admin", "user"]), asyncRoute(async (req, res) => {
+
     const filter = isAdminRole(req.user.role) ? {} : { "payload.godownId": req.user.godownId };
     res.json(await Notification.find(filter).sort({ createdAt: -1 }));
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "error" })));
 

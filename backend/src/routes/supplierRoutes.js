@@ -1,3 +1,4 @@
+import { asyncRoute, typedErrorPolicy } from "../shared/httpErrors.js";
 import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
@@ -10,11 +11,7 @@ const adminOnly = authorize(["admin"]);
 
 const CODES = { 400: "INVALID_INPUT", 404: "NOT_FOUND", 409: "CONFLICT" };
 const fail = (status, message, code = CODES[status]) => Object.assign(new Error(message), { status, code });
-const sendError = (res, error) => {
-  if (error.code === 11000) return res.status(409).json({ code: "DUPLICATE_NAME", message: "A supplier with this name already exists" });
-  const status = error.status || 500;
-  return res.status(status).json({ code: error.code || CODES[status] || "SERVER_ERROR", message: status === 500 ? "Suppliers are unavailable" : error.message });
-};
+const errorPolicy = typedErrorPolicy({ fallbackMessage: "Suppliers are unavailable", useErrorCode: true, specials: [{ matches: (error) => error.code === 11000, status: 409, code: "DUPLICATE_NAME", message: "A supplier with this name already exists" }] });
 
 const serialize = (doc) => {
   const { _id, name, fssaiLicence, phone, active, createdAt, updatedAt } = doc;
@@ -40,28 +37,28 @@ const readFields = (body, creating) => {
   return out;
 };
 
-supplierRoutes.get("/", adminOnly, async (req, res) => {
-  try {
+supplierRoutes.get("/", adminOnly, asyncRoute(async (req, res) => {
+
     const filter = req.query.status === "all" ? {} : { active: true };
     const rows = await Supplier.find(filter).sort({ name: 1 }).lean();
     return res.json(rows.map(serialize));
-  } catch (error) { return sendError(res, error); }
-});
 
-supplierRoutes.post("/", adminOnly, async (req, res) => {
-  try {
+}, errorPolicy));
+
+supplierRoutes.post("/", adminOnly, asyncRoute(async (req, res) => {
+
     const fields = readFields(req.body || {}, true);
     const created = await Supplier.create({ ...fields, createdBy: req.user.sub, updatedBy: req.user.sub });
     return res.status(201).json(serialize(created));
-  } catch (error) { return sendError(res, error); }
-});
 
-supplierRoutes.put("/:id", adminOnly, async (req, res) => {
-  try {
+}, errorPolicy));
+
+supplierRoutes.put("/:id", adminOnly, asyncRoute(async (req, res) => {
+
     if (!mongoose.isValidObjectId(req.params.id)) throw fail(404, "Supplier not found");
     const fields = readFields(req.body || {}, false);
     const updated = await Supplier.findByIdAndUpdate(req.params.id, { ...fields, updatedBy: req.user.sub }, { new: true, runValidators: true });
     if (!updated) throw fail(404, "Supplier not found");
     return res.json(serialize(updated));
-  } catch (error) { return sendError(res, error); }
-});
+
+}, errorPolicy));

@@ -1,3 +1,4 @@
+import { asyncRoute, typedErrorPolicy } from "../shared/httpErrors.js";
 import express from "express";
 import { notifyKitchens } from "../realtime.js";
 import mongoose from "mongoose";
@@ -9,7 +10,7 @@ import { isPresetSymbol, presetFor, refreshOfferedUnits } from "../catalog/units
 import { StockGroup } from "../models/InventoryModels.js";
 import { isSuperAdmin } from "../utils/roles.js";
 import {
-  CatalogError, assignMissingProductNos, buildProductUpdate, ensurePresetUnits, kitchensHolding, sendCatalogError, serializeProduct
+  CatalogError, assignMissingProductNos, buildProductUpdate, ensurePresetUnits, kitchensHolding, catalogErrorPolicy, serializeProduct
 } from "../catalog/productService.js";
 import { MAX_PACK_NAME_LENGTH, PRESET_PACK_TYPES, canonicalPackName, isPresetPackType, packNameMatch, summarizePackTypeUsage } from "../catalog/packTypes.js";
 import { spellingHints } from "../catalog/spellcheck.js";
@@ -40,19 +41,17 @@ const loadOne = async (id) => {
   return serializeProduct(product, await kitchensHolding([product._id]));
 };
 
-productRoutes.get("/units", adminOnly, async (_req, res) => {
-  try {
+productRoutes.get("/units", adminOnly, asyncRoute(async (_req, res) => {
+
     const units = await ensurePresetUnits();
     const used = new Map((await StockItem.aggregate([{ $group: { _id: "$unitId", n: { $sum: 1 } } }])).map((row) => [String(row._id), row.n]));
     res.json(units.map((unit) => ({ _id: unit._id, symbol: unit.symbol, name: unit.name, builtIn: isPresetSymbol(unit.symbol), productCount: used.get(String(unit._id)) || 0 })));
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
+
+}, catalogErrorPolicy));
 
 // Settings › Units: a super-admin adds a unit products may use. Kitchens count in it exactly, with no conversion.
-productRoutes.post("/units", superAdminOnly, async (req, res) => {
-  try {
+productRoutes.post("/units", superAdminOnly, asyncRoute(async (req, res) => {
+
     const symbol = String(req.body?.symbol ?? "").trim();
     const name = String(req.body?.name ?? "").trim();
     if (!symbol || symbol.length > 12 || /\s/.test(symbol)) throw new CatalogError(400, "UNIT_SYMBOL", "Give a short unit, up to 12 letters with no spaces, e.g. bunch.");
@@ -66,11 +65,11 @@ productRoutes.post("/units", superAdminOnly, async (req, res) => {
     const unit = await Unit.findOneAndUpdate({ symbol }, { $set: { name, offered: true }, $setOnInsert: { subUnits: [] } }, { new: true, upsert: true }).lean();
     await refreshOfferedUnits();
     res.status(201).json({ _id: unit._id, symbol: unit.symbol, name: unit.name, builtIn: false, productCount: await StockItem.countDocuments({ unitId: unit._id }) });
-  } catch (error) { sendCatalogError(res, error); }
-});
 
-productRoutes.delete("/units/:id", superAdminOnly, async (req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRoutes.delete("/units/:id", superAdminOnly, asyncRoute(async (req, res) => {
+
     if (!mongoose.isValidObjectId(req.params.id)) throw new CatalogError(404, "NOT_FOUND", "Unit not found.");
     const unit = await Unit.findById(req.params.id).lean();
     if (!unit || (!unit.offered && !isPresetSymbol(unit.symbol))) throw new CatalogError(404, "NOT_FOUND", "Unit not found.");
@@ -80,8 +79,8 @@ productRoutes.delete("/units/:id", superAdminOnly, async (req, res) => {
     await Unit.deleteOne({ _id: unit._id });
     await refreshOfferedUnits();
     res.json({ message: "Removed" });
-  } catch (error) { sendCatalogError(res, error); }
-});
+
+}, catalogErrorPolicy));
 
 // Download names read Section_Date_MKM, e.g. Products_02-Nov-2026_MKM.xlsx (today in business time). Keep in step with admin-web businessTime.js downloadName.
 const fileDate = (now = new Date()) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", day: "2-digit", month: "short", year: "numeric" }).format(now).replace(/ /g, "-");
@@ -117,16 +116,16 @@ const sendWorkbook = async (res, workbook, filename) => {
 };
 
 // Export and template are the same workbook: export it, edit it, upload it back through Bulk add.
-productRoutes.get("/export/excel", adminOnly, async (_req, res) => {
-  try {
+productRoutes.get("/export/excel", adminOnly, asyncRoute(async (_req, res) => {
+
     await assignMissingProductNos();
     const docs = await StockItem.find().populate("unitId", "name symbol").populate("stockGroupId", "name").sort({ name: 1 }).lean();
     await sendWorkbook(res, await createProductWorkbook(docs.map((doc) => serializeProduct(doc)), await workbookLists()), downloadName("Products", "xlsx"));
-  } catch (error) { sendCatalogError(res, error); }
-});
 
-productRoutes.get("/export/pdf", adminOnly, async (_req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRoutes.get("/export/pdf", adminOnly, asyncRoute(async (_req, res) => {
+
     await assignMissingProductNos();
     const docs = await StockItem.find().populate("unitId", "name symbol").populate("stockGroupId", "name").lean();
     const products = docs.map((doc) => serializeProduct(doc))
@@ -135,17 +134,17 @@ productRoutes.get("/export/pdf", adminOnly, async (_req, res) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${downloadName("Products", "pdf")}"`);
     res.send(pdf);
-  } catch (error) { sendCatalogError(res, error); }
-});
 
-productRoutes.get("/import-template", adminOnly, async (_req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRoutes.get("/import-template", adminOnly, asyncRoute(async (_req, res) => {
+
     await sendWorkbook(res, await createProductWorkbook([], await workbookLists()), downloadName("Products-template", "xlsx"));
-  } catch (error) { sendCatalogError(res, error); }
-});
 
-productRoutes.post("/import", adminOnly, workbookUpload.single("file"), async (req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRoutes.post("/import", adminOnly, workbookUpload.single("file"), asyncRoute(async (req, res) => {
+
     if (!req.file) throw new CatalogError(400, "IMPORT_FILE_REQUIRED", "Choose an Excel (.xlsx) file to upload.");
     const ExcelJS = (await import("exceljs")).default;
     const workbook = new ExcelJS.Workbook();
@@ -212,23 +211,20 @@ productRoutes.post("/import", adminOnly, workbookUpload.single("file"), async (r
     }
     const failed = results.filter((result) => result.action === "error");
     res.json({ imported: results.length - failed.length, failed: failed.length, results });
-  } catch (error) { sendCatalogError(res, error); }
-});
 
-productRoutes.post("/upload-image", adminOnly, upload.single("image"), async (req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRoutes.post("/upload-image", adminOnly, upload.single("image"), asyncRoute(async (req, res) => {
+
     if (!req.file) throw new CatalogError(400, "IMAGE_REQUIRED", "Choose an image to upload.");
     const imageUrl = await storePhoto({ buffer: req.file.buffer, mimetype: req.file.mimetype, folder: "products", baseUrl: `${req.protocol}://${req.get("host")}` });
     return res.status(201).json({ imageUrl });
-  } catch (error) {
-    if (error.status === 400) return res.status(400).json({ code: error.code || "INVALID_INPUT", message: error.message });
-    return sendCatalogError(res, error);
-  }
-});
+
+}, typedErrorPolicy({ isPublic: (error) => error.status === 400, fallbackPolicy: catalogErrorPolicy })));
 
 /** The master list. `status` narrows it; counts always cover the whole catalog so the tabs can show them. */
-productRoutes.get("/", adminOnly, async (req, res) => {
-  try {
+productRoutes.get("/", adminOnly, asyncRoute(async (req, res) => {
+
     const status = STATUSES.includes(req.query.status) ? req.query.status : "all";
     const q = String(req.query.q || "").trim().toLowerCase();
     const docs = await StockItem.find().populate("unitId", "name symbol").populate("stockGroupId", "name").sort({ name: 1 }).collation({ locale: "en" }).lean();
@@ -250,20 +246,18 @@ productRoutes.get("/", adminOnly, async (req, res) => {
       || (status === "incomplete" && !p.archived && !p.available) || (status === "fssai" && p.fssaiMissing) || (status === "nophoto" && !p.archived && !p.imageUrl) || (status === "archived" && p.archived);
     const matchesQuery = (p) => !q || [p.name, p.brand, p.productCode, p.group?.name].some((text) => String(text || "").toLowerCase().includes(q));
     res.json({ items: all.filter((p) => matchesStatus(p) && matchesQuery(p)), counts });
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
+
+}, catalogErrorPolicy));
 
 // Settings › Pack names: the built-in names, then the custom ones (added here or typed on a product).
-productRoutes.get("/pack-names", adminOnly, async (_req, res) => {
-  try {
-    res.json([...PRESET_PACK_TYPES.map((name) => ({ name, builtIn: true })), ...(await customPackNames()).map(({ name, productCount }) => ({ name, builtIn: false, productCount }))]);
-  } catch (error) { sendCatalogError(res, error); }
-});
+productRoutes.get("/pack-names", adminOnly, asyncRoute(async (_req, res) => {
 
-productRoutes.post("/pack-names", superAdminOnly, async (req, res) => {
-  try {
+    res.json([...PRESET_PACK_TYPES.map((name) => ({ name, builtIn: true })), ...(await customPackNames()).map(({ name, productCount }) => ({ name, builtIn: false, productCount }))]);
+
+}, catalogErrorPolicy));
+
+productRoutes.post("/pack-names", superAdminOnly, asyncRoute(async (req, res) => {
+
     const name = canonicalPackName(req.body?.name);
     if (!name || name.length > MAX_PACK_NAME_LENGTH) throw new CatalogError(400, "PACK_NAME", `Give a pack name of up to ${MAX_PACK_NAME_LENGTH} characters, e.g. Sack.`);
     if (isPresetPackType(name) || (await customPackNames()).some((row) => row.name.toLowerCase() === name.toLowerCase())) {
@@ -271,16 +265,14 @@ productRoutes.post("/pack-names", superAdminOnly, async (req, res) => {
     }
     await PackName.create({ name, key: name.toLowerCase() });
     res.status(201).json({ name, builtIn: false, productCount: 0 });
-  } catch (error) { sendCatalogError(res, error); }
-});
 
-productRoutes.get("/:id", adminOnly, async (req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRoutes.get("/:id", adminOnly, asyncRoute(async (req, res) => {
+
     res.json(await loadOne(req.params.id));
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
+
+}, catalogErrorPolicy));
 
 // Custom pack types. Presets are fixed and can never be retired.
 const packTypeName = (raw) => {
@@ -295,51 +287,43 @@ const packTypeUsage = async (name) => {
 };
 
 // Advisory only: never blocks a save. Presets are skipped.
-productRoutes.get("/pack-types/spellcheck", adminOnly, async (req, res) => {
-  try {
+productRoutes.get("/pack-types/spellcheck", adminOnly, asyncRoute(async (req, res) => {
+
     const name = canonicalPackName(req.query.name);
     res.json({ name, hints: !name || isPresetPackType(name) ? [] : await spellingHints(name) });
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
 
-productRoutes.get("/pack-types/usage", adminOnly, async (req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRoutes.get("/pack-types/usage", adminOnly, asyncRoute(async (req, res) => {
+
     const name = packTypeName(req.query.name);
     res.json({ name, products: await packTypeUsage(name) });
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
+
+}, catalogErrorPolicy));
 
 // Retires a custom pack type: its packs are removed from every product. A product left with bulk ordering on and
 // no pack becomes incomplete ("needs a pack"), which keeps it away from kitchens until a pack is added.
 // Past orders keep their own copy of the pack name, size and price, so history is unaffected.
-productRoutes.post("/pack-types/remove", adminOnly, async (req, res) => {
-  try {
+productRoutes.post("/pack-types/remove", adminOnly, asyncRoute(async (req, res) => {
+
     const name = packTypeName(req.body?.name);
     const products = await packTypeUsage(name);
     await StockItem.updateMany({ _id: { $in: products.map((p) => p._id) } }, { $pull: { packs: { name: packNameMatch(name) } } });
     await PackName.deleteOne({ key: name.toLowerCase() }); // a name added in Settings leaves the list too
     res.json({ name, updated: products.length, disabled: products.filter((p) => p.disabled).length, products });
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
 
-productRoutes.post("/", adminOnly, async (req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRoutes.post("/", adminOnly, asyncRoute(async (req, res) => {
+
     const update = await buildProductUpdate(req.body || {}, { canPrice: isSuperAdmin(req.user.role), userId: req.user.sub, requirePhoto: true });
     const created = await StockItem.create(update);
     res.status(201).json(await loadOne(created._id));
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
 
-productRoutes.put("/:id", adminOnly, async (req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRoutes.put("/:id", adminOnly, asyncRoute(async (req, res) => {
+
     if (!mongoose.isValidObjectId(req.params.id)) throw new CatalogError(404, "NOT_FOUND", "Product not found.");
     const existing = await StockItem.findById(req.params.id).lean();
     if (!existing) throw new CatalogError(404, "NOT_FOUND", "Product not found.");
@@ -349,14 +333,12 @@ productRoutes.put("/:id", adminOnly, async (req, res) => {
       ? { $set: { ...update, productCode } }
       : { $set: update, $unset: { productCode: 1 } });
     res.json(await loadOne(existing._id));
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
+
+}, catalogErrorPolicy));
 
 // Archiving is manual and super-admin only, and never while any kitchen still holds the product.
-productRoutes.post("/:id/archive", superAdminOnly, async (req, res) => {
-  try {
+productRoutes.post("/:id/archive", superAdminOnly, asyncRoute(async (req, res) => {
+
     const product = await loadOne(req.params.id);
     if (product.archived) return res.json(product);
     if (product.kitchensHolding > 0) {
@@ -364,17 +346,13 @@ productRoutes.post("/:id/archive", superAdminOnly, async (req, res) => {
     }
     await StockItem.updateOne({ _id: product._id }, { $set: { archived: true, archivedAt: new Date(), archivedBy: req.user.sub } });
     res.json(await loadOne(product._id));
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
 
-productRoutes.post("/:id/restore", superAdminOnly, async (req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRoutes.post("/:id/restore", superAdminOnly, asyncRoute(async (req, res) => {
+
     const product = await loadOne(req.params.id);
     await StockItem.updateOne({ _id: product._id }, { $set: { archived: false, archivedAt: null, archivedBy: null } });
     res.json(await loadOne(product._id));
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
+
+}, catalogErrorPolicy));

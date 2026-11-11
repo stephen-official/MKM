@@ -1,11 +1,12 @@
+import { asyncRoute, legacyErrorPolicy } from "../shared/httpErrors.js";
 import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
-import { 
-  GodownStock, 
-  Indent, 
-  Notification, 
-  PurchaseOrder 
+import {
+  GodownStock,
+  Indent,
+  Notification,
+  PurchaseOrder
 } from "../models/FlowModels.js";
 import { packQuantityMatchesBase, packSnapshot } from "../catalog/packaging.js";
 import { StockItem } from "../models/InventoryModels.js";
@@ -27,31 +28,29 @@ const anyUser = authorize(["admin", "user"]);
  * @route   GET /api/procurement/stock-balance
  * @desc    Checks available quantity in a specific godown.
  */
-procurementRoutes.get("/stock-balance", anyUser, async (req, res) => {
-  try {
+procurementRoutes.get("/stock-balance", anyUser, asyncRoute(async (req, res) => {
+
     const { godownId, stockItemId } = req.query;
-    
+
     if (!godownId || !stockItemId) {
       return res.status(400).json({ message: "Missing godownId or stockItemId" });
     }
 
     const stock = await GodownStock.findOne({ godownId, stockItemId });
-    
-    res.json({ 
-      availableQty: stock ? stock.qtyBaseUnit : 0 
+
+    res.json({
+      availableQty: stock ? stock.qtyBaseUnit : 0
     });
-  } catch (error) {
-    res.status(500).json({ message: "Balance check failed", error: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Balance check failed", includeError: true })));
 
 /**
  * @route   GET /api/procurement/my-stock
  * @desc    Fetch user-specific godown stock with full item details.
  */
-procurementRoutes.get("/my-stock", anyUser, async (req, res) => {
-  try {
-    const userGodownId = req.user.godownId; 
+procurementRoutes.get("/my-stock", anyUser, asyncRoute(async (req, res) => {
+
+    const userGodownId = req.user.godownId;
     if (!userGodownId) {
       return res.status(403).json({ message: "No Godown assigned to this user." });
     }
@@ -64,36 +63,30 @@ procurementRoutes.get("/my-stock", anyUser, async (req, res) => {
           { path: "stockGroupId", select: "name" } // Integrated Group for Client Web
         ]
       });
-      
+
     res.json(docs);
-  } catch (error) {
-    res.status(500).json({ message: "Fetch failed", error: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Fetch failed", includeError: true })));
 
 // --- INDENT ROUTES ---
 
-procurementRoutes.get("/indents", adminOnly, async (_req, res) => {
-  try {
+procurementRoutes.get("/indents", adminOnly, asyncRoute(async (_req, res) => {
+
     const indents = await Indent.find().sort({ createdAt: -1 });
     res.json(indents);
-  } catch (error) {
-    res.status(500).json({ message: "Fetch failed", error: error.message });
-  }
-});
 
-procurementRoutes.get("/indents/:id/preview", adminOnly, async (req, res) => {
-  try {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Fetch failed", includeError: true })));
+
+procurementRoutes.get("/indents/:id/preview", adminOnly, asyncRoute(async (req, res) => {
+
     const indent = await Indent.findById(req.params.id).populate("items.stockItemId");
     if (!indent) return res.status(404).json({ message: "Indent not found" });
     return res.json(indent);
-  } catch (error) {
-    res.status(500).json({ message: "Preview failed", error: error.message });
-  }
-});
 
-procurementRoutes.post("/indents", adminOnly, async (req, res) => {
-  try {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Preview failed", includeError: true })));
+
+procurementRoutes.post("/indents", adminOnly, asyncRoute(async (req, res) => {
+
     const items = (req.body.items || []).map((item) => ({ ...item, ...packSnapshot(item) }));
     if (!items.length || items.some((item) => !(Number(item.orderedQty) > 0) || !packQuantityMatchesBase(item, item.orderedQty))) {
       return res.status(400).json({ message: "Add valid base-unit or pack quantities" });
@@ -109,41 +102,35 @@ procurementRoutes.post("/indents", adminOnly, async (req, res) => {
       totalAmount
     });
     res.status(201).json(indent);
-  } catch (error) {
-    res.status(500).json({ message: "Indent creation failed", error: error.message });
-  }
-});
 
-procurementRoutes.post("/indents/:id/mark-purchased", adminOnly, async (req, res) => {
-  try {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Indent creation failed", includeError: true })));
+
+procurementRoutes.post("/indents/:id/mark-purchased", adminOnly, asyncRoute(async (req, res) => {
+
     const indent = await Indent.findByIdAndUpdate(
-      req.params.id, 
-      { status: "purchased" }, 
+      req.params.id,
+      { status: "purchased" },
       { new: true }
     );
     res.json(indent);
-  } catch (error) {
-    res.status(500).json({ message: "Update failed", error: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Update failed", includeError: true })));
 
 // --- PURCHASE ORDER ROUTES ---
 
-procurementRoutes.get("/purchase-orders", adminOnly, async (_req, res) => {
-  try {
+procurementRoutes.get("/purchase-orders", adminOnly, asyncRoute(async (_req, res) => {
+
     const orders = await PurchaseOrder.find()
       .populate({
         path: 'indentId',
-        select: 'indentNo createdAt' 
-      }) 
-      .sort({ updatedAt: -1 }); 
+        select: 'indentNo createdAt'
+      })
+      .sort({ updatedAt: -1 });
     res.json(orders);
-  } catch (error) {
-    res.status(500).json({ message: "Fetch failed", error: error.message });
-  }
-});
 
-procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Fetch failed", includeError: true })));
+
+procurementRoutes.post("/purchase-orders", adminOnly, asyncRoute(async (req, res) => {
   const session = await mongoose.startSession();
   try {
     const created = await stockTransaction(req, session, async () => {
@@ -155,21 +142,21 @@ procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
         (sum, it) => sum + (Number(it.receivedQty) * Number(it.unitPrice) || 0),
         0
       );
-      
+
       const po = await PurchaseOrder.create(
-        [{ 
-          indentId: req.body.indentId, 
+        [{
+          indentId: req.body.indentId,
           items,
           totalAmount,
           receivedAt: req.body.receivedAt || new Date(),
-          status: "pending" 
-        }], 
+          status: "pending"
+        }],
         { session }
       );
 
       await Indent.findByIdAndUpdate(
-        req.body.indentId, 
-        { status: "stock_received" }, 
+        req.body.indentId,
+        { status: "stock_received" },
         { session }
       );
       // Catalog prices are super-admin only (see catalog/productService.js); an admin's PO keeps its price on the PO and batches.
@@ -196,13 +183,10 @@ procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
     });
     // Reply only after the commit, so a failed commit is never reported as created.
     res.status(201).json(created);
-  } catch (error) {
-    if (error.stockCommandError) throw error;
-    res.status(error.status || 500).json({ message: "PO Creation failed", error: error.message });
   } finally {
     await session.endSession();
   }
-});
+}, legacyErrorPolicy({ status: 500, respectStatus: true, field: "message", message: "PO Creation failed", includeError: true })));
 
 // --- DISTRIBUTION & STOCK ROUTES ---
 
@@ -213,8 +197,8 @@ procurementRoutes.use(distributionRoutes);
  * @desc    Get all stocks across all godowns.
  * CRITICAL UPDATE: Multi-level population for Stock Group.
  */
-procurementRoutes.get("/godown-stocks", adminOnly, async (_req, res) => {
-  try {
+procurementRoutes.get("/godown-stocks", adminOnly, asyncRoute(async (_req, res) => {
+
     const docs = await GodownStock.find()
       .populate({
         path: "stockItemId",
@@ -226,18 +210,16 @@ procurementRoutes.get("/godown-stocks", adminOnly, async (_req, res) => {
       .populate("godownId")
       .sort({ updatedAt: -1 });
     res.json(docs);
-  } catch (error) {
-    res.status(500).json({ message: "Fetch stocks failed", error: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Fetch stocks failed", includeError: true })));
 
 /**
  * @route   GET /api/procurement/godown-stocks/:godownId
  * @desc    Get stock for a specific godown.
  * CRITICAL UPDATE: Multi-level population for Stock Group.
  */
-procurementRoutes.get("/godown-stocks/:godownId", adminOnly, async (req, res) => {
-  try {
+procurementRoutes.get("/godown-stocks/:godownId", adminOnly, asyncRoute(async (req, res) => {
+
     const docs = await GodownStock.find({ godownId: req.params.godownId })
       .populate({
         path: "stockItemId",
@@ -247,13 +229,11 @@ procurementRoutes.get("/godown-stocks/:godownId", adminOnly, async (req, res) =>
         ]
       });
     res.json(docs);
-  } catch (error) {
-    res.status(500).json({ message: "Fetch failed", error: error.message });
-  }
-});
 
-procurementRoutes.get("/stock-batches", adminOnly, async (req, res) => {
-  try {
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Fetch failed", includeError: true })));
+
+procurementRoutes.get("/stock-batches", adminOnly, asyncRoute(async (req, res) => {
+
     const filter = { remainingQtyBaseUnit: { $gt: 0 } };
     if (req.query.godownId) filter.godownId = req.query.godownId;
     if (req.query.stockItemId) filter.stockItemId = req.query.stockItemId;
@@ -262,10 +242,8 @@ procurementRoutes.get("/stock-batches", adminOnly, async (req, res) => {
       .populate({ path: "stockItemId", select: "name unitId", populate: { path: "unitId", select: "symbol" } })
       .sort({ receivedAt: 1, _id: 1 });
     res.json(batches);
-  } catch (error) {
-    res.status(500).json({ message: "Fetch batches failed", error: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Fetch batches failed", includeError: true })));
 
 procurementRoutes.use(stockAdjustmentRoutes);
 
@@ -273,11 +251,9 @@ procurementRoutes.use(stockAdjustmentRoutes);
  * @route   GET /api/procurement/purchase-orders/purchased-indents
  * @desc    Fetches all indents with a status of 'purchased'
  */
-procurementRoutes.get("/purchase-orders/purchased-indents", adminOnly, async (_req, res) => {
-  try {
+procurementRoutes.get("/purchase-orders/purchased-indents", adminOnly, asyncRoute(async (_req, res) => {
+
     const indents = await Indent.find({ status: "purchased" }).sort({ createdAt: -1 });
     res.json(indents);
-  } catch (error) {
-    res.status(500).json({ message: "Fetch purchased indents failed", error: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Fetch purchased indents failed", includeError: true })));

@@ -22,6 +22,7 @@ Services receive explicit inputs and actor information, not Express request/resp
 - `distributions`: allocations, leftover reuse and distribution queries.
 - `stock-adjustments`: opening balances, thresholds and stock removal. This does not introduce a general quantity-adjustment API.
 - `operations`: population configuration shared by the domain routers.
+- `stock-commands`: durable command claims and retry results saved with the stock transaction. The HTTP header adapter lives in `shared/stockCommandHttp.js`; services receive a plain command context.
 
 The operations parent router mounts domain routers at `/`, retaining both `/api` and `/api/operations` aliases. Procurement mounts distributions and stock adjustments at `/` under `/api/procurement`. Feature-gate tests recursively enumerate these child routers.
 
@@ -34,3 +35,11 @@ Send HTTP success and realtime notifications after commit. The legacy low-stock 
 ## Enforcement
 
 Run `npm --prefix backend run lint`. The backend ESLint configuration enforces import direction and prohibits cross-feature repository imports. It deliberately does not enforce formatting or apply a general lint cleanup to legacy files. Keep route-coverage, authorization, stock-transaction and kitchen-price tests green when moving boundaries.
+
+The root `npm run lint` and `npm run check` include the backend boundary rules. See [stock-command retry behavior](STOCK_COMMAND_IDEMPOTENCY.md) before adding a stock-changing endpoint.
+
+## Error handling
+
+Async HTTP handlers use `asyncRoute` and forward failures to the application error middleware. `errorResponse` owns serialization. Routes declare compatibility policies with `legacyErrorPolicy` or `typedErrorPolicy` when an endpoint has an established envelope, status, duplicate-key mapping or text-export error. This retains existing API contracts while removing repeated catch/respond blocks. New endpoints should use the default `{ code, message }` operational-error envelope.
+
+Keep catches that implement local recovery or business decisions, such as handling a malformed import workbook, collecting row errors, or translating a failed correction into `CANNOT_APPLY`. Transaction cleanup belongs in `finally`. Idempotency errors always use their standard status and `{ code, message }` envelope even on legacy endpoints. Unknown failures on routes without a compatibility policy still receive the existing generic global response.

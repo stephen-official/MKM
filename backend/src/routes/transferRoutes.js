@@ -1,3 +1,4 @@
+import { asyncRoute, legacyErrorPolicy } from "../shared/httpErrors.js";
 import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
@@ -13,7 +14,7 @@ transferRoutes.get("/user-transfers/incoming", authorize(["user"]), async (req, 
   res.json(await incomingTransfers(req.user));
 });
 
-transferRoutes.post("/user-transfers/:id/accept", authorize(["user"]), async (req, res) => {
+transferRoutes.post("/user-transfers/:id/accept", authorize(["user"]), asyncRoute(async (req, res) => {
   const session = await mongoose.startSession();
   try {
     const transfer = await stockTransaction(req, session, () => acceptTransfer({ transferId: req.params.id, actor: req.user, session }));
@@ -22,51 +23,39 @@ transferRoutes.post("/user-transfers/:id/accept", authorize(["user"]), async (re
       io.to(transfer.fromGodownId.toString()).emit("transfer_accepted", stripPrices(transfer));
     }
     res.json({ message: "Transfer Accepted" });
-  } catch (error) {
-    if (error.stockCommandError) throw error;
-    res.status(400).json({ error: error.message });
   } finally {
     session.endSession();
   }
-});
+}, legacyErrorPolicy({ status: 400, field: "error" })));
 
-transferRoutes.get("/transfers", authorize(["admin", "user"]), async (req, res) => {
-  try { res.json(await listTransfers(req.user)); }
-  catch (error) { res.status(500).json({ error: error.message }); }
-});
+transferRoutes.get("/transfers", authorize(["admin", "user"]), asyncRoute(async (req, res) => {
+   res.json(await listTransfers(req.user));
+}, legacyErrorPolicy({ status: 500, field: "error" })));
 
-transferRoutes.post("/transfers", authorize(["admin", "user"]), requireAvailableProducts(bodyItemIds), async (req, res) => {
-  try {
+transferRoutes.post("/transfers", authorize(["admin", "user"]), requireAvailableProducts(bodyItemIds), asyncRoute(async (req, res) => {
+
     const transfer = await createTransfer({ input: req.body, actor: req.user });
     for (const id of [transfer.fromGodownId, req.body.toGodownId]) { notifyKitchen(id, "transfers"); notifyKitchen(id, "stock"); }
     io.to(req.body.toGodownId.toString()).emit("new_transfer", stripPrices(transfer));
     res.status(201).json(transfer);
-  } catch (error) { res.status(error.status || 500).json({ error: error.message }); }
-});
 
-transferRoutes.post("/user-transfers/:id/reject", authorize(["user"]), async (req, res) => {
+}, legacyErrorPolicy({ status: 500, respectStatus: true, field: "error" })));
+
+transferRoutes.post("/user-transfers/:id/reject", authorize(["user"]), asyncRoute(async (req, res) => {
   let transfer;
-  try { transfer = await rejectTransfer({ transferId: req.params.id, actor: req.user }); }
-  catch (error) {
-    if (error.status) return res.status(error.status).json({ error: error.message });
-    throw error;
-  }
+   transfer = await rejectTransfer({ transferId: req.params.id, actor: req.user });
   for (const id of [transfer.fromGodownId, transfer.toGodownId]) { notifyKitchen(id, "transfers"); notifyKitchen(id, "stock"); }
   io.to(transfer.fromGodownId.toString()).emit("transfer_rejected", stripPrices(transfer));
   res.json({ message: "Rejected" });
-});
+}, legacyErrorPolicy({ respectStatus: true, unknownMessage: "Internal Server Error" })));
 
 transferRoutes.get("/user-transfers/history", authorize(["user"]), async (req, res) => {
   res.json(await transferHistory(req.user));
 });
 
-transferRoutes.post("/user-transfers", authorize(["user"]), requireAvailableProducts(bodyItemIds), async (req, res) => {
+transferRoutes.post("/user-transfers", authorize(["user"]), requireAvailableProducts(bodyItemIds), asyncRoute(async (req, res) => {
   let transfer;
-  try { transfer = await createKitchenTransfer({ input: req.body, actor: req.user }); }
-  catch (error) {
-    if (error.status) return res.status(error.status).json({ error: error.message });
-    throw error;
-  }
+   transfer = await createKitchenTransfer({ input: req.body, actor: req.user });
   io.to(req.body.toGodownId.toString()).emit("new_transfer", stripPrices(transfer));
   res.status(201).json(transfer);
-});
+}, legacyErrorPolicy({ respectStatus: true, unknownMessage: "Internal Server Error" })));

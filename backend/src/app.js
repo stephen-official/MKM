@@ -167,7 +167,7 @@ export const errorHandler = (err, _req, res, next) => {
     if (err.httpErrorOverrides !== undefined || err.stockCommandError) {
         const response = errorResponse(err, err.httpErrorOverrides);
         if (response.status === 500) console.error(err.stack || err);
-        return res.status(response.status).json(response.body);
+        return response.text ? res.status(response.status).send(response.body) : res.status(response.status).json(response.body);
     }
     const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
     if (status === 500) console.error(err.stack || err);

@@ -7,6 +7,7 @@ import { isAvailable, isValidPrice, missingFields } from "./completeness.js";
 import { UNIT_PRESETS, isOfferedSymbol, isPresetSymbol } from "./units.js";
 import { ALLERGENS, PRODUCT_FORMS, PRODUCT_KINDS, STORAGE_OPTIONS, VEG_MARKS, foodSafetyMissing } from "./foodSafety.js";
 import { escapeRegex } from "../utils/escapeRegex.js";
+import { sendError, typedErrorPolicy } from "../shared/httpErrors.js";
 
 export class CatalogError extends Error {
   constructor(status, code, message, extra = {}) {
@@ -17,13 +18,12 @@ export class CatalogError extends Error {
   }
 }
 
-export const sendCatalogError = (res, error) => {
-  if (error instanceof CatalogError) {
-    return res.status(error.status).json({ code: error.code, message: error.message, ...(error.errors ? { errors: error.errors } : {}) });
-  }
-  if (error?.code === 11000) return res.status(409).json({ code: "DUPLICATE", message: "Another product already uses that name or product code." });
-  return res.status(500).json({ message: error.message });
-};
+export const catalogErrorPolicy = typedErrorPolicy({
+  isPublic: (error) => error instanceof CatalogError,
+  extraFields: ["errors"], includeFallbackCode: false, useErrorMessage: true,
+  specials: [{ matches: (error) => !(error instanceof CatalogError) && error?.code === 11000, status: 409, code: "DUPLICATE", message: "Another product already uses that name or product code." }],
+});
+export const sendCatalogError = (res, error) => sendError(res, error, catalogErrorPolicy);
 
 /** Creates any missing built-in unit (by exact symbol) and returns the units products may use: built-in ones in list order, then those added in Settings A–Z. */
 export const ensurePresetUnits = async () => {

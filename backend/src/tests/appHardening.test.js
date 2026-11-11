@@ -5,6 +5,7 @@ import request from "supertest";
 import { startDb, clearDb, stopDb } from "./helpers/db.js";
 import { createGodown, createUser } from "./helpers/auth.js";
 import { User } from "../models/User.js";
+import { asyncRoute, fail, legacyErrorPolicy, typedErrorPolicy } from "../shared/httpErrors.js";
 
 let app;
 let errorHandler;
@@ -34,6 +35,20 @@ test("a rejected async route handler becomes a JSON 500 instead of an unhandled 
   } finally {
     console.error = originalError;
   }
+});
+
+test("the global handler preserves declared legacy JSON and export-text contracts", async () => {
+  const probe = express();
+  probe.get("/stock", asyncRoute(async () => { throw new Error("Insufficient stock"); }, legacyErrorPolicy({ status: 400 })));
+  probe.get("/export", asyncRoute(async () => { throw new Error("internal details"); }, legacyErrorPolicy({ status: 400, text: true, message: "Export failed" })));
+  probe.get("/typed", asyncRoute(async () => { throw Object.assign(fail(409, "Changed", "VERSION_CONFLICT"), { details: { currentVersion: 2 } }); }, typedErrorPolicy({ flattenDetails: true })));
+  probe.use(errorHandler);
+  assert.deepEqual((await request(probe).get("/stock")).body, { error: "Insufficient stock" });
+  const exported = await request(probe).get("/export");
+  assert.equal(exported.status, 400);
+  assert.equal(exported.text, "Export failed");
+  assert.match(exported.headers["content-type"], /text\/html/);
+  assert.deepEqual((await request(probe).get("/typed")).body, { code: "VERSION_CONFLICT", message: "Changed", currentVersion: 2 });
 });
 
 test("login with a non-string email is a 400, not a crash", async () => {

@@ -1,15 +1,14 @@
+import { asyncRoute, legacyErrorPolicy } from "../shared/httpErrors.js";
 import express from "express";
 import bcrypt from "bcryptjs";
 import { User } from "../models/User.js";
 import { createResetToken, hashResetToken, signAccessToken, signRefreshToken, verifyRefreshToken } from "../utils/tokens.js";
 import { authenticate } from "../middleware/auth.js";
 import { sendResetEmail } from "../utils/mailer.js";
+import { isValidPassword, MIN_PASSWORD_LENGTH } from "../utils/passwordRules.js";
+export { isValidPassword } from "../utils/passwordRules.js";
 
 export const authRoutes = express.Router();
-const MIN_PASSWORD_LENGTH = 8;
-
-export const isValidPassword = (password) =>
-  typeof password === "string" && password.length >= MIN_PASSWORD_LENGTH;
 
 // --- Login ---
 authRoutes.post("/login", async (req, res) => {
@@ -22,7 +21,7 @@ authRoutes.post("/login", async (req, res) => {
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ message: "Invalid credentials" });
   if (!user.active) return res.status(401).json({ message: "Account is inactive" });
-  
+
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user);
   user.refreshToken = refreshToken;
@@ -32,29 +31,24 @@ authRoutes.post("/login", async (req, res) => {
 });
 
 // --- Token Management ---
-authRoutes.post("/refresh", async (req, res) => {
+authRoutes.post("/refresh", asyncRoute(async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) return res.status(401).json({ message: "No refresh token" });
-  try {
+
     const decoded = verifyRefreshToken(refreshToken);
     const user = await User.findById(decoded.sub);
     if (!user || !user.active || user.refreshToken !== refreshToken) return res.status(401).json({ message: "Invalid refresh token" });
     return res.json({ accessToken: signAccessToken(user) });
-  } catch (error) {
-    return res.status(401).json({ message: "Invalid refresh token" });
-  }
-});
+
+}, legacyErrorPolicy({ status: 401, field: "message", message: "Invalid refresh token" })));
 
 // --- Logout: revoke the refresh token so it cannot mint new access tokens ---
-authRoutes.post("/logout", authenticate, async (req, res) => {
-  try {
+authRoutes.post("/logout", authenticate, asyncRoute(async (req, res) => {
+
     await User.updateOne({ _id: req.user.sub }, { $set: { refreshToken: null } });
     return res.status(204).end();
-  } catch (error) {
-    console.error("[auth] logout failed", error);
-    return res.status(500).json({ message: "Could not sign out. Try again." });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Could not sign out. Try again." })));
 
 // --- Password Reset Flow ---
 authRoutes.post("/forgot-password", async (req, res) => {
@@ -62,24 +56,24 @@ authRoutes.post("/forgot-password", async (req, res) => {
   if (typeof email !== "string" || !email.trim()) return res.status(400).json({ message: "email is required" });
   const emailNormalized = email.toLowerCase().trim();
   const user = await User.findOne({ email: emailNormalized });
-  
+
   if (user) {
     const resetToken = createResetToken();
     user.resetToken = hashResetToken(resetToken);
     user.resetTokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 Minute expiry
     await user.save();
-    
+
     try {
       await sendResetEmail(user.email, resetToken);
     } catch (error) {
       // LOG IT: This prints to your terminal so you can fix SMTP issues
       console.error("CRITICAL: Email failed to send to", user.email, "Error:", error.message);
-      
+
       // Returning 500 helps you identify the crash during development
       return res.status(500).json({ message: "Mail server error. Check backend logs." });
     }
   }
-  
+
   // Generic success message for security
   return res.json({ message: "If account exists, a reset link has been sent to your email." });
 });
@@ -89,13 +83,13 @@ authRoutes.post("/reset-password", async (req, res) => {
   if (!token || typeof token !== "string" || !isValidPassword(newPassword)) {
     return res.status(400).json({ message: `A valid token and password of at least ${MIN_PASSWORD_LENGTH} characters are required` });
   }
-  const user = await User.findOne({ 
+  const user = await User.findOne({
     resetToken: hashResetToken(token),
-    resetTokenExpiry: { $gt: new Date() } 
+    resetTokenExpiry: { $gt: new Date() }
   });
 
   if (!user) return res.status(400).json({ message: "Invalid or expired token" });
-  
+
   user.passwordHash = await bcrypt.hash(newPassword, 10);
   user.viewablePassword = null; // the user chose this one: super-admins no longer see it
   user.resetToken = null;
@@ -112,8 +106,8 @@ authRoutes.post("/reset-password", async (req, res) => {
 
 
 
-authRoutes.get("/me", authenticate, async (req, res) => {
-  try {
+authRoutes.get("/me", authenticate, asyncRoute(async (req, res) => {
+
     const user = await User.findById(req.user.sub)
       .select("-passwordHash -refreshToken -resetToken")
       .populate("godownId", "name logoUrl"); // the kitchen app shows the kitchen's name and logo
@@ -127,8 +121,5 @@ authRoutes.get("/me", authenticate, async (req, res) => {
       godown: user.godownId   // ✅ clean structure for frontend
     });
 
-  } catch (err) {
-    console.error("❌ /me error:", err);
-    res.status(500).json({ message: "Failed to fetch user" });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "message", message: "Failed to fetch user" })));

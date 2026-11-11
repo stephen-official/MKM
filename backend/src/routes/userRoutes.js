@@ -1,3 +1,4 @@
+import { asyncRoute, typedErrorPolicy } from "../shared/httpErrors.js";
 import crypto from "node:crypto";
 import express from "express";
 import bcrypt from "bcryptjs";
@@ -11,7 +12,7 @@ import { createResetToken, hashResetToken } from "../utils/tokens.js";
 import { mailer } from "../utils/mailer.js";
 import { clampPage } from "../utils/pagination.js";
 import { disconnectUser } from "../realtime.js";
-import { isValidPassword } from "./authRoutes.js";
+import { isValidPassword } from "../utils/passwordRules.js";
 import { normalizePhone } from "../utils/phone.js";
 import { openPassword, passwordViewEnabled, sealPassword } from "../utils/passwordVault.js";
 import { escapeRegex } from "../utils/escapeRegex.js";
@@ -30,13 +31,7 @@ class UserAdminError extends Error {
 }
 const fail = (status, code, message) => { throw new UserAdminError(status, code, message); };
 const isDuplicateEmail = (error) => Object.keys(error?.keyPattern || error?.keyValue || {}).includes("email");
-const sendError = (res, error) => {
-  if (error instanceof UserAdminError) return res.status(error.status).json({ code: error.code, message: error.message });
-  // Only a duplicate email is the caller's mistake; any other unique index tripping is a server problem.
-  if (error?.code === 11000 && isDuplicateEmail(error)) return res.status(409).json({ code: "EMAIL_EXISTS", message: "That email is already in use." });
-  console.error("[users]", error);
-  return res.status(500).json({ code: "INTERNAL_ERROR", message: "Something went wrong." });
-};
+const errorPolicy = typedErrorPolicy({ isPublic: (error) => error instanceof UserAdminError, fallbackCode: "INTERNAL_ERROR", fallbackMessage: "Something went wrong.", specials: [{ matches: (error) => error?.code === 11000 && isDuplicateEmail(error), status: 409, code: "EMAIL_EXISTS", message: "That email is already in use." }] });
 const safe = (u) => u && ({ _id: u._id, name: u.name, email: u.email, phone: u.phone || "", role: u.role, godownId: u.godownId?._id ?? u.godownId ?? null, kitchenName: u.godownId?.name ?? null, active: u.active, lastLoginAt: u.lastLoginAt || null, version: u.version ?? 0, passwordViewable: Boolean(u.viewablePassword), createdAt: u.createdAt, updatedAt: u.updatedAt });
 const snapshot = (u) => u && ({ name: u.name, email: u.email, phone: u.phone || "", role: u.role, godownId: u.godownId ? String(u.godownId._id ?? u.godownId) : null, active: u.active });
 
@@ -79,8 +74,8 @@ const stageToken = (user, ttlMs) => {
   return token;
 };
 
-userRoutes.get("/", async (req, res) => {
-  try {
+userRoutes.get("/", asyncRoute(async (req, res) => {
+
     const filter = {};
     if (ALL_ROLES.includes(req.query.role)) filter.role = req.query.role;
     if (mongoose.isValidObjectId(req.query.godownId)) filter.godownId = req.query.godownId;
@@ -95,25 +90,21 @@ userRoutes.get("/", async (req, res) => {
       User.countDocuments(filter)
     ]);
     return res.json({ items: items.map(safe), total, page, pageSize });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
 
-userRoutes.get("/audit", async (req, res) => {
-  try {
+}, errorPolicy));
+
+userRoutes.get("/audit", asyncRoute(async (req, res) => {
+
     const page = clampPage(req.query.page);
     const [items, total] = await Promise.all([
       UserAdminAudit.find().sort({ at: -1, _id: -1 }).skip((page - 1) * 25).limit(25).lean(),
       UserAdminAudit.countDocuments()
     ]);
     return res.json({ items, total, page, pageSize: 25 });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
 
-userRoutes.post("/", async (req, res) => {
+}, errorPolicy));
+
+userRoutes.post("/", asyncRoute(async (req, res) => {
   const session = await mongoose.startSession();
   try {
     const name = String(req.body?.name || "").trim();
@@ -155,14 +146,12 @@ userRoutes.post("/", async (req, res) => {
     }
     const created = await User.findById(user._id).select(SAFE_FIELDS).populate("godownId", "name").lean();
     return res.status(201).json({ user: safe(created), inviteSent, passwordSet: password !== undefined });
-  } catch (error) {
-    return sendError(res, error);
   } finally {
     await session.endSession();
   }
-});
+}, errorPolicy));
 
-userRoutes.patch("/:id", async (req, res) => {
+userRoutes.patch("/:id", asyncRoute(async (req, res) => {
   const session = await mongoose.startSession();
   const body = req.body ?? {};
   try {
@@ -232,16 +221,14 @@ userRoutes.patch("/:id", async (req, res) => {
     if (revoke) disconnectUser(result);
     const updated = await User.findById(result).select(SAFE_FIELDS).populate("godownId", "name").lean();
     return res.json({ user: safe(updated) });
-  } catch (error) {
-    return sendError(res, error);
   } finally {
     await session.endSession();
   }
-});
+}, errorPolicy));
 
 // The super-admin sets a password. For a kitchen account it stays viewable to super-admins; the user's phone is signed out.
-userRoutes.post("/:id/password", async (req, res) => {
-  try {
+userRoutes.post("/:id/password", asyncRoute(async (req, res) => {
+
     await assertActorIsActiveSuperAdmin(null, req.user.sub);
     if (!mongoose.isValidObjectId(req.params.id)) fail(404, "USER_NOT_FOUND", "No such user.");
     const password = req.body?.password;
@@ -257,14 +244,12 @@ userRoutes.post("/:id/password", async (req, res) => {
     await UserAdminAudit.create({ ...(await actorOf(req)), targetUserId: user._id, action: "set-password", before: null, after: null });
     disconnectUser(user._id);
     return res.json({ viewable: Boolean(user.viewablePassword) });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
+
+}, errorPolicy));
 
 // Shows a kitchen password a super-admin set. Every look is written to the user audit.
-userRoutes.get("/:id/password", async (req, res) => {
-  try {
+userRoutes.get("/:id/password", asyncRoute(async (req, res) => {
+
     await assertActorIsActiveSuperAdmin(null, req.user.sub);
     if (!mongoose.isValidObjectId(req.params.id)) fail(404, "USER_NOT_FOUND", "No such user.");
     const user = await User.findById(req.params.id).select("role +viewablePassword").lean();
@@ -276,13 +261,11 @@ userRoutes.get("/:id/password", async (req, res) => {
     if (password === null) fail(409, "PASSWORD_NOT_VIEWABLE", "This password cannot be shown any more. Set a new one to see it.");
     await UserAdminAudit.create({ ...(await actorOf(req)), targetUserId: user._id, action: "view-password", before: null, after: null });
     return res.json({ password });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
 
-userRoutes.post("/:id/send-reset", async (req, res) => {
-  try {
+}, errorPolicy));
+
+userRoutes.post("/:id/send-reset", asyncRoute(async (req, res) => {
+
     await assertActorIsActiveSuperAdmin(null, req.user.sub);
     if (!mongoose.isValidObjectId(req.params.id)) fail(404, "USER_NOT_FOUND", "No such user.");
     const user = await User.findById(req.params.id);
@@ -299,7 +282,5 @@ userRoutes.post("/:id/send-reset", async (req, res) => {
     }
     await UserAdminAudit.create({ ...(await actorOf(req)), targetUserId: user._id, action: "send-reset", before: null, after: null });
     return res.json({ sent });
-  } catch (error) {
-    return sendError(res, error);
-  }
-});
+
+}, errorPolicy));

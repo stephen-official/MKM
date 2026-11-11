@@ -1,3 +1,4 @@
+import { asyncRoute, legacyErrorPolicy } from "../shared/httpErrors.js";
 import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
@@ -16,7 +17,7 @@ const populatedConsumption = (id, session) => Consumption.findById(id).session(s
 
 export const consumptionRoutes = express.Router();
 
-const handleStockProcessing = async (req, res) => {
+const handleStockProcessing = asyncRoute(async (req, res) => {
   const session = await mongoose.startSession();
   try {
     const godownId = isKitchenRole(req.user.role) ? req.user.godownId : req.body.godownId;
@@ -34,14 +35,10 @@ const handleStockProcessing = async (req, res) => {
       notifyKitchen(populatedResult.godownId?._id || godownId, "usage");
     }
     res.status(201).json(populatedResult);
-  } catch (error) {
-    if (error.stockCommandError) throw error;
-    if (error.dayClosed) return res.status(409).json({ code: "DAY_CLOSED", error: error.message });
-    res.status(400).json({ error: error.message });
   } finally {
     await session.endSession();
   }
-};
+}, legacyErrorPolicy({"status":400,"field":"error", specials: [{ matches: (error) => error.dayClosed, status: 409, body: { code: "DAY_CLOSED", error: "This day is marked as no usage. Ask the admin to reopen it before recording." } }] }));
 
 consumptionRoutes.post("/orders", authorize(["user", "admin"]), requireAvailableProducts(stockRecordItemIds), handleStockProcessing);
 consumptionRoutes.post("/consumptions", authorize(["user", "admin"]), requireAvailableProducts(stockRecordItemIds), handleStockProcessing);
@@ -52,7 +49,7 @@ consumptionRoutes.post("/consumptions", authorize(["user", "admin"]), requireAva
 consumptionRoutes.patch(
   "/consumptions/:id",
   authorize(["admin"]),
-  async (req, res) => {
+  asyncRoute(async (req, res) => {
     const session = await mongoose.startSession();
 
     try {
@@ -100,26 +97,17 @@ consumptionRoutes.patch(
 
       res.json(updatedConsumption);
 
-    } catch (error) {
-      if (error.stockCommandError) throw error;
-      console.error("UPDATE CONSUMPTION ERROR:");
-      console.error(error);
-
-      res.status(400).json({
-        error: error.message || "Failed to update consumption"
-      });
-
     } finally {
       await session.endSession();
     }
-  }
+  }, legacyErrorPolicy({ status: 400, field: "error", fallback: "Failed to update consumption" }))
 );
 
 
 consumptionRoutes.delete(
   "/consumptions/:id",
   authorize(["admin"]),
-  async (req, res) => {
+  asyncRoute(async (req, res) => {
     const session = await mongoose.startSession();
 
     try {
@@ -170,24 +158,15 @@ consumptionRoutes.delete(
         consumptionId: deletedConsumption._id
       });
 
-    } catch (error) {
-      if (error.stockCommandError) throw error;
-      console.error("DELETE CONSUMPTION ERROR:");
-      console.error(error);
-
-      res.status(400).json({
-        error: error.message || "Failed to delete consumption"
-      });
-
     } finally {
       await session.endSession();
     }
-  }
+  }, legacyErrorPolicy({ status: 400, field: "error", fallback: "Failed to delete consumption" }))
 );
 
 
-consumptionRoutes.get("/consumptions", authorize(["admin"]), async (_req, res) => {
-  try {
+consumptionRoutes.get("/consumptions", authorize(["admin"]), asyncRoute(async (_req, res) => {
+
     const consumptions = await Consumption.find()
       .populate("godownId", "name")
       .populate("userId", "name")
@@ -195,23 +174,19 @@ consumptionRoutes.get("/consumptions", authorize(["admin"]), async (_req, res) =
       .sort({ createdAt: -1 });
     res.json(consumptions);
 
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "error" })));
 
 
 
 
-consumptionRoutes.get("/consumptions/me", authorize(["user"]), async (req, res) => {
-  try {
+consumptionRoutes.get("/consumptions/me", authorize(["user"]), asyncRoute(async (req, res) => {
+
     const data = await Consumption.find({ userId: req.user.sub })
       .populate("godownId", "name")
       .populate("userId", "name")
       .populate(deepPopulateItem)
       .sort({ createdAt: -1 });
     res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "error" })));

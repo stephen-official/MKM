@@ -1,3 +1,4 @@
+import { asyncRoute } from "../shared/httpErrors.js";
 import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
@@ -6,7 +7,7 @@ import { StockItem } from "../models/InventoryModels.js";
 import { ProductRequest } from "../models/ProductRequestModel.js";
 import { io } from "../realtime.js";
 import { isSuperAdmin } from "../utils/roles.js";
-import { CatalogError, buildProductUpdate, sendCatalogError } from "../catalog/productService.js";
+import { CatalogError, buildProductUpdate, catalogErrorPolicy } from "../catalog/productService.js";
 
 export const productRequestRoutes = express.Router();
 
@@ -33,8 +34,8 @@ const shape = (row) => ({
   createdAt: row.createdAt
 });
 
-productRequestRoutes.post("/", kitchenOnly, async (req, res) => {
-  try {
+productRequestRoutes.post("/", kitchenOnly, asyncRoute(async (req, res) => {
+
     const name = text(req.body?.name, 120);
     if (!name) throw new CatalogError(400, "VALIDATION", "Enter the product you need.", { errors: { name: "Enter the product you need." } });
     if (!req.user.godownId) throw new CatalogError(400, "NO_KITCHEN", "Your account is not linked to a kitchen.");
@@ -53,29 +54,23 @@ productRequestRoutes.post("/", kitchenOnly, async (req, res) => {
     });
     io.to("admins").emit("product_request_created", { id: created._id, notification });
     res.status(201).json(shape(await populated(ProductRequest.findById(created._id)).lean()));
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
 
-productRequestRoutes.get("/me", kitchenOnly, async (req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRequestRoutes.get("/me", kitchenOnly, asyncRoute(async (req, res) => {
+
     const rows = await populated(ProductRequest.find({ godownId: req.user.godownId }).sort({ createdAt: -1 }).limit(100)).lean();
     res.json(rows.map(shape));
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
 
-productRequestRoutes.get("/", adminOnly, async (req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRequestRoutes.get("/", adminOnly, asyncRoute(async (req, res) => {
+
     const status = ["pending", "approved", "rejected"].includes(req.query.status) ? req.query.status : null;
     const rows = await populated(ProductRequest.find(status ? { status } : {}).sort({ createdAt: -1 }).limit(200)).lean();
     res.json(rows.map(shape));
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
+
+}, catalogErrorPolicy));
 
 const loadPending = async (id) => {
   if (!mongoose.isValidObjectId(id)) throw new CatalogError(404, "NOT_FOUND", "Request not found.");
@@ -98,8 +93,8 @@ const decide = async (row, user, patch) => {
 };
 
 /** Approve by creating the product from the popup (`product`), or by pointing at an existing one (`existingProductId`). */
-productRequestRoutes.post("/:id/approve", adminOnly, async (req, res) => {
-  try {
+productRequestRoutes.post("/:id/approve", adminOnly, asyncRoute(async (req, res) => {
+
     const row = await loadPending(req.params.id);
     let productId = req.body?.existingProductId;
     let created = null;
@@ -117,18 +112,14 @@ productRequestRoutes.post("/:id/approve", adminOnly, async (req, res) => {
       if (created) await StockItem.deleteOne({ _id: created._id });
       throw error;
     }
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
 
-productRequestRoutes.post("/:id/reject", adminOnly, async (req, res) => {
-  try {
+}, catalogErrorPolicy));
+
+productRequestRoutes.post("/:id/reject", adminOnly, asyncRoute(async (req, res) => {
+
     const row = await loadPending(req.params.id);
     const note = text(req.body?.note, 300);
     if (!note) throw new CatalogError(400, "VALIDATION", "Tell the kitchen why.", { errors: { note: "Tell the kitchen why." } });
     res.json(await decide(row, req.user, { status: "rejected", decisionNote: note }));
-  } catch (error) {
-    sendCatalogError(res, error);
-  }
-});
+
+}, catalogErrorPolicy));

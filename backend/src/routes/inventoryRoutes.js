@@ -1,3 +1,4 @@
+import { asyncRoute, legacyErrorPolicy, typedErrorPolicy } from "../shared/httpErrors.js";
 import express from "express";
 import ExcelJS from "exceljs";
 import { authorize } from "../middleware/auth.js";
@@ -75,19 +76,16 @@ const keepOneCentralStore = async (row) => {
 
 // Master data › Kitchens: a kitchen's logo, stored like product photos (Cloudinary, or the uploads folder locally).
 const logoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-inventoryRoutes.post("/godowns/:id/logo", adminOnly, logoUpload.single("logo"), async (req, res) => {
-  try {
+inventoryRoutes.post("/godowns/:id/logo", adminOnly, logoUpload.single("logo"), asyncRoute(async (req, res) => {
+
     if (!mongoose.isValidObjectId(req.params.id) || !(await Godown.exists({ _id: req.params.id }))) return res.status(404).json({ code: "NOT_FOUND", message: "Kitchen not found." });
     if (!req.file) return res.status(400).json({ code: "LOGO_REQUIRED", message: "Choose a picture for the logo." });
     const logoUrl = await storePhoto({ buffer: req.file.buffer, mimetype: req.file.mimetype, folder: "kitchen-logos", baseUrl: `${req.protocol}://${req.get("host")}` });
     const kitchen = await Godown.findByIdAndUpdate(req.params.id, { $set: { logoUrl } }, { new: true }).lean();
     notifyKitchens("stock");
     return res.json(kitchen);
-  } catch (error) {
-    if (error.status === 400) return res.status(400).json({ code: error.code || "INVALID_INPUT", message: error.message });
-    return res.status(500).json({ code: "SERVER_ERROR", message: "The logo could not be saved." });
-  }
-});
+
+}, typedErrorPolicy({ isPublic: (error) => error.status === 400, fallbackMessage: "The logo could not be saved." })));
 inventoryRoutes.delete("/godowns/:id/logo", adminOnly, async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ code: "NOT_FOUND", message: "Kitchen not found." });
   const kitchen = await Godown.findByIdAndUpdate(req.params.id, { $set: { logoUrl: "" } }, { new: true }).lean();
@@ -115,15 +113,15 @@ const refuseCatalogWrites = (req, res, next) => {
 
 
 // --- Excel Export ---
-inventoryRoutes.get("/:type/export/excel", adminOnly, async (req, res) => {
-  try {
+inventoryRoutes.get("/:type/export/excel", adminOnly, asyncRoute(async (req, res) => {
+
     const Model = modelMap[req.params.type];
     if (!Model) return res.status(404).json({ message: "Invalid type" });
 
     let query = Model.find();
     if (req.params.type === "stock-items") query = query.populate("stockGroupId unitId");
     if (req.params.type === "units") query = query.populate("stockGroupId");
-    
+
     const rows = await query.lean();
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet(req.params.type);
@@ -131,7 +129,7 @@ inventoryRoutes.get("/:type/export/excel", adminOnly, async (req, res) => {
     if (rows.length > 0) {
       const headers = Object.keys(rows[0]).filter(k => k !== "__v" && k !== "_id");
       sheet.columns = headers.map((k) => ({ header: k.toUpperCase(), key: k, width: 25 }));
-      
+
       rows.forEach((row) => {
         const flatRow = { ...row };
         // Flatten populated fields for the Excel sheet
@@ -143,13 +141,11 @@ inventoryRoutes.get("/:type/export/excel", adminOnly, async (req, res) => {
 
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename=${req.params.type}.xlsx`);
-    
+
     await workbook.xlsx.write(res);
-    res.status(200).end(); 
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-});
+    res.status(200).end();
+
+}, legacyErrorPolicy({ status: 500, field: "message" })));
 
 // --- Generic CRUD Operations ---
 
@@ -181,41 +177,39 @@ inventoryRoutes.get("/:type", adminOrUser, async (req, res) => {
 });
 
 // CREATE
-inventoryRoutes.post("/:type", adminOnly, refuseCatalogWrites, async (req, res) => {
-  try {
+inventoryRoutes.post("/:type", adminOnly, refuseCatalogWrites, asyncRoute(async (req, res) => {
+
     const type = req.params.type;
     const Model = modelMap[type];
     if (!Model) return res.status(404).json({ message: "Invalid type" });
-    
+
     let finalData = { ...req.body };
     if (type === "godowns") {
       finalData = godownFields(req.body);
       if (!finalData) return res.status(400).json(BAD_GODOWN);
     }
-    
+
     // Auto-fill name if symbol is provided (specifically for Units)
     if (!finalData.name && finalData.symbol) finalData.name = finalData.symbol;
     if (!finalData.name) return res.status(400).json({ message: "Name is required" });
 
-    // INTEGRATED LOGIC: If type is 'godowns', force active to true 
+    // INTEGRATED LOGIC: If type is 'godowns', force active to true
     // so it shows up in the Registration list automatically.
     if (type === "godowns") {
       finalData.active = true;
     }
-    
+
     const row = await Model.create(finalData);
     if (type === "godowns") await keepOneCentralStore(row);
     return res.status(201).json(row);
-  } catch (error) {
-    return res.status(400).json({ message: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 400, field: "message" })));
 inventoryRoutes.put(
   "/:type/:id",
   adminOnly,
   refuseCatalogWrites,
-  async (req, res) => {
-    try {
+  asyncRoute(async (req, res) => {
+
       const type = req.params.type;
       const Model = modelMap[type];
       if (!Model) return res.status(404).json({ message: "Invalid type" });
@@ -240,10 +234,8 @@ inventoryRoutes.put(
       if (type === "godowns") await keepOneCentralStore(row);
 
       return res.json(row);
-    } catch (error) {
-      return res.status(400).json({ message: error.message });
-    }
-  }
+
+  }, legacyErrorPolicy({ status: 400, field: "message" }))
 );
 
 
@@ -251,8 +243,8 @@ inventoryRoutes.put(
 
 
 // DELETE
-inventoryRoutes.delete("/:type/:id", adminOnly, refuseCatalogWrites, async (req, res) => {
-  try {
+inventoryRoutes.delete("/:type/:id", adminOnly, refuseCatalogWrites, asyncRoute(async (req, res) => {
+
     const Model = modelMap[req.params.type];
     if (!Model) return res.status(404).json({ message: "Invalid type" });
     if (req.params.type === "stock-groups") {
@@ -271,10 +263,8 @@ inventoryRoutes.delete("/:type/:id", adminOnly, refuseCatalogWrites, async (req,
 
     await Model.findByIdAndDelete(req.params.id);
     return res.json({ message: "Deleted" });
-  } catch (error) {
-    return res.status(500).json({ message: error.message });
-  }
-});
+
+}, legacyErrorPolicy({ status: 500, field: "message" })));
 
 
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AppError, asyncRoute, errorResponse, fail } from "../shared/httpErrors.js";
+import { AppError, asyncRoute, errorResponse, fail, legacyErrorPolicy, typedErrorPolicy } from "../shared/httpErrors.js";
 
 test("operational errors keep their public status, code and optional details", () => {
   const error = fail(400, "Choose a product", "PRODUCT_REQUIRED", { field: "stockItemId" });
@@ -36,4 +36,42 @@ test("asyncRoute forwards a rejected handler to Express", async () => {
   let forwarded;
   await asyncRoute(async () => { throw expected; })({}, {}, (error) => { forwarded = error; });
   assert.equal(forwarded, expected);
+});
+
+test("legacy policies preserve error-only, fixed-message and text responses", () => {
+  const error = new Error("Stock unavailable");
+  assert.deepEqual(errorResponse(error, legacyErrorPolicy({ status: 400 })), { status: 400, body: { error: "Stock unavailable" } });
+  assert.deepEqual(errorResponse(error, legacyErrorPolicy({ field: "message", message: "Distribution failed", includeError: true })), {
+    status: 500, body: { message: "Distribution failed", error: "Stock unavailable" },
+  });
+  assert.deepEqual(errorResponse(error, legacyErrorPolicy({ text: true, message: "Export failed" })), { status: 500, text: true, body: "Export failed" });
+  assert.deepEqual(errorResponse(new Error(""), legacyErrorPolicy()), { status: 500, body: { error: "" } });
+});
+
+test("typed policies retain public fields, duplicate mappings and unknown-error masking", () => {
+  const policy = typedErrorPolicy({ extraFields: ["fields"], fallbackCode: "INTERNAL_ERROR", fallbackMessage: "Something went wrong.", specials: [{ matches: (error) => error.code === 11000, status: 409, code: "DUPLICATE", message: "Already exists" }] });
+  assert.equal(errorResponse({ code: 11000 }, policy).body.code, "DUPLICATE");
+  assert.deepEqual(errorResponse(Object.assign(fail(400, "Invalid", "INVALID"), { fields: ["name"] }), policy).body, { code: "INVALID", message: "Invalid", fields: ["name"] });
+  assert.equal(errorResponse(new Error("internal password"), policy).body.message, "Something went wrong.");
+});
+
+test("idempotency conflicts keep their standard envelope through legacy policies", () => {
+  const error = Object.assign(fail(409, "Key reused", "IDEMPOTENCY_CONFLICT"), { stockCommandError: true });
+  assert.deepEqual(errorResponse(error, legacyErrorPolicy({ status: 400 })), { status: 409, body: { code: "IDEMPOTENCY_CONFLICT", message: "Key reused" } });
+});
+
+test("asyncRoute also forwards synchronous failures with the configured policy", async () => {
+  let forwarded;
+  const expected = new Error("sync failure");
+  const policy = legacyErrorPolicy({ status: 400 });
+  await asyncRoute(() => { throw expected; }, policy)({}, {}, (error) => { forwarded = error; });
+  assert.equal(forwarded, expected);
+  assert.equal(forwarded.httpErrorOverrides, policy);
+});
+
+test("forwarding an error-like object retains its public status and code", async () => {
+  let forwarded;
+  await asyncRoute(async () => { throw { status: 400, code: "INVALID_INPUT", message: "Invalid" }; })({}, {}, (error) => { forwarded = error; });
+  assert.ok(forwarded instanceof Error);
+  assert.deepEqual(errorResponse(forwarded), { status: 400, body: { code: "INVALID_INPUT", message: "Invalid" } });
 });

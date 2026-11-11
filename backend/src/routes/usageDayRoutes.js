@@ -1,3 +1,4 @@
+import { asyncRoute, legacyErrorPolicy } from "../shared/httpErrors.js";
 import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
@@ -14,8 +15,8 @@ const fail = (res, status, code, message) => res.status(status).json({ code, mes
 
 // GET /api/usage-days → { today, lookbackDays, missed, days: [{ date, status, entries, reason, note? }], marks } newest first.
 // `days` covers the lookback window; `marks` is every "no usage" day the kitchen ever recorded, for its History.
-usageDayRoutes.get("/", authorize(["user"]), async (req, res) => {
-  try {
+usageDayRoutes.get("/", authorize(["user"]), asyncRoute(async (req, res) => {
+
     const godownId = req.user.godownId;
     if (!godownId) return fail(res, 400, "NO_KITCHEN", "Your account is not linked to a kitchen");
     const today = businessDateOf(Date.now());
@@ -38,14 +39,12 @@ usageDayRoutes.get("/", authorize(["user"]), async (req, res) => {
     const noteByDate = new Map(closed.map((row) => [row.date, row.note || ""]));
     const withNotes = days.map((day) => (day.status === "none" ? { ...day, note: noteByDate.get(day.date) || "" } : day));
     return res.json({ today, lookbackDays: LOOKBACK_DAYS, missed: days.filter((day) => day.status === "missed").length, days: withNotes, marks });
-  } catch (error) {
-    return fail(res, 500, "USAGE_DAYS_FAILED", error.message);
-  }
-});
+
+}, legacyErrorPolicy({ field: "message", code: "USAGE_DAYS_FAILED" })));
 
 // POST /api/usage-days/none { date, reason, note } → marks a day as "no usage" (today or a past day with no entries).
-usageDayRoutes.post("/none", authorize(["user"]), async (req, res) => {
-  try {
+usageDayRoutes.post("/none", authorize(["user"]), asyncRoute(async (req, res) => {
+
     const godownId = req.user.godownId;
     if (!godownId) return fail(res, 400, "NO_KITCHEN", "Your account is not linked to a kitchen");
     const { date, reason = "other", note = "" } = req.body || {};
@@ -62,10 +61,8 @@ usageDayRoutes.post("/none", authorize(["user"]), async (req, res) => {
     ).lean();
     notifyKitchen(godownId, "usage");
     return res.status(201).json(marker);
-  } catch (error) {
-    return fail(res, 500, "NO_USAGE_FAILED", error.message);
-  }
-});
+
+}, legacyErrorPolicy({ field: "message", code: "NO_USAGE_FAILED" })));
 
 // A "no usage" mark is not undone by the kitchen: it asks for a correction (POST /api/usage-corrections) and an admin
 // approves it. Recording usage on a marked day is refused too (operationsRoutes DAY_CLOSED).
