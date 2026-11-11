@@ -19,17 +19,17 @@ export class AppError extends Error {
 export const fail = (status, message, code, details) => new AppError(status, message, code, details);
 
 /** Maps known operational/database errors to the stable JSON envelope used by the API. */
-export const errorResponse = (error) => {
+export const errorResponse = (error, overrides = {}) => {
   if (error?.name === "VersionError") {
     return {
       status: 409,
-      body: { code: "VERSION_CONFLICT", message: "This record was changed by someone else. Reload and try again." },
+      body: { code: "VERSION_CONFLICT", message: overrides.versionConflictMessage || "This record was changed by someone else. Reload and try again." },
     };
   }
   const status = error?.status || (error?.name === "CastError" ? 404 : 500);
   const body = {
     code: error?.code || DEFAULT_CODES[status] || "SERVER_ERROR",
-    message: status === 500 ? "Internal Server Error" : error.message,
+    message: status === 500 ? (overrides.serverErrorMessage || "Internal Server Error") : error.message,
   };
   if (error?.details !== undefined && status < 500) body.details = error.details;
   return { status, body };
@@ -37,12 +37,15 @@ export const errorResponse = (error) => {
 
 /** Temporary adapter for route modules; controllers can later throw into the global error middleware. */
 export const sendError = (res, error, overrides = {}) => {
-  const response = errorResponse(error);
-  if (overrides.versionConflictMessage && error?.name === "VersionError") {
-    response.body.message = overrides.versionConflictMessage;
-  }
+  const response = errorResponse(error, overrides);
   return res.status(response.status).json(response.body);
 };
 
 /** For new controllers: forward rejected promises to Express error middleware. */
-export const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+export const forwardError = (next, error, overrides = {}) => {
+  error.httpErrorOverrides = overrides;
+  return next(error);
+};
+
+export const asyncRoute = (handler, overrides = {}) => (req, res, next) => Promise.resolve(handler(req, res, next))
+  .catch((error) => forwardError(next, error, overrides));

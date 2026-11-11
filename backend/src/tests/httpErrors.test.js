@@ -22,6 +22,15 @@ test("database conflicts are stable and unknown failures do not leak internals",
   });
 });
 
+test("route-scoped error messages keep established API wording", () => {
+  const versionError = Object.assign(new Error("stale"), { name: "VersionError" });
+  assert.equal(errorResponse(versionError, { versionConflictMessage: "Reload this order." }).body.message, "Reload this order.");
+  assert.deepEqual(errorResponse(new Error("database failed"), { serverErrorMessage: "Delivery problems are unavailable" }), {
+    status: 500,
+    body: { code: "SERVER_ERROR", message: "Delivery problems are unavailable" },
+  });
+});
+
 test("asyncRoute forwards a rejected handler to Express", async () => {
   const expected = new Error("failed");
   let forwarded;

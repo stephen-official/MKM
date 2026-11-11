@@ -30,6 +30,7 @@ import { supplierRoutes } from "./routes/supplierRoutes.js";
 import { deliveryTicketRoutes } from "./routes/deliveryTicketRoutes.js";
 import { usageDayRoutes } from "./routes/usageDayRoutes.js";
 import { usageCorrectionRoutes } from "./routes/usageCorrectionRoutes.js";
+import { errorResponse } from "./shared/httpErrors.js";
 
 const app = express();
 
@@ -163,6 +164,11 @@ for (const [mountPath, router] of PROTECTED_MOUNTS) app.use(mountPath, authentic
 // anything else is logged and answered with a generic 500 so internal details never reach the client.
 export const errorHandler = (err, _req, res, next) => {
     if (res.headersSent) return next(err);
+    if (err.httpErrorOverrides !== undefined) {
+        const response = errorResponse(err, err.httpErrorOverrides);
+        if (response.status === 500) console.error(err.stack || err);
+        return res.status(response.status).json(response.body);
+    }
     const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 500 ? err.status : 500;
     if (status === 500) console.error(err.stack || err);
     return res.status(status).json({ message: status === 500 ? "Internal Server Error" : err.message });
