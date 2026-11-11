@@ -7,6 +7,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "NODE_ENV=test node --test --test-concurrency=2 src/tests/*.test.js",
+    "lint": "eslint src",
     "test:perf": "NODE_ENV=test PERF=1 node --test --test-concurrency=1 src/tests/executivePerf.test.js",
     "seed": "node src/jobs/seed.js",
     "create-super-admin": "node src/jobs/create-super-admin.js",
@@ -34,6 +35,7 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "eslint": "^9.39.5",
     "mongodb-memory-server": "^10.4.3",
     "nodemon": "^3.1.7",
     "supertest": "^7.3.1"
