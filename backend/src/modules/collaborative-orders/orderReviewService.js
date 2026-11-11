@@ -119,7 +119,8 @@ export const approveCollaborativeOrder = async ({ orderId, input, actor }) => {
       const chosen = pickLines(share, items);
       if (chosen.length === 0) throw fail(404, "Those items are not in this kitchen's share");
       if (chosen.some(isRejected)) throw fail(409, "Rejected items cannot be approved; the kitchen can ask for them on a new order", "LINE_REJECTED");
-      if (chosen.some((line) => line.approvedAt)) throw fail(409, "Approved items cannot be approved again", "LINE_APPROVED");
+      // A pick without packId names every pack of the product, so already-approved siblings are skipped, not refused.
+      if (chosen.every((line) => line.approvedAt)) throw fail(409, "Approved items cannot be approved again", "LINE_APPROVED");
       approveLines(chosen);
     }
     order.events.push(orderEvent(actor, "approved", { godownId, items: eventItems(approved) }));

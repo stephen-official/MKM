@@ -118,6 +118,21 @@ test("approving an already decided line or kitchen does not add false history", 
   assert.equal(saved.events.filter((event) => event.action === "approved").length, 2);
 });
 
+test("the loose line can be approved after the same product's pack line was approved", async () => {
+  const atta = await StockItem.create({ name: "Atta", stockGroupId: ctx.rice.stockGroupId, unitId: ctx.rice.unitId, pricePerUnit: 40, soldInPacks: true, packs: [{ name: "10 kg bag", size: 10, price: 380 }] });
+  const bag = atta.packs[0];
+  const bagLine = { stockItemId: atta._id, qtyBaseUnit: 10, packId: bag._id, packName: bag.name, packSize: 10, packQuantity: 1 };
+  assert.equal((await editA([line(ctx.rice, 10), line(atta, 2), bagLine])).status, 200);
+  assert.equal((await approve({ godownId: ctx.kitchenA._id, items: [{ stockItemId: atta._id, packId: bag._id }] })).status, 200);
+
+  // The admin screen names a loose line by product alone.
+  const res = await approve({ godownId: ctx.kitchenA._id, items: [{ stockItemId: atta._id }] });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  const attaLines = share(res.body, ctx.kitchenA).items.filter((item) => item.stockItemId.name === "Atta");
+  assert.equal(attaLines.length, 2);
+  assert.ok(attaLines.every((item) => item.approvedAt), "both Atta lines approved");
+});
+
 test("ordering needs approval first, and finished orders cannot be approved", async () => {
   await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "closed" });
   assert.equal((await call(ctx.admin, "patch", `/${ctx.order._id}/status`).send({ status: "ordered" })).status, 409);
