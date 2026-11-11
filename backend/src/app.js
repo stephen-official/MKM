@@ -162,11 +162,15 @@ for (const [mountPath, router] of PROTECTED_MOUNTS) app.use(mountPath, authentic
 // --- 6. ERROR HANDLING ---
 // Client errors raised by middleware (malformed JSON, oversized body) keep their 4xx status and message;
 // anything else is logged and answered with a generic 500 so internal details never reach the client.
+const EXPECTED_DB_ERRORS = new Set(["CastError", "ValidationError", "VersionError"]);
+const isOperationalError = (err) => Number.isInteger(err?.status) || err?.code === 11000 || EXPECTED_DB_ERRORS.has(err?.name);
+
 export const errorHandler = (err, _req, res, next) => {
     if (res.headersSent) return next(err);
     if (err.httpErrorOverrides !== undefined || err.stockCommandError) {
         const response = errorResponse(err, err.httpErrorOverrides);
-        if (response.status === 500) console.error(err.stack || err);
+        // Legacy policies may answer a bug with a 4xx; log by the error's origin, not just the status sent.
+        if (response.status >= 500 || !isOperationalError(err)) console.error(err.stack || err);
         return response.text ? res.status(response.status).send(response.body) : res.status(response.status).json(response.body);
     }
     const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 500 ? err.status : 500;

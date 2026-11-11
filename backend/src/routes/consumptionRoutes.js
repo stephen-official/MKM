@@ -24,7 +24,7 @@ const handleStockProcessing = asyncRoute(async (req, res) => {
     // A day the kitchen marked "no usage" stays closed until an admin approves a correction; nothing is recorded on it.
     const populatedResult = await stockTransaction(req, session, async () => {
       if (godownId && req.body.date && await NoUsageDay.exists({ godownId, date: req.body.date }).session(session)) {
-        throw Object.assign(new Error("This day is marked as no usage. Ask the admin to reopen it before recording."), { dayClosed: true });
+        throw Object.assign(new Error("This day is marked as no usage. Ask the admin to reopen it before recording."), { status: 409, dayClosed: true });
       }
       const result = await recordConsumption({ godownId, userId: req.user.sub, date: req.body.date, items: req.body.items, session });
       return populatedConsumption(result._id, session);

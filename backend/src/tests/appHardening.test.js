@@ -51,6 +51,25 @@ test("the global handler preserves declared legacy JSON and export-text contract
   assert.deepEqual((await request(probe).get("/typed")).body, { code: "VERSION_CONFLICT", message: "Changed", currentVersion: 2 });
 });
 
+test("an unexpected error is logged even when a legacy policy answers it with a 4xx", async () => {
+  const probe = express();
+  probe.get("/bug", asyncRoute(async () => { throw new TypeError("Cannot read properties of undefined"); }, legacyErrorPolicy({ status: 400, field: "error" })));
+  probe.get("/expected", asyncRoute(async () => { throw fail(400, "Quantity must be positive"); }, legacyErrorPolicy({ status: 400, field: "error" })));
+  probe.use(errorHandler);
+  const logged = [];
+  const originalError = console.error;
+  console.error = (...args) => logged.push(args.join(" "));
+  try {
+    assert.equal((await request(probe).get("/bug")).status, 400, "the established status is kept");
+    assert.equal(logged.length, 1);
+    assert.match(logged[0], /Cannot read properties of undefined/);
+    assert.equal((await request(probe).get("/expected")).status, 400);
+    assert.equal(logged.length, 1, "operational errors are not logged");
+  } finally {
+    console.error = originalError;
+  }
+});
+
 test("login with a non-string email is a 400, not a crash", async () => {
   const res = await request(app).post("/api/auth/login").send({ email: 1, password: "x" });
   assert.equal(res.status, 400);
