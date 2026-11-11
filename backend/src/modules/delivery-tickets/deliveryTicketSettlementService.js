@@ -10,6 +10,7 @@ import { fail } from "../../shared/httpErrors.js";
 import { createStockBatch } from "../../stock/batchService.js";
 import { nextTrackingId } from "../../stock/trackingId.js";
 import { supplierSnapshotFor } from "../collaborative-orders/orderReceivingRules.js";
+import { runStockTransaction } from "../stock-commands/stockCommandService.js";
 
 const CONDITION = { damaged: "partial_damage", expired: "unchecked" };
 
@@ -34,7 +35,7 @@ const openFollowUpOrder = async ({ ticket, order: original, shortfall, actor, no
 };
 
 /** Settles one delivery problem and applies all stock, order and follow-up effects in one transaction. */
-export const settleDeliveryTicket = async ({ ticketId, input, actor }) => {
+export const settleDeliveryTicket = async ({ ticketId, input, actor, commandContext }) => {
   if (!mongoose.isValidObjectId(ticketId)) throw fail(404, "Delivery problem not found");
   const accepted = Number(input?.acceptedQtyBaseUnit ?? 0);
   const reorder = input?.reorderShortfall === true;
@@ -43,7 +44,7 @@ export const settleDeliveryTicket = async ({ ticketId, input, actor }) => {
 
   const session = await mongoose.startSession();
   try {
-    await session.withTransaction(async () => {
+    return await runStockTransaction({ session, context: commandContext, work: async () => {
       const ticket = await DeliveryTicket.findById(ticketId).session(session);
       if (!ticket) throw fail(404, "Delivery problem not found");
       if (ticket.status !== "open") throw fail(409, "This problem has already been settled", "ALREADY_SETTLED");
@@ -98,7 +99,7 @@ export const settleDeliveryTicket = async ({ ticketId, input, actor }) => {
         note, settledBy: actor.sub, settledAt: now,
       };
       await ticket.save({ session });
-    });
+    } });
   } finally {
     await session.endSession();
   }

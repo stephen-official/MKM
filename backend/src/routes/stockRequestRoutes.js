@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
 import { io, notifyKitchen } from "../realtime.js";
+import { stockTransaction } from "../shared/stockCommandHttp.js";
 import { listStockRequests, createStockRequest, approveStockRequest, rejectStockRequest } from "../modules/stock-requests/stockRequestService.js";
 
 export const stockRequestRoutes = express.Router();
@@ -31,15 +32,15 @@ stockRequestRoutes.post("/requests", authorize(["user"]), requireAvailableProduc
 stockRequestRoutes.post("/requests/:id/approve", authorize(["admin"]), async (req, res) => {
   const session = await mongoose.startSession();
   try {
-    let approvedRequest;
-    await session.withTransaction(async () => {
-      approvedRequest = await approveStockRequest({ requestId: req.params.id, input: req.body, actor: req.user, session });
-    });
+    const approvedRequest = await stockTransaction(req, session, () => approveStockRequest({ requestId: req.params.id, input: req.body, actor: req.user, session }));
+    if (!req.stockCommandReplayed) {
     io.to(approvedRequest.godownId.toString()).emit("request_approved", { requestId: approvedRequest._id });
     notifyKitchen(approvedRequest.godownId, "requests");
     notifyKitchen(approvedRequest.godownId, "stock");
+    }
     res.json({ message: "Status updated and Godown stock synced" });
   } catch (error) {
+    if (error.stockCommandError) throw error;
     res.status(400).json({ error: error.message });
   } finally {
     await session.endSession();

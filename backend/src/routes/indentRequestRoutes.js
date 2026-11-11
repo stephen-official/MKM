@@ -8,6 +8,7 @@ import { bodyItemIds, requireAvailableProducts } from "../catalog/productService
 import { packQuantityMatchesBase, packSnapshot } from "../catalog/packaging.js";
 import { createStockBatch } from "../stock/batchService.js";
 import { StockItem } from "../models/InventoryModels.js";
+import { stockTransaction } from "../shared/stockCommandHttp.js";
 
 const router = express.Router();
 
@@ -126,8 +127,7 @@ router.patch("/:id/select-item", authorize(["admin"]), async (req, res) => {
 router.post("/:id/receive", authorize(["user", "admin"]), async (req, res) => {
   const session = await mongoose.startSession();
   try {
-    let updatedRequest;
-    await session.withTransaction(async () => {
+    const updatedRequest = await stockTransaction(req, session, async () => {
       const request = await IndentRequest.findById(req.params.id).session(session);
       if (!request) throw Object.assign(new Error("Supply request not found"), { status: 404 });
       if (isKitchenRole(req.user.role) && !userOwnsRequest(request, req.user)) {
@@ -180,12 +180,15 @@ router.post("/:id/receive", authorize(["user", "admin"]), async (req, res) => {
       const approved = request.items.filter((item) => item.status === "approved");
       const fullyReceived = approved.every((item) => Number(item.receivedQty || 0) >= Number(item.qtyBaseUnit));
       request.status = fullyReceived ? "received" : "partially_received";
-      updatedRequest = await request.save({ session });
+      return request.save({ session });
     });
+    if (!req.stockCommandReplayed) {
     notifyKitchen(updatedRequest.godownId, "indents");
     notifyKitchen(updatedRequest.godownId, "stock");
+    }
     return res.json({ success: true, request: updatedRequest });
   } catch (error) {
+    if (error.stockCommandError) throw error;
     return res.status(error.status || 500).json({ message: error.message });
   } finally {
     await session.endSession();

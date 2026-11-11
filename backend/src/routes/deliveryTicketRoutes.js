@@ -5,6 +5,7 @@ import { authorize } from "../middleware/auth.js";
 import { DeliveryTicket } from "../models/DeliveryTicketModel.js";
 import { settleDeliveryTicket } from "../modules/delivery-tickets/deliveryTicketSettlementService.js";
 import { asyncRoute, fail } from "../shared/httpErrors.js";
+import { commandContextFromRequest } from "../shared/stockCommandHttp.js";
 
 // Admin view of delivery problems kitchens raised while receiving shared orders (raised through
 // POST /api/procurement/collaborative-purchase-orders/:id/receive with a `problem` on the item).
@@ -33,10 +34,12 @@ deliveryTicketRoutes.get("/", adminOnly, route(async (req, res) => {
  * `reorderShortfall: true` a follow-up order is opened for the ordered quantity not accepted. One transaction.
  */
 deliveryTicketRoutes.post("/:id/settle", adminOnly, route(async (req, res) => {
-    await settleDeliveryTicket({ ticketId: req.params.id, input: req.body, actor: req.user });
+    const { replayed } = await settleDeliveryTicket({ ticketId: req.params.id, input: req.body, actor: req.user, commandContext: commandContextFromRequest(req) });
     const settled = await populate(DeliveryTicket.findById(req.params.id)).lean();
+    if (!replayed) {
     notifyKitchen(settled?.godownId?._id || settled?.godownId, "stock");
     notifyKitchens("orders");
+    }
     return res.json(settled);
 }));
 

@@ -49,8 +49,8 @@ export const recordOpeningBalance = async ({ input, actor, session }) => {
   return { openingBalance, stock: stockRecord, batch };
 };
 
-export const changeStockThreshold = ({ stockRecordId, thresholdBaseUnit }) => GodownStock.findByIdAndUpdate(
-  stockRecordId, { thresholdBaseUnit }, { new: true },
+export const changeStockThreshold = ({ stockRecordId, thresholdBaseUnit, session }) => GodownStock.findByIdAndUpdate(
+  stockRecordId, { thresholdBaseUnit }, { new: true, session },
 );
 
 /** Removes the balance and empties its batches in the same transaction, keeping batch history. */

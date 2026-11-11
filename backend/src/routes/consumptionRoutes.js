@@ -9,6 +9,10 @@ import { isKitchenRole } from "../utils/roles.js";
 import { stripPrices } from "../utils/kitchenSafe.js";
 import { deepPopulateItem } from "../modules/operations/operationItemPopulation.js";
 import { recordConsumption, applyConsumptionEdit, removeConsumption } from "../modules/consumption/consumptionService.js";
+import { stockTransaction } from "../shared/stockCommandHttp.js";
+
+const populatedConsumption = (id, session) => Consumption.findById(id).session(session)
+  .populate("userId", "name").populate("godownId", "name").populate(deepPopulateItem);
 
 export const consumptionRoutes = express.Router();
 
@@ -17,20 +21,22 @@ const handleStockProcessing = async (req, res) => {
   try {
     const godownId = isKitchenRole(req.user.role) ? req.user.godownId : req.body.godownId;
     // A day the kitchen marked "no usage" stays closed until an admin approves a correction; nothing is recorded on it.
-    if (godownId && req.body.date && await NoUsageDay.exists({ godownId, date: req.body.date })) {
-      return res.status(409).json({ code: "DAY_CLOSED", error: "This day is marked as no usage. Ask the admin to reopen it before recording." });
+    const populatedResult = await stockTransaction(req, session, async () => {
+      if (godownId && req.body.date && await NoUsageDay.exists({ godownId, date: req.body.date }).session(session)) {
+        throw Object.assign(new Error("This day is marked as no usage. Ask the admin to reopen it before recording."), { dayClosed: true });
+      }
+      const result = await recordConsumption({ godownId, userId: req.user.sub, date: req.body.date, items: req.body.items, session });
+      return populatedConsumption(result._id, session);
+    });
+
+    if (!req.stockCommandReplayed) {
+      notifyKitchen(populatedResult.godownId?._id || godownId, "stock");
+      notifyKitchen(populatedResult.godownId?._id || godownId, "usage");
     }
-    const result = await session.withTransaction(() => recordConsumption({ godownId, userId: req.user.sub, date: req.body.date, items: req.body.items, session }));
-
-    const populatedResult = await Consumption.findById(result._id)
-      .populate("userId", "name")
-      .populate("godownId", "name")
-      .populate(deepPopulateItem);
-
-    notifyKitchen(result.godownId, "stock");
-    notifyKitchen(result.godownId, "usage");
     res.status(201).json(populatedResult);
   } catch (error) {
+    if (error.stockCommandError) throw error;
+    if (error.dayClosed) return res.status(409).json({ code: "DAY_CLOSED", error: error.message });
     res.status(400).json({ error: error.message });
   } finally {
     await session.endSession();
@@ -50,7 +56,7 @@ consumptionRoutes.patch(
     const session = await mongoose.startSession();
 
     try {
-      await session.withTransaction(async () => {
+      const updatedConsumption = await stockTransaction(req, session, async () => {
         const { id } = req.params;
         const { items } = req.body;
 
@@ -72,19 +78,13 @@ consumptionRoutes.patch(
         }
 
         await applyConsumptionEdit({ consumption, items, userId: req.user.sub, session });
+        return populatedConsumption(req.params.id, session);
       });
-
-      // ------------------------------------------------------
-      // Get updated/populated record
-      // ------------------------------------------------------
-      const updatedConsumption = await Consumption.findById(req.params.id)
-        .populate("userId", "name")
-        .populate("godownId", "name")
-        .populate(deepPopulateItem);
 
       // ------------------------------------------------------
       // Notify client applications
       // ------------------------------------------------------
+      if (!req.stockCommandReplayed) {
       notifyKitchen(updatedConsumption.godownId._id, "stock");
       notifyKitchen(updatedConsumption.godownId._id, "usage");
       io.to(updatedConsumption.godownId._id.toString()).emit(
@@ -96,10 +96,12 @@ consumptionRoutes.patch(
         "consumption_updated",
         updatedConsumption
       );
+      }
 
       res.json(updatedConsumption);
 
     } catch (error) {
+      if (error.stockCommandError) throw error;
       console.error("UPDATE CONSUMPTION ERROR:");
       console.error(error);
 
@@ -121,9 +123,7 @@ consumptionRoutes.delete(
     const session = await mongoose.startSession();
 
     try {
-      let deletedConsumption;
-
-      await session.withTransaction(async () => {
+      const deletedConsumption = await stockTransaction(req, session, async () => {
         const { id } = req.params;
 
         if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -140,12 +140,13 @@ consumptionRoutes.delete(
           throw new Error("Consumption record not found");
         }
 
-        deletedConsumption = await removeConsumption({ consumption, session });
+        return removeConsumption({ consumption, session });
       });
 
       // ------------------------------------------------------
       // Notify clients immediately
       // ------------------------------------------------------
+      if (!req.stockCommandReplayed) {
       notifyKitchen(deletedConsumption.godownId, "stock");
       notifyKitchen(deletedConsumption.godownId, "usage");
       io.to(deletedConsumption.godownId.toString()).emit(
@@ -155,7 +156,6 @@ consumptionRoutes.delete(
           godownId: deletedConsumption.godownId
         }
       );
-
       io.to("admins").emit(
         "consumption_deleted",
         {
@@ -163,6 +163,7 @@ consumptionRoutes.delete(
           godownId: deletedConsumption.godownId
         }
       );
+      }
 
       res.json({
         message: deletedConsumption.stockRestored ? "Consumption deleted and stock restored" : "Consumption deleted",
@@ -170,6 +171,7 @@ consumptionRoutes.delete(
       });
 
     } catch (error) {
+      if (error.stockCommandError) throw error;
       console.error("DELETE CONSUMPTION ERROR:");
       console.error(error);
 

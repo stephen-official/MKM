@@ -193,6 +193,18 @@ test("settling a short delivery puts the accepted quantity into stock and opens 
   assert.equal(await stockOf(ctx.rice), 60);
 });
 
+test("a keyed settlement retry does not add stock or open a follow-up order twice", async () => {
+  const id = await raiseShort();
+  const body = { acceptedQtyBaseUnit: 60, reorderShortfall: true };
+  const first = await settle(id, body).set("Idempotency-Key", "settle-retry");
+  const retry = await settle(id, body).set("Idempotency-Key", "settle-retry");
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(retry.status, 200, JSON.stringify(retry.body));
+  assert.deepEqual(retry.body, first.body);
+  assert.equal(await stockOf(ctx.rice), 60);
+  assert.equal(await CollaborativePurchaseOrder.countDocuments(), 2);
+});
+
 test("the admin cannot accept more than usably arrived; accepting nothing closes the line without stock or reorder", async () => {
   const ticketId = await raiseShort();
   const tooMuch = await settle(ticketId, { acceptedQtyBaseUnit: 61 });

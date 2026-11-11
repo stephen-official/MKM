@@ -95,6 +95,17 @@ test("approving a reopen_day removes the mark and records the usage in one go; d
   assert.equal((await approve(ctx.cook, created._id)).status, 403);
 });
 
+test("a keyed correction approval retry records usage and stock effects once", async () => {
+  const created = await askReopen(ctx.cook);
+  const first = await approve(ctx.admin, created.body._id, "Reopened").set("Idempotency-Key", "correction-retry");
+  const retry = await approve(ctx.admin, created.body._id, "Reopened").set("Idempotency-Key", "correction-retry");
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(retry.status, 200, JSON.stringify(retry.body));
+  assert.deepEqual(retry.body, first.body);
+  assert.equal(await Consumption.countDocuments({ date: yesterday }), 1);
+  assert.equal(await stockOf(ctx.rice), 95);
+});
+
 test("approving fails cleanly when the stock is no longer there; the mark stays and the ask stays pending", async () => {
   const { body: created } = await askReopen(ctx.cook, { items: [line(ctx.dal, 8)] });
   await GodownStock.updateOne({ _id: ctx.dal._id }, { $set: { qtyBaseUnit: 3 } });

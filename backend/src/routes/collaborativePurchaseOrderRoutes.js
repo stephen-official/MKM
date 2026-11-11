@@ -5,6 +5,7 @@ import { authorize } from "../middleware/auth.js";
 import { bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
 import { CollaborativePurchaseOrder } from "../models/CollaborativePurchaseOrderModel.js";
 import { asyncRoute, fail, forwardError } from "../shared/httpErrors.js";
+import { commandContextFromRequest } from "../shared/stockCommandHttp.js";
 import { presentOrder } from "../modules/collaborative-orders/orderPresenter.js";
 import { getOrderDetails, getOrderPage } from "../modules/collaborative-orders/orderReadService.js";
 import { createCollaborativeOrder, editOwnContribution, joinCollaborativeOrder, leaveCollaborativeOrder } from "../modules/collaborative-orders/orderContributionService.js";
@@ -173,9 +174,11 @@ collaborativePurchaseOrderRoutes.post("/:id/photos", kitchenOnly, readPhoto, rou
  * and a copy of the order's supplier. A kitchen with a problem raises a concern instead.
  */
 collaborativePurchaseOrderRoutes.post("/:id/receive", kitchenOnly, route(async (req, res) => {
-    await receiveCollaborativeOrder({ orderId: req.params.id, input: req.body, actor: req.user });
+    const { replayed } = await receiveCollaborativeOrder({ orderId: req.params.id, input: req.body, actor: req.user, commandContext: commandContextFromRequest(req) });
+    if (!replayed) {
     notifyKitchens("orders");
     notifyKitchen(req.user.godownId, "stock");
+    }
     return res.json(presentOrder(await getOrderDetails(req.params.id), req.user));
 }));
 

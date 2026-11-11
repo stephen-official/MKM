@@ -4,6 +4,7 @@ import { authorize } from "../middleware/auth.js";
 import { bodyItemIds, requireAvailableProducts } from "../catalog/productService.js";
 import { io, notifyKitchen } from "../realtime.js";
 import { stripPrices } from "../utils/kitchenSafe.js";
+import { stockTransaction } from "../shared/stockCommandHttp.js";
 import { acceptTransfer, createKitchenTransfer, createTransfer, incomingTransfers, listTransfers, rejectTransfer, transferHistory } from "../modules/transfers/transferService.js";
 
 export const transferRoutes = express.Router();
@@ -15,14 +16,14 @@ transferRoutes.get("/user-transfers/incoming", authorize(["user"]), async (req, 
 transferRoutes.post("/user-transfers/:id/accept", authorize(["user"]), async (req, res) => {
   const session = await mongoose.startSession();
   try {
-    await session.withTransaction(async () => {
-      const transfer = await acceptTransfer({ transferId: req.params.id, actor: req.user, session });
-      // Retain the existing notification timing inside the transaction.
+    const transfer = await stockTransaction(req, session, () => acceptTransfer({ transferId: req.params.id, actor: req.user, session }));
+    if (!req.stockCommandReplayed) {
       for (const id of [transfer.fromGodownId, transfer.toGodownId]) { notifyKitchen(id, "transfers"); notifyKitchen(id, "stock"); }
       io.to(transfer.fromGodownId.toString()).emit("transfer_accepted", stripPrices(transfer));
-    });
+    }
     res.json({ message: "Transfer Accepted" });
   } catch (error) {
+    if (error.stockCommandError) throw error;
     res.status(400).json({ error: error.message });
   } finally {
     session.endSession();

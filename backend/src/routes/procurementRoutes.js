@@ -15,6 +15,7 @@ import { isSuperAdmin } from "../utils/roles.js";
 
 import { stockAdjustmentRoutes } from "./stockAdjustmentRoutes.js";
 import { distributionRoutes } from "./distributionRoutes.js";
+import { stockTransaction } from "../shared/stockCommandHttp.js";
 
 export const procurementRoutes = express.Router();
 const adminOnly = authorize(["admin"]);
@@ -145,8 +146,7 @@ procurementRoutes.get("/purchase-orders", adminOnly, async (_req, res) => {
 procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
   const session = await mongoose.startSession();
   try {
-    let created;
-    await session.withTransaction(async () => {
+    const created = await stockTransaction(req, session, async () => {
       const items = (req.body.items || []).map((item) => ({ ...item, ...packSnapshot(item) }));
       if (!items.length || items.some((item) => Number(item.receivedQty) < 0 || !packQuantityMatchesBase(item, item.receivedQty))) {
         throw Object.assign(new Error("Enter valid base-unit or pack quantities"), { status: 400 });
@@ -192,11 +192,12 @@ procurementRoutes.post("/purchase-orders", adminOnly, async (req, res) => {
           { session, ...(item.packId ? { arrayFilters: [{ "pack._id": item.packId }] } : {}) },
         );
       }
-      created = po[0];
+      return po[0];
     });
     // Reply only after the commit, so a failed commit is never reported as created.
     res.status(201).json(created);
   } catch (error) {
+    if (error.stockCommandError) throw error;
     res.status(error.status || 500).json({ message: "PO Creation failed", error: error.message });
   } finally {
     await session.endSession();

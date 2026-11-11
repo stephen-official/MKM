@@ -164,7 +164,7 @@ for (const [mountPath, router] of PROTECTED_MOUNTS) app.use(mountPath, authentic
 // anything else is logged and answered with a generic 500 so internal details never reach the client.
 export const errorHandler = (err, _req, res, next) => {
     if (res.headersSent) return next(err);
-    if (err.httpErrorOverrides !== undefined) {
+    if (err.httpErrorOverrides !== undefined || err.stockCommandError) {
         const response = errorResponse(err, err.httpErrorOverrides);
         if (response.status === 500) console.error(err.stack || err);
         return res.status(response.status).json(response.body);

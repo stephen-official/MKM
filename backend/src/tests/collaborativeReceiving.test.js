@@ -47,6 +47,18 @@ const receive = (order, body) => call(ctx.cookA, "post", `/${order._id}/receive`
 const stockOf = async (product) => Number((await GodownStock.findOne({ godownId: ctx.kitchenA._id, stockItemId: product._id }).lean())?.qtyBaseUnit || 0);
 const yymm = businessDateOf(new Date()).slice(2, 7).replace("-", "");
 
+test("a keyed receiving retry keeps one stock batch and one tracking ID", async () => {
+  const order = await dispatched([{ stockItemId: ctx.rice._id, qtyBaseUnit: 10 }]);
+  const body = { items: [riceDetails()] };
+  const first = await receive(order, body).set("Idempotency-Key", "receive-retry");
+  const retry = await receive(order, body).set("Idempotency-Key", "receive-retry");
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(retry.status, 200, JSON.stringify(retry.body));
+  assert.deepEqual(retry.body, first.body);
+  assert.equal(await stockOf(ctx.rice), 10);
+  assert.equal(await StockBatch.countDocuments({ sourceId: order._id }), 1);
+});
+
 test("receiving records photos, dates, batch, storage and the supplier on a tracked stock batch", async () => {
   const order = await dispatched([{ stockItemId: ctx.rice._id, qtyBaseUnit: 100 }]);
   const res = await receive(order, { items: [riceDetails({ notes: "Bags dry" })] });

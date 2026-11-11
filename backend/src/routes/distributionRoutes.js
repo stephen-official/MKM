@@ -2,6 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { notifyKitchen } from "../realtime.js";
+import { stockTransaction } from "../shared/stockCommandHttp.js";
 import { createDistribution, getDistributionDetails, listDistributionLeftovers, listDistributionLogs, validateDistribution } from "../modules/distributions/distributionService.js";
 
 export const distributionRoutes = express.Router();
@@ -16,13 +17,13 @@ distributionRoutes.post("/distributions", adminOnly, async (req, res) => {
       if (error.status === 400) return res.status(400).json({ message: error.message });
       throw error;
     }
-    await session.withTransaction(async () => {
-      const distribution = await createDistribution({ input: req.body, actor: req.user, session });
-      // Preserve the existing response and notification timing inside this transaction.
+    const distribution = await stockTransaction(req, session, () => createDistribution({ input: req.body, actor: req.user, session }));
+    if (!req.stockCommandReplayed) {
       for (const id of new Set((allocations || []).map((item) => String(item.godownId)))) notifyKitchen(id, "stock");
-      res.status(201).json(distribution);
-    });
+    }
+    res.status(201).json(distribution);
   } catch (error) {
+    if (error.stockCommandError) throw error;
     res.status(500).json({ message: "Distribution failed", error: error.message });
   } finally {
     await session.endSession();

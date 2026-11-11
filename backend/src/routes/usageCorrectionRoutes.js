@@ -9,6 +9,7 @@ import { io, notifyKitchen } from "../realtime.js";
 import { CatalogError, assertKitchenCanUse } from "../catalog/productService.js";
 import { NO_USAGE_REASONS } from "../usage/usageDays.js";
 import { applyConsumptionEdit, recordConsumption, removeConsumption } from "../modules/consumption/consumptionService.js";
+import { stockTransaction } from "../shared/stockCommandHttp.js";
 
 /**
  * Corrections: a kitchen asks to change what it recorded; nothing changes until an admin approves.
@@ -26,6 +27,7 @@ class CorrectionError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
 const send = (res, error) => {
+  if (error.stockCommandError) throw error;
   if (error instanceof CorrectionError) return res.status(error.status).json({ code: error.code, message: error.message });
   if (error instanceof CatalogError) return res.status(error.status).json({ code: error.code, message: error.message, products: error.products });
   return res.status(500).json({ code: "CORRECTION_FAILED", message: error.message });
@@ -254,13 +256,12 @@ const apply = async (row, user, session) => {
 usageCorrectionRoutes.post("/:id/approve", adminOnly, async (req, res) => {
   const session = await mongoose.startSession();
   try {
-    let row;
-    await session.withTransaction(async () => {
-      row = await loadPending(req.params.id, session);
+    const row = await stockTransaction(req, session, async () => {
+      const row = await loadPending(req.params.id, session);
       await apply(row, req.user, session);
-      row = await decide(row, req.user, { status: "approved", decisionNote: String(req.body?.note || "").trim().slice(0, 300) }, session);
+      return decide(row, req.user, { status: "approved", decisionNote: String(req.body?.note || "").trim().slice(0, 300) }, session);
     });
-    tellKitchen(row);
+    if (!req.stockCommandReplayed) tellKitchen(row);
     return res.json(await load(row._id));
   } catch (error) {
     return send(res, error);

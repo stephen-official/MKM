@@ -11,17 +11,18 @@ import { fail } from "../../shared/httpErrors.js";
 import { liveLines } from "./orderContributionRules.js";
 import { isReceived, isSent } from "./orderDeliveryRules.js";
 import { problemDetails, receiptDetails, supplierSnapshotFor } from "./orderReceivingRules.js";
+import { runStockTransaction } from "../stock-commands/stockCommandService.js";
 
 const detailKey = (stockItemId, packId) => `${String(stockItemId)}:${packId ? String(packId) : "base"}`;
 
-export const receiveCollaborativeOrder = async ({ orderId, input, actor }) => {
+export const receiveCollaborativeOrder = async ({ orderId, input, actor, commandContext }) => {
   if (!mongoose.isValidObjectId(orderId)) throw fail(404, "Collaborative purchase order not found");
   const details = new Map((Array.isArray(input?.items) ? input.items : [])
     .filter((entry) => mongoose.isValidObjectId(entry?.stockItemId))
     .map((entry) => [detailKey(entry.stockItemId, entry.packId), entry]));
   const session = await mongoose.startSession();
   try {
-    await session.withTransaction(async () => {
+    return await runStockTransaction({ session, context: commandContext, work: async () => {
       const order = await CollaborativePurchaseOrder.findById(orderId)
         .populate("supplierId", "name fssaiLicence").populate("supplierByProduct.supplierId", "name fssaiLicence").session(session);
       if (!order) throw fail(404, "Collaborative purchase order not found");
@@ -83,7 +84,7 @@ export const receiveCollaborativeOrder = async ({ orderId, input, actor }) => {
         note: [...new Set(problems.map((entry) => entry.reason.replace("_", " ")))].join(", "),
       }));
       await order.save({ session });
-    });
+    } });
   } finally {
     await session.endSession();
   }
