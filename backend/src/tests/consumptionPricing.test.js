@@ -25,6 +25,33 @@ beforeEach(async () => {
 
 const as = (who, method, url) => request(app)[method](url).set("Authorization", `Bearer ${f[who].token}`);
 
+test("consumption routes keep both operations mounts and the orders write alias", async () => {
+  for (const base of ["/api", "/api/operations"]) {
+    for (const path of ["orders", "consumptions"]) {
+      const created = await as("cook", "post", `${base}/${path}`).send({
+        date: "2026-10-12", items: [{ stockRecordId: f.rice._id, qtyBaseUnit: 2 }],
+      });
+      assert.equal(created.status, 201, JSON.stringify(created.body));
+      const id = created.body._id;
+      const mine = await as("cook", "get", `${base}/consumptions/me`);
+      assert.equal(mine.status, 200);
+      assert.ok(mine.body.some((row) => row._id === id));
+      const all = await as("admin", "get", `${base}/consumptions`);
+      assert.equal(all.status, 200);
+      assert.ok(all.body.some((row) => row._id === id));
+      assert.equal((await as("cook", "delete", `${base}/consumptions/${id}`)).status, 403);
+      const edited = await as("admin", "patch", `${base}/consumptions/${id}`).send({
+        items: [{ stockItemId: f.items.Rice._id, stockRecordId: f.rice._id, qtyBaseUnit: 3 }],
+      });
+      assert.equal(edited.status, 200, JSON.stringify(edited.body));
+      assert.equal((await GodownStock.findById(f.rice._id)).qtyBaseUnit, 47);
+      const deleted = await as("admin", "delete", `${base}/consumptions/${id}`);
+      assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
+      assert.equal((await GodownStock.findById(f.rice._id)).qtyBaseUnit, 50);
+    }
+  }
+});
+
 test("new consumption lines store unit price and amount at issue; unpriced lines store null", async () => {
   const res = await as("cook", "post", "/api/consumptions").send({
     date: "2026-10-12",

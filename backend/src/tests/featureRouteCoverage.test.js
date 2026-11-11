@@ -3,17 +3,25 @@ import { before, test } from "node:test";
 import { ROUTE_RULES, classifyRoute, normalizePath } from "../features/registry.js";
 
 let routes;
+const collectRoutes = (mount, router) => {
+  for (const layer of router.stack) {
+    if (layer.handle?.stack) {
+      // Domain routers currently mount at '/'; keep coverage when operations is split into child routers.
+      assert.ok(layer.regexp.fast_slash, "Prefixed child routers need their mount path included in route coverage");
+      collectRoutes(mount, layer.handle);
+    }
+    if (!layer.route) continue;
+    for (const method of Object.keys(layer.route.methods)) {
+      if (method === "_all") continue;
+      routes.push({ method: method.toUpperCase(), path: `${mount === "/" ? "" : mount}${layer.route.path}` });
+    }
+  }
+};
 before(async () => {
   const { PROTECTED_MOUNTS, PUBLIC_MOUNTS } = await import("../app.js");
   routes = [];
   for (const [mount, router] of [...PUBLIC_MOUNTS, ...PROTECTED_MOUNTS]) {
-    for (const layer of router.stack) {
-      if (!layer.route) continue;
-      for (const method of Object.keys(layer.route.methods)) {
-        if (method === "_all") continue;
-        routes.push({ method: method.toUpperCase(), path: `${mount === "/" ? "" : mount}${layer.route.path}` });
-      }
-    }
+    collectRoutes(mount, router);
   }
   routes.push({ method: "GET", path: "/api/health" });
 });

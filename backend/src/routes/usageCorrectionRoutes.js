@@ -8,7 +8,7 @@ import { isIsoDate } from "../executive/params.js";
 import { io, notifyKitchen } from "../realtime.js";
 import { CatalogError, assertKitchenCanUse } from "../catalog/productService.js";
 import { NO_USAGE_REASONS } from "../usage/usageDays.js";
-import { applyConsumptionEdit, recordConsumption, removeConsumption } from "./operationsRoutes.js";
+import { applyConsumptionEdit, recordConsumption, removeConsumption } from "../modules/consumption/consumptionService.js";
 
 /**
  * Corrections: a kitchen asks to change what it recorded; nothing changes until an admin approves.
