@@ -1,5 +1,4 @@
 import express from "express";
-import { notifyKitchen } from "../realtime.js";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
 import { 
@@ -9,19 +8,16 @@ import {
   PurchaseOrder 
 } from "../models/FlowModels.js";
 import { packQuantityMatchesBase, packSnapshot } from "../catalog/packaging.js";
-import { createStockBatch } from "../stock/batchService.js";
-import { Godown, StockItem } from "../models/InventoryModels.js";
+import { StockItem } from "../models/InventoryModels.js";
 import { StockBatch } from "../models/StockBatchModel.js";
-import { OpeningBalance } from "../models/OpeningBalanceModel.js";
 import { isValidPrice } from "../catalog/completeness.js";
 import { isSuperAdmin } from "../utils/roles.js";
-import { parseOpeningDate } from "../stock/openingDate.js";
 
+import { stockAdjustmentRoutes } from "./stockAdjustmentRoutes.js";
 import { distributionRoutes } from "./distributionRoutes.js";
 
 export const procurementRoutes = express.Router();
 const adminOnly = authorize(["admin"]);
-const superAdminOnly = authorize(["super_admin"]);
 const anyUser = authorize(["admin", "user"]);
 
 // --- STOCK UTILITY & VALIDATION ROUTES ---
@@ -270,123 +266,7 @@ procurementRoutes.get("/stock-batches", adminOnly, async (req, res) => {
   }
 });
 
-procurementRoutes.post("/opening-balances", superAdminOnly, async (req, res) => {
-  const { godownId, stockItemId, quantityBaseUnit, effectiveDate, reason } = req.body || {};
-  const quantity = Number(quantityBaseUnit);
-  const cleanReason = String(reason || "").trim();
-  const effectiveAt = parseOpeningDate(String(effectiveDate || ""));
-
-  if (!mongoose.isValidObjectId(godownId) || !mongoose.isValidObjectId(stockItemId)) {
-    return res.status(400).json({ message: "Choose a valid kitchen and product" });
-  }
-  if (!Number.isFinite(quantity) || quantity <= 0) {
-    return res.status(400).json({ message: "Opening quantity must be greater than zero" });
-  }
-  if (!effectiveAt) {
-    return res.status(400).json({ message: "Effective date must be today or earlier" });
-  }
-  if (cleanReason.length < 3 || cleanReason.length > 500) {
-    return res.status(400).json({ message: "Reason must be between 3 and 500 characters" });
-  }
-
-  const session = await mongoose.startSession();
-  try {
-    let result;
-    await session.withTransaction(async () => {
-      // One operation at a time: MongoDB does not support parallel operations inside a transaction.
-      const godown = await Godown.findOne({ _id: godownId, active: true }).session(session);
-      const product = await StockItem.findOne({ _id: stockItemId, archived: { $ne: true } }).populate("unitId", "symbol").session(session);
-      const stock = await GodownStock.findOne({ godownId, stockItemId }).session(session);
-      const priorBatch = await StockBatch.exists({ godownId, stockItemId }).session(session);
-      const priorOpening = await OpeningBalance.exists({ godownId, stockItemId }).session(session);
-      if (!godown) throw Object.assign(new Error("Active kitchen not found"), { status: 404 });
-      if (!product) throw Object.assign(new Error("Active product not found"), { status: 404 });
-      if (!isValidPrice(product.pricePerUnit)) {
-        throw Object.assign(new Error("Set the product price before entering its opening balance"), { status: 409 });
-      }
-      if (stock || priorBatch || priorOpening) {
-        throw Object.assign(new Error("This kitchen and product already has stock history; use a stock adjustment workflow instead"), { status: 409 });
-      }
-
-      const [stockRecord] = await GodownStock.create([{
-        godownId, stockItemId, qtyBaseUnit: quantity,
-        thresholdBaseUnit: Number(product.defaultThreshold || 0),
-      }], { session });
-      const batch = await createStockBatch({
-        godownId, stockItemId, quantity, unitPrice: product.pricePerUnit,
-        sourceType: "opening_balance", receivedAt: effectiveAt,
-        notes: cleanReason, condition: "good", createdBy: req.user.sub, session,
-      });
-      const [openingBalance] = await OpeningBalance.create([{
-        godownId, stockItemId, stockRecordId: stockRecord._id, batchId: batch._id,
-        quantityBaseUnit: quantity, unitPrice: product.pricePerUnit,
-        effectiveAt, reason: cleanReason, createdBy: req.user.sub,
-      }], { session });
-      result = { openingBalance, stock: stockRecord, batch };
-    });
-    notifyKitchen(godownId, "stock");
-    return res.status(201).json(result);
-  } catch (error) {
-    if (error?.code === 11000) return res.status(409).json({ message: "An opening balance already exists for this kitchen and product" });
-    return res.status(error.status || 500).json({ message: error.status ? error.message : "Opening balance failed", ...(error.status ? {} : { error: error.message }) });
-  } finally {
-    await session.endSession();
-  }
-});
-
-// --- SETTINGS & DELETION ---
-
-procurementRoutes.post("/godown-stocks/:id/threshold", adminOnly, async (req, res) => {
-  try {
-    const stock = await GodownStock.findByIdAndUpdate(
-      req.params.id, 
-      { thresholdBaseUnit: req.body.thresholdBaseUnit }, 
-      { new: true }
-    );
-    notifyKitchen(stock?.godownId, "stock");
-    res.json(stock);
-  } catch (error) {
-    res.status(500).json({ message: "Threshold update failed", error: error.message });
-  }
-});
-
-procurementRoutes.delete("/godown-stocks/:id", adminOnly, async (req, res) => {
-  const session = await mongoose.startSession();
-  try {
-    let deletedStock;
-    await session.withTransaction(async () => {
-      deletedStock = await GodownStock.findByIdAndDelete(req.params.id, { session });
-      if (!deletedStock) return;
-      // Empty (not delete) the row's batches: they keep their history but can no longer feed FEFO usage.
-      await StockBatch.updateMany(
-        { godownId: deletedStock.godownId, stockItemId: deletedStock.stockItemId, remainingQtyBaseUnit: { $gt: 0 } },
-        { $set: { remainingQtyBaseUnit: 0 } },
-        { session },
-      );
-    });
-
-    if (!deletedStock) {
-      return res.status(404).json({ message: "Stock item not found" });
-    }
-
-    notifyKitchen(deletedStock.godownId, "stock");
-    res.json({
-      success: true,
-      message: "Stock item removed"
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      message: err.message
-    });
-  } finally {
-    await session.endSession();
-  }
-});
-
-
-
-
+procurementRoutes.use(stockAdjustmentRoutes);
 
 /**
  * @route   GET /api/procurement/purchase-orders/purchased-indents
