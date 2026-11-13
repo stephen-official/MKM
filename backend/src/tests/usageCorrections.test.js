@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { after, before, beforeEach, test } from "node:test";
+import { after, before, beforeEach, mock, test } from "node:test";
+import mongoose from "mongoose";
 import request from "supertest";
 import { clearDb, startDb, stopDb, syncAllIndexes } from "./helpers/db.js";
 import { createUser } from "./helpers/auth.js";
@@ -257,4 +258,41 @@ test("a product archived after it was used may stay or go down on a correction, 
   assert.equal(gone.status, 201, JSON.stringify(gone.body));
   assert.equal((await approve(ctx.admin, gone.body._id)).status, 200);
   assert.equal((await askEdit(ctx.cook, recorded._id, [line(ctx.rice, 8), line(ctx.dal, 1)])).body.code, "PRODUCT_UNAVAILABLE");
+});
+
+test("a write conflict while approving is retried instead of answered as CANNOT_APPLY", async () => {
+  const created = await askReopen(ctx.cook);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  // The first attempt hits a transient conflict mid-apply, as when another admin moves the same stock at that moment.
+  const original = NoUsageDay.deleteOne.bind(NoUsageDay);
+  let calls = 0;
+  const deleteOne = mock.method(NoUsageDay, "deleteOne", (...args) => {
+    calls += 1;
+    if (calls === 1) throw new mongoose.mongo.MongoServerError({ message: "WriteConflict", code: 112, errorLabels: ["TransientTransactionError"] });
+    return original(...args);
+  });
+  try {
+    const res = await approve(ctx.admin, created.body._id);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+  } finally {
+    deleteOne.mock.restore();
+  }
+  assert.equal(calls, 2, "the transaction was retried once");
+  assert.equal(await stockOf(ctx.rice), 95);
+  assert.equal(await NoUsageDay.countDocuments({ godownId: ctx.kitchenA._id, date: yesterday }), 0);
+});
+
+test("an internal failure while approving is CANNOT_APPLY without the internal message", async () => {
+  const created = await askReopen(ctx.cook);
+  const deleteOne = mock.method(NoUsageDay, "deleteOne", () => { throw new TypeError("Cannot read properties of undefined (reading 'date')"); });
+  const original = console.error;
+  console.error = () => {};
+  try {
+    const res = await approve(ctx.admin, created.body._id);
+    assert.equal(res.status, 409);
+    assert.deepEqual(res.body, { code: "CANNOT_APPLY", message: "This change could not be applied. Try again or reject it." });
+  } finally {
+    deleteOne.mock.restore();
+    console.error = original;
+  }
 });

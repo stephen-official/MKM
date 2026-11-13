@@ -21,8 +21,17 @@ const removeReturnedStock = async ({ item, godownId, stockItemId, stock, session
   if (remaining > 1e-8) await deductFefo({ godownId, stockItemId, quantity: remaining, stock, session });
 };
 
-/** Records usage inside `session`: deducts stock (FEFO), raises low-stock alerts and saves the record. Shared with correction approvals. */
-export const recordConsumption = async ({ godownId, userId, date, items, session }) => {
+/** Sends low-stock alerts collected by recordConsumption; call only after the transaction commits. */
+export const emitLowStockAlerts = (alerts) => {
+  for (const alert of alerts) io.to(alert.payload.godownId.toString()).to("admins").emit("low_stock_alert", alert);
+};
+
+/**
+ * Records usage inside `session`: deducts stock (FEFO), saves low-stock notifications and the record. Shared with
+ * correction approvals. Alerts are pushed onto `alerts` for the caller to emit after commit (emitLowStockAlerts),
+ * so a rolled-back or retried transaction sends nothing.
+ */
+export const recordConsumption = async ({ godownId, userId, date, items, session, alerts }) => {
       if (!godownId) throw new Error("No godown associated with this request.");
 
       const orderItems = [];
@@ -60,7 +69,7 @@ export const recordConsumption = async ({ godownId, userId, date, items, session
             }
           };
           await Notification.create([alert], { session });
-          io.to(godownId.toString()).to("admins").emit("low_stock_alert", alert);
+          alerts.push(alert);
         }
 
         // The pack the cook counted in, kept as a snapshot when it agrees with the base quantity.

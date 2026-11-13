@@ -131,6 +131,7 @@ Definitions of every figure are in `backend/src/executive/definitions.js` and in
 |---|---|---|
 | `BUSINESS_TZ` | `Asia/Kolkata` | Day boundaries for reports and schedules |
 | `REPORT_SCHEDULER_ENABLED` | `false` | Run scheduled report emails in this process (safe on several instances) |
+| `TRUST_PROXY` | `1` | Proxy hops in front of the app (or trusted proxy addresses); sets client IPs and the login rate-limit key. Use `2` behind a CDN plus Render |
 | `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_NAME` / `SUPER_ADMIN_PASSWORD` | - | Only for `create-super-admin` |
 | `FRONTEND_URL` | `http://localhost:5173` | Links in invitation and reset emails |
 

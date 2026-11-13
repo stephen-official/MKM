@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assertProductionSecrets } from "../config/env.js";
+import { assertProductionSecrets, parseTrustProxy } from "../config/env.js";
 import { isValidPassword } from "../routes/authRoutes.js";
 import { createResetToken, hashResetToken } from "../utils/tokens.js";
 
@@ -35,6 +35,16 @@ test("production refuses process-wide TLS verification bypass", () => {
     jwtRefreshSecret: "refresh",
     tlsRejectUnauthorized: "1",
   }));
+});
+
+test("TRUST_PROXY sets how many proxies sit in front of the app; unset keeps one hop", () => {
+  assert.equal(parseTrustProxy(undefined), 1);
+  assert.equal(parseTrustProxy(""), 1);
+  assert.equal(parseTrustProxy("2"), 2);
+  assert.equal(parseTrustProxy("0"), 0);
+  assert.equal(parseTrustProxy("loopback, 10.0.0.0/8"), "loopback, 10.0.0.0/8");
+  assert.equal(parseTrustProxy("10.0.0.1"), "10.0.0.1");
+  for (const unsafe of ["true", "-1", "1.5"]) assert.throws(() => parseTrustProxy(unsafe), /TRUST_PROXY/, unsafe);
 });
 
 test("password validation enforces the minimum length", () => {

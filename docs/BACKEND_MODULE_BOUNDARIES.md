@@ -30,7 +30,7 @@ The operations parent router mounts domain routers at `/`, retaining both `/api`
 
 The caller must pass the same MongoDB session to every stock balance, batch, consumption, audit and source-record write in a command. Functions documented as running inside the caller's transaction must not start nested transactions. Receiving and delivery settlement own their transaction; route-owned transactions remain explicit in the other domains. Do not parallelize MongoDB operations inside a transaction.
 
-Send HTTP success and realtime notifications after commit. The legacy low-stock signal emitted by `recordConsumption` remains inside that command; an outbox is the future mechanism for guaranteed notification delivery. Notifications are not durable transaction records.
+Send HTTP success and realtime notifications after commit. `recordConsumption` saves low-stock notifications in the transaction and collects their realtime alerts for the caller to send with `emitLowStockAlerts` after commit, so a rolled-back or retried command sends none; an outbox is the future mechanism for guaranteed notification delivery. Notifications are not durable transaction records.
 
 ## Enforcement
 

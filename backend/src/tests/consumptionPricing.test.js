@@ -4,7 +4,8 @@ import request from "supertest";
 import { startDb, clearDb, stopDb } from "./helpers/db.js";
 import { createUser } from "./helpers/auth.js";
 import { distribution, kitchen, seedCatalog, stockRow } from "./helpers/fixtures.js";
-import { Consumption, Distribution, GodownStock, Request } from "../models/FlowModels.js";
+import { Consumption, Distribution, GodownStock, Notification, Request } from "../models/FlowModels.js";
+import { setIo } from "../realtime.js";
 import { StockBatch } from "../models/StockBatchModel.js";
 
 let app;
@@ -209,4 +210,35 @@ test("duplicate legacy lines for one item keep the first non-null price when the
   const [line] = (await Consumption.findById(insertedId).lean()).items;
   assert.equal(line.unitPriceAtIssue, 40, "first non-null price wins, not the last (null) one and not today's 45");
   assert.equal(line.amountAtIssue, 80);
+});
+
+const captureEmits = async (work) => {
+  const sent = [];
+  const fake = { to: () => ({ to: () => fake.to(), emit: (event, payload) => sent.push({ event, payload }) }) };
+  setIo(fake);
+  try { await work(); } finally { setIo(null); }
+  return sent.filter((message) => message.event === "low_stock_alert");
+};
+
+test("a usage that fails does not send a low-stock alert for its earlier lines", async () => {
+  await GodownStock.updateOne({ _id: f.rice._id }, { thresholdBaseUnit: 45 });
+  const alerts = await captureEmits(async () => {
+    const res = await as("cook", "post", "/api/consumptions").send({
+      date: "2026-10-12", items: [{ stockRecordId: f.rice._id, qtyBaseUnit: 10 }, { stockRecordId: f.dal._id, qtyBaseUnit: 999 }],
+    });
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+  });
+  assert.deepEqual(alerts, []);
+  assert.equal(await Notification.countDocuments({ type: "low_stock_alert" }), 0);
+});
+
+test("a recorded usage sends its low-stock alert once", async () => {
+  await GodownStock.updateOne({ _id: f.rice._id }, { thresholdBaseUnit: 45 });
+  const alerts = await captureEmits(async () => {
+    const res = await as("cook", "post", "/api/consumptions").send({ date: "2026-10-12", items: [{ stockRecordId: f.rice._id, qtyBaseUnit: 10 }] });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+  });
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].payload.payload.currentQty, 40);
+  assert.equal(await Notification.countDocuments({ type: "low_stock_alert" }), 1);
 });

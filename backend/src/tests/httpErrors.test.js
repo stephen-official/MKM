@@ -75,3 +75,19 @@ test("forwarding an error-like object retains its public status and code", async
   assert.ok(forwarded instanceof Error);
   assert.deepEqual(errorResponse(forwarded), { status: 400, body: { code: "INVALID_INPUT", message: "Invalid" } });
 });
+
+const mongoServerError = (message, code) => Object.assign(new Error(message), { name: "MongoServerError", code });
+
+test("policies that echo error messages hide runtime and database internals but keep business messages", () => {
+  const legacy = legacyErrorPolicy({ status: 400, field: "error", includeError: true });
+  assert.deepEqual(legacy.formatError(new Error("Insufficient stock for Rice.")).body, { error: "Insufficient stock for Rice." });
+  assert.deepEqual(legacy.formatError(new TypeError("Cannot read properties of undefined (reading 'qty')")), { status: 400, body: { error: "Internal Server Error" } });
+  const duplicate = mongoServerError("E11000 duplicate key error collection: mkm.godowns index: name_1 dup key: { name: \"Main\" }", 11000);
+  assert.deepEqual(legacy.formatError(duplicate).body, { error: "A record with these details already exists." });
+  assert.deepEqual(legacyErrorPolicy({ status: 400, field: "error", fallback: "Failed to update consumption" }).formatError(mongoServerError("connection pool closed")).body,
+    { error: "Failed to update consumption" });
+
+  const typed = typedErrorPolicy({ useErrorMessage: true, fallbackCode: "CORRECTION_FAILED" });
+  assert.deepEqual(typed.formatError(new Error("Stock record missing")).body, { code: "CORRECTION_FAILED", message: "Stock record missing" });
+  assert.deepEqual(typed.formatError(new ReferenceError("row is not defined")).body, { code: "CORRECTION_FAILED", message: "Internal Server Error" });
+});

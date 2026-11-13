@@ -1,4 +1,4 @@
-import { asyncRoute, typedErrorPolicy } from "../shared/httpErrors.js";
+import { asyncRoute, typedErrorPolicy, publicMessage } from "../shared/httpErrors.js";
 import express from "express";
 import mongoose from "mongoose";
 import { authorize } from "../middleware/auth.js";
@@ -9,7 +9,7 @@ import { isIsoDate } from "../executive/params.js";
 import { io, notifyKitchen } from "../realtime.js";
 import { CatalogError, assertKitchenCanUse } from "../catalog/productService.js";
 import { NO_USAGE_REASONS } from "../usage/usageDays.js";
-import { applyConsumptionEdit, recordConsumption, removeConsumption } from "../modules/consumption/consumptionService.js";
+import { applyConsumptionEdit, emitLowStockAlerts, recordConsumption, removeConsumption } from "../modules/consumption/consumptionService.js";
 import { stockTransaction } from "../shared/stockCommandHttp.js";
 
 /**
@@ -205,7 +205,7 @@ const tellKitchen = (row) => {
 };
 
 /** Makes the change the kitchen asked for, inside the approval's transaction. Stock problems surface as CANNOT_APPLY. */
-const apply = async (row, user, session) => {
+const apply = async (row, user, session, alerts) => {
   const lines = row.items.map((line) => ({
     stockItemId: line.stockItemId, stockRecordId: line.stockRecordId, qtyBaseUnit: line.qtyBaseUnit,
     packId: line.packId, packName: line.packName, packSize: line.packSize, packQuantity: line.packQuantity,
@@ -213,7 +213,7 @@ const apply = async (row, user, session) => {
   try {
     if (row.kind === "reopen_day") {
       await NoUsageDay.deleteOne({ godownId: row.godownId, date: row.date }).session(session);
-      await recordConsumption({ godownId: row.godownId, userId: row.userId, date: row.date, items: lines, session });
+      await recordConsumption({ godownId: row.godownId, userId: row.userId, date: row.date, items: lines, session, alerts });
       return;
     }
     const consumption = await Consumption.findOne({ _id: row.consumptionId, godownId: row.godownId }).session(session);
@@ -236,7 +236,9 @@ const apply = async (row, user, session) => {
     } else await applyConsumptionEdit({ consumption, items: lines, userId: user.sub, session });
   } catch (error) {
     if (error instanceof CorrectionError) throw error;
-    throw new CorrectionError(409, "CANNOT_APPLY", error.message);
+    // Write conflicts must keep their labels so withTransaction retries the approval instead of refusing it.
+    if (error?.hasErrorLabel?.("TransientTransactionError")) throw error;
+    throw new CorrectionError(409, "CANNOT_APPLY", publicMessage(error, "This change could not be applied. Try again or reject it."));
   }
 };
 
@@ -244,12 +246,17 @@ const apply = async (row, user, session) => {
 usageCorrectionRoutes.post("/:id/approve", adminOnly, asyncRoute(async (req, res) => {
   const session = await mongoose.startSession();
   try {
+    let alerts = [];
     const row = await stockTransaction(req, session, async () => {
+      alerts = [];
       const row = await loadPending(req.params.id, session);
-      await apply(row, req.user, session);
+      await apply(row, req.user, session, alerts);
       return decide(row, req.user, { status: "approved", decisionNote: String(req.body?.note || "").trim().slice(0, 300) }, session);
     });
-    if (!req.stockCommandReplayed) tellKitchen(row);
+    if (!req.stockCommandReplayed) {
+      emitLowStockAlerts(alerts);
+      tellKitchen(row);
+    }
     return res.json(await load(row._id));
   } finally {
     await session.endSession();

@@ -36,7 +36,7 @@ const app = express();
 
 
 
-app.set("trust proxy", 1);
+app.set("trust proxy", env.trustProxy);
 // --- 1. SETUP DIRECTORIES ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -121,7 +121,9 @@ const authLimiter = rateLimit({
     limit: 100,
     standardHeaders: true,
     legacyHeaders: false,
-    // Keyed on req.ip, which "trust proxy" resolves to the address the Render proxy saw. The raw
+    // Keyed on req.ip, which "trust proxy" (TRUST_PROXY, default 1 hop) resolves to the client address the outermost
+    // trusted proxy saw. Set TRUST_PROXY to the real hop count (e.g. 2 behind a CDN plus Render) or every client
+    // shares the proxy's address and one bucket. The raw
     // X-Forwarded-For header must not be the key: its leading entries are whatever the client sent.
 });
 

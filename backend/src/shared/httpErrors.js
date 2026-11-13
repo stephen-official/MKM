@@ -52,6 +52,19 @@ export const forwardError = (next, error, overrides = {}) => {
 export const asyncRoute = (handler, overrides = {}) => (req, res, next) => Promise.resolve().then(() => handler(req, res, next))
   .catch((error) => forwardError(next, error, overrides));
 
+const RUNTIME_ERRORS = new Set(["TypeError", "ReferenceError", "SyntaxError", "RangeError", "EvalError", "URIError"]);
+
+/**
+ * The message a policy may echo for an error. Business code still throws plain Errors whose messages clients show,
+ * so only programmer errors and driver errors (Mongo*, which carry index names, keys and hosts) are replaced.
+ */
+export const publicMessage = (error, fallback) => {
+  if (error?.status) return error.message;
+  if (error?.code === 11000) return "A record with these details already exists.";
+  if (RUNTIME_ERRORS.has(error?.name) || String(error?.name || "").startsWith("Mongo")) return fallback || "Internal Server Error";
+  return error?.message;
+};
+
 /** Compatibility policies keep established endpoint envelopes while errors flow to the global handler. */
 export const legacyErrorPolicy = ({ status = 500, respectStatus = false, field = "error", message, fallback, includeError = false, code, text = false, publicMessageOnly = false, unknownMessage, specials = [] } = {}) => ({
   formatError: (error) => {
@@ -63,7 +76,7 @@ export const legacyErrorPolicy = ({ status = 500, respectStatus = false, field =
     return {
       status: resultStatus,
       ...(text ? { text: true, body: message } : {
-        body: { ...(code ? { code } : {}), [field]: message ?? (fallback === undefined ? error.message : error.message || fallback), ...(includeError ? { error: error.message } : {}) },
+        body: { ...(code ? { code } : {}), [field]: message ?? (fallback === undefined ? publicMessage(error) : publicMessage(error, fallback) || fallback), ...(includeError ? { error: publicMessage(error) } : {}) },
       }),
     };
   },
@@ -85,6 +98,6 @@ export const typedErrorPolicy = ({ isPublic = (error) => Boolean(error.status), 
       },
     };
     if (fallbackPolicy) return fallbackPolicy.formatError(error);
-    return { status: 500, body: { ...(includeFallbackCode ? { code: (useErrorCode && error.code) || fallbackCode } : {}), message: useErrorMessage ? error.message : fallbackMessage } };
+    return { status: 500, body: { ...(includeFallbackCode ? { code: (useErrorCode && error.code) || fallbackCode } : {}), message: useErrorMessage ? publicMessage(error, fallbackMessage) : fallbackMessage } };
   },
 });

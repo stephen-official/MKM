@@ -9,7 +9,7 @@ import { io, notifyKitchen } from "../realtime.js";
 import { isKitchenRole } from "../utils/roles.js";
 import { stripPrices } from "../utils/kitchenSafe.js";
 import { deepPopulateItem } from "../modules/operations/operationItemPopulation.js";
-import { recordConsumption, applyConsumptionEdit, removeConsumption } from "../modules/consumption/consumptionService.js";
+import { emitLowStockAlerts, recordConsumption, applyConsumptionEdit, removeConsumption } from "../modules/consumption/consumptionService.js";
 import { stockTransaction } from "../shared/stockCommandHttp.js";
 
 const populatedConsumption = (id, session) => Consumption.findById(id).session(session)
@@ -22,15 +22,18 @@ const handleStockProcessing = asyncRoute(async (req, res) => {
   try {
     const godownId = isKitchenRole(req.user.role) ? req.user.godownId : req.body.godownId;
     // A day the kitchen marked "no usage" stays closed until an admin approves a correction; nothing is recorded on it.
+    let alerts = [];
     const populatedResult = await stockTransaction(req, session, async () => {
+      alerts = [];
       if (godownId && req.body.date && await NoUsageDay.exists({ godownId, date: req.body.date }).session(session)) {
         throw Object.assign(new Error("This day is marked as no usage. Ask the admin to reopen it before recording."), { status: 409, dayClosed: true });
       }
-      const result = await recordConsumption({ godownId, userId: req.user.sub, date: req.body.date, items: req.body.items, session });
+      const result = await recordConsumption({ godownId, userId: req.user.sub, date: req.body.date, items: req.body.items, session, alerts });
       return populatedConsumption(result._id, session);
     });
 
     if (!req.stockCommandReplayed) {
+      emitLowStockAlerts(alerts);
       notifyKitchen(populatedResult.godownId?._id || godownId, "stock");
       notifyKitchen(populatedResult.godownId?._id || godownId, "usage");
     }

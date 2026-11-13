@@ -81,7 +81,7 @@ realtime.js      io proxy so routes can emit without importing server.js
 ```
 
 ### Route mounts (`app.js`)
-`/api/auth` is public and rate-limited (100 requests per 10 minutes per `req.ip`, which `trust proxy 1` resolves to the address Render's proxy saw; never key on the raw `X-Forwarded-For` header). Every other mount goes through `authenticate → featureGate → router`:
+`/api/auth` is public and rate-limited (100 requests per 10 minutes per `req.ip`, which `trust proxy` resolves to the client address the outermost trusted proxy saw; `TRUST_PROXY` sets the hop count, default 1 for Render's balancer, 2 behind a CDN as well; never key on the raw `X-Forwarded-For` header). Every other mount goes through `authenticate → featureGate → router`:
 
 | Mount | Router | Covers |
 |---|---|---|
